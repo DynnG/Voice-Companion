@@ -1,5 +1,23 @@
 import os
+from pathlib import Path
 from typing import Optional
+from dotenv import load_dotenv
+
+# Search and load .env from backend directory or project root
+backend_env = Path(__file__).resolve().parent / ".env"
+root_env = Path(__file__).resolve().parent.parent / ".env"
+
+if backend_env.exists():
+    load_dotenv(dotenv_path=backend_env)
+elif root_env.exists():
+    load_dotenv(dotenv_path=root_env)
+else:
+    load_dotenv()
+
+# Gemini API Configuration
+GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+# Default to gemini-2.5-flash for fast conversational responses
+GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 # Whisper Model Configuration
 # Model size options: "tiny", "base", "small", "medium", "large-v3"

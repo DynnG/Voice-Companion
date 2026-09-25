@@ -1,21 +1,26 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { VoiceState } from '../types/conversation';
+import { VoiceState, Conversation } from '../types/conversation';
 import { Header } from './Header';
 import { VoiceCreature } from './VoiceCreature';
 import { StateLabel } from './StateLabel';
 import { ResponseCaption } from './ResponseCaption';
 import { VoiceControls } from './VoiceControls';
 import { transcribeAudio } from '../services/sttService';
+import { sendInterviewMessage, ConversationTurn } from '../services/interviewService';
 
 interface VoiceExperienceProps {
+  activeConversation?: Conversation;
   onUserTranscribed?: (userText: string) => void;
+  onPalResponse?: (palText: string) => void;
   isLivePanelOpen: boolean;
   onToggleLivePanel: () => void;
   unreadCount?: number;
 }
 
 export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
+  activeConversation,
   onUserTranscribed,
+  onPalResponse,
   isLivePanelOpen,
   onToggleLivePanel,
   unreadCount = 0
@@ -95,7 +100,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
           return;
         }
 
-        await processAudioTranscription(audioBlob);
+        await processAudioTranscriptionAndInterview(audioBlob);
       };
 
       mediaRecorder.start(250);
@@ -126,42 +131,16 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     }
   };
 
-  const processAudioTranscription = async (audioBlob: Blob) => {
+  const processAudioTranscriptionAndInterview = async (audioBlob: Blob) => {
     setState('thinking');
     setCustomLabel('transcribing audio…');
 
+    let transcript = '';
+
+    // Step 1: Faster-Whisper Speech-To-Text
     try {
       const result = await transcribeAudio(audioBlob);
-      const text = result.text ? result.text.trim() : '';
-
-      if (text.length > 0) {
-        // Send transcribed message to conversation transcript
-        if (onUserTranscribed) {
-          onUserTranscribed(text);
-        }
-
-        setState('speaking');
-        setCustomLabel('transcribed');
-        showCaption(`"${text}"`);
-
-        setTimeout(() => {
-          hideCaption();
-          setState('idle');
-          setCustomLabel(undefined);
-          isProcessingRef.current = false;
-        }, 2600);
-      } else {
-        // No speech recognized
-        setState('speaking');
-        setCustomLabel(undefined);
-        showCaption('No speech detected. Please tap the mic and try speaking again.');
-
-        setTimeout(() => {
-          hideCaption();
-          setState('idle');
-          isProcessingRef.current = false;
-        }, 2600);
-      }
+      transcript = result.text ? result.text.trim() : '';
     } catch (apiError: any) {
       console.error('STT API error:', apiError);
       setState('idle');
@@ -174,6 +153,85 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         setCustomLabel(undefined);
         isProcessingRef.current = false;
       }, 4000);
+      return;
+    }
+
+    // Step 2: Handle Empty Speech
+    if (!transcript) {
+      setState('speaking');
+      setCustomLabel(undefined);
+      showCaption('No speech detected. Please tap the mic and try speaking again.');
+
+      setTimeout(() => {
+        hideCaption();
+        setState('idle');
+        isProcessingRef.current = false;
+      }, 2600);
+      return;
+    }
+
+    // Step 3: Record User Transcription
+    if (onUserTranscribed) {
+      onUserTranscribed(transcript);
+    }
+
+    // Step 4: Call Gemini for AI Interview Response
+    setState('thinking');
+    setCustomLabel('Pal is thinking…');
+
+    try {
+      // Build conversation history from active conversation
+      const history: ConversationTurn[] = (activeConversation?.messages || []).map((m) => ({
+        role: m.sender === 'Pal' ? 'pal' : 'user',
+        text: m.text,
+      }));
+
+      // Document context snippets if available
+      const contextDocs = activeConversation?.attachedDocuments?.map(
+        (doc) => `[File: ${doc.name}] Category: ${doc.category}`
+      );
+
+      const aiResult = await sendInterviewMessage({
+        message: transcript,
+        history,
+        job_role: activeConversation?.jobRole || 'Software Developer',
+        context_docs: contextDocs,
+      });
+
+      const reply = aiResult.text || '';
+
+      if (onPalResponse && reply) {
+        onPalResponse(reply);
+      }
+
+      // Display Interviewer response
+      setState('speaking');
+      setCustomLabel('Pal responded');
+      showCaption(reply);
+
+      setTimeout(() => {
+        hideCaption();
+        setState('idle');
+        setCustomLabel(undefined);
+        isProcessingRef.current = false;
+      }, 4500);
+    } catch (geminiError: any) {
+      console.warn('Gemini interviewer error or unconfigured:', geminiError);
+      // STT succeeded, show user's transcription if Gemini fails or is unconfigured
+      setState('speaking');
+      setCustomLabel('transcribed');
+      showCaption(`"${transcript}"`);
+
+      if (geminiError.message && geminiError.message.includes('GEMINI_API_KEY')) {
+        setStatusHint('Add GEMINI_API_KEY to backend/.env to enable AI interviewer responses.');
+      }
+
+      setTimeout(() => {
+        hideCaption();
+        setState('idle');
+        setCustomLabel(undefined);
+        isProcessingRef.current = false;
+      }, 3000);
     }
   };
 

@@ -121,6 +121,30 @@ export const VoiceCompanion: React.FC = () => {
     });
   };
 
+  // Handle AI Interviewer response from Gemini
+  const handlePalResponse = (palText: string) => {
+    const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const palMsg: Message = {
+      id: `msg-${Date.now()}-pal`,
+      sender: 'Pal',
+      text: palText,
+      timestamp: nowStr,
+    };
+
+    setConversations((prev) =>
+      prev.map((c) => {
+        if (c.id === activeConversationId) {
+          return {
+            ...c,
+            updatedAt: new Date().toISOString(),
+            messages: [...c.messages, palMsg],
+          };
+        }
+        return c;
+      })
+    );
+  };
+
   return (
     <AppShell
       onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
@@ -152,7 +176,9 @@ export const VoiceCompanion: React.FC = () => {
           />
         ) : (
           <VoiceExperience
+            activeConversation={activeConversation}
             onUserTranscribed={handleUserTranscribed}
+            onPalResponse={handlePalResponse}
             isLivePanelOpen={isLivePanelOpen}
             onToggleLivePanel={() => setIsLivePanelOpen((prev) => !prev)}
           />
