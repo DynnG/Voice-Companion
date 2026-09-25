@@ -1,0 +1,180 @@
+:root {
+  --bg: #050810;
+  --bg-2: #0a0e18;
+  --ink: #e8ecf5;
+  --ink-dim: #7f8aa3;
+  --line: #1b2130;
+  --glow-a: #5eead4; /* teal, listening */
+  --glow-b: #a78bfa; /* violet, thinking */
+  --glow-c: #fdba74; /* amber, speaking */
+  --glow-idle: #4b5675;
+}
+
+.stage {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  background: radial-gradient(ellipse at 50% 38%, var(--bg-2) 0%, var(--bg) 70%);
+}
+
+.voice-header {
+  padding: 24px 20px 0;
+  text-align: center;
+}
+
+.wordmark {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+
+.wordmark span {
+  color: var(--ink-dim);
+  font-weight: 400;
+}
+
+.voice-canvas {
+  display: block;
+  touch-action: none;
+}
+
+.canvas-wrap {
+  position: relative;
+  width: min(78vw, 360px);
+  height: min(78vw, 360px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.state-label {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  min-height: 18px;
+  transition: color .4s ease;
+}
+
+.caption {
+  max-width: 340px;
+  min-height: 52px;
+  text-align: center;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ink);
+  padding: 0 24px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity .5s ease, transform .5s ease;
+}
+
+.caption.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.voice-footer {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 0 20px 28px;
+}
+
+.mic-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.mic-btn {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color .3s ease, background .3s ease, transform .15s ease;
+  position: relative;
+}
+
+.mic-btn:active {
+  transform: scale(0.94);
+}
+
+.mic-btn:focus-visible {
+  outline: 2px solid var(--glow-a);
+  outline-offset: 3px;
+}
+
+.mic-btn svg {
+  width: 22px;
+  height: 22px;
+  stroke: var(--ink);
+  transition: stroke .3s ease;
+}
+
+.mic-btn.live {
+  border-color: var(--glow-a);
+}
+
+.mic-btn.live svg {
+  stroke: var(--glow-a);
+}
+
+.chat-btn {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color .3s ease, background .3s ease, transform .15s ease, color .3s ease;
+  position: relative;
+  color: var(--ink);
+}
+
+.chat-btn:active {
+  transform: scale(0.94);
+}
+
+.chat-btn:focus-visible {
+  outline: 2px solid #046241;
+  outline-offset: 3px;
+}
+
+.chat-btn:hover {
+  border-color: #046241;
+  color: #f5eedb;
+}
+
+.chat-btn.active-panel {
+  border-color: #046241;
+  background: rgba(4, 98, 65, 0.25);
+  color: #f5eedb;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--ink-dim);
+  letter-spacing: 0.01em;
+}
+
+@media (prefers-reduced-motion: reduce){
+  * { animation-duration: 0.01ms !important; }
+}

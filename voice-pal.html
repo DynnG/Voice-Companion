@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pal — voice companion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #050810;
+    --bg-2: #0a0e18;
+    --ink: #e8ecf5;
+    --ink-dim: #7f8aa3;
+    --line: #1b2130;
+    --glow-a: #5eead4; /* teal, listening */
+    --glow-b: #a78bfa; /* violet, thinking */
+    --glow-c: #fdba74; /* amber, speaking */
+    --glow-idle: #4b5675;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  .stage{
+    position:relative;
+    height:100%;
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:space-between;
+    background:radial-gradient(ellipse at 50% 38%, var(--bg-2) 0%, var(--bg) 70%);
+  }
+  header{
+    padding:28px 20px 0;
+    text-align:center;
+  }
+  .wordmark{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:15px;
+    letter-spacing:0.02em;
+    color:var(--ink);
+  }
+  .wordmark span{color:var(--ink-dim);font-weight:400;}
+
+  canvas{
+    display:block;
+    touch-action:none;
+  }
+  .canvas-wrap{
+    position:relative;
+    width:min(78vw, 360px);
+    height:min(78vw, 360px);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+  }
+
+  .state-label{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:13px;
+    letter-spacing:0.04em;
+    color:var(--ink-dim);
+    min-height:18px;
+    transition:color .4s ease;
+  }
+
+  .caption{
+    max-width:340px;
+    min-height:52px;
+    text-align:center;
+    font-size:16px;
+    line-height:1.5;
+    color:var(--ink);
+    padding:0 24px;
+    opacity:0;
+    transform:translateY(6px);
+    transition:opacity .5s ease, transform .5s ease;
+  }
+  .caption.show{opacity:1;transform:translateY(0);}
+
+  footer{
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:14px;
+    padding:0 20px 34px;
+  }
+
+  .mic-row{
+    display:flex;
+    align-items:center;
+    gap:18px;
+  }
+  .mic-btn{
+    width:60px;height:60px;
+    border-radius:50%;
+    border:1px solid var(--line);
+    background:var(--bg-2);
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    transition:border-color .3s ease, background .3s ease, transform .15s ease;
+    position:relative;
+  }
+  .mic-btn:active{transform:scale(0.94);}
+  .mic-btn:focus-visible{outline:2px solid var(--glow-a);outline-offset:3px;}
+  .mic-btn svg{width:22px;height:22px;stroke:var(--ink);transition:stroke .3s ease;}
+  .mic-btn.live{border-color:var(--glow-a);}
+  .mic-btn.live svg{stroke:var(--glow-a);}
+
+  .hint{
+    font-size:12px;
+    color:var(--ink-dim);
+    letter-spacing:0.01em;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    * { animation-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <header>
+    <div class="wordmark">Pal <span>· voice companion</span></div>
+  </header>
+
+  <div class="canvas-wrap" id="creature">
+    <canvas id="c"></canvas>
+  </div>
+
+  <div class="state-label" id="stateLabel">tap to talk</div>
+
+  <footer>
+    <div class="caption" id="caption"></div>
+    <div class="mic-row">
+      <button class="mic-btn" id="micBtn" aria-label="Start talking">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1"/>
+          <line x1="12" y1="18" x2="12" y2="22"/>
+        </svg>
+      </button>
+    </div>
+    <div class="hint">a working demo — the creature is state-driven, not a live mic yet</div>
+  </footer>
+</div>
+
+<script>
+(function(){
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const wrap = document.getElementById('creature');
+  const micBtn = document.getElementById('micBtn');
+  const stateLabel = document.getElementById('stateLabel');
+  const caption = document.getElementById('caption');
+
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let W, H, cx, cy;
+
+  function resize(){
+    const rect = wrap.getBoundingClientRect();
+    W = rect.width; H = rect.height;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    cx = W/2; cy = H/2;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---- state machine ----
+  const STATES = {
+    idle:      { color: () => hex('--glow-idle'), amp: 0.06, speed: 0.25, lobes: 3, ring: 0 },
+    listening: { color: () => hex('--glow-a'),     amp: 0.10, speed: 0.45, lobes: 5, ring: 0 },
+    thinking:  { color: () => hex('--glow-b'),     amp: 0.09, speed: 1.3,  lobes: 7, ring: 0 },
+    speaking:  { color: () => hex('--glow-c'),     amp: 0.20, speed: 0.9,  lobes: 4, ring: 1 },
+  };
+  function hex(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+  let current = 'idle';
+  let cur = { amp: STATES.idle.amp, speed: STATES.idle.speed, lobes: STATES.idle.lobes, ring: 0 };
+  let colorMix = {r:75,g:86,b:117};
+
+  function hexToRgb(h){
+    h = h.replace('#','');
+    return { r: parseInt(h.slice(0,2),16), g: parseInt(h.slice(2,4),16), b: parseInt(h.slice(4,6),16) };
+  }
+
+  // shift a color's hue by `deg` degrees, keeping it close in family (for iridescent gradients)
+  function hueShift({r,g,b}, deg){
+    r/=255; g/=255; b/=255;
+    const max=Math.max(r,g,b), min=Math.min(r,g,b);
+    let h,s,l=(max+min)/2;
+    if(max===min){ h=s=0; }
+    else{
+      const d=max-min;
+      s = l>0.5 ? d/(2-max-min) : d/(max+min);
+      if(max===r) h=(g-b)/d+(g<b?6:0);
+      else if(max===g) h=(b-r)/d+2;
+      else h=(r-g)/d+4;
+      h/=6;
+    }
+    h = ((h + deg/360) % 1 + 1) % 1;
+    function hue2rgb(p,q,tt){
+      if(tt<0)tt+=1; if(tt>1)tt-=1;
+      if(tt<1/6) return p+(q-p)*6*tt;
+      if(tt<1/2) return q;
+      if(tt<2/3) return p+(q-p)*(2/3-tt)*6;
+      return p;
+    }
+    let r2,g2,b2;
+    if(s===0){ r2=g2=b2=l; }
+    else{
+      const q = l<0.5 ? l*(1+s) : l+s-l*s;
+      const p = 2*l-q;
+      r2=hue2rgb(p,q,h+1/3); g2=hue2rgb(p,q,h); b2=hue2rgb(p,q,h-1/3);
+    }
+    return { r:Math.round(r2*255), g:Math.round(g2*255), b:Math.round(b2*255) };
+  }
+
+  // a few drifting light motes orbiting the blob
+  const motes = Array.from({length:18}, (_,i) => ({
+    radiusF: 1.15 + Math.random()*0.75,
+    speed: 0.2 + Math.random()*0.4,
+    dir: i % 2 === 0 ? 1 : -1,
+    phase: Math.random()*Math.PI*2,
+    size: 1 + Math.random()*1.5
+  }));
+
+  function setState(name){
+    current = name;
+    const s = STATES[name];
+    stateLabel.textContent = {
+      idle: 'tap to talk',
+      listening: 'listening…',
+      thinking: 'thinking…',
+      speaking: 'speaking…'
+    }[name];
+    stateLabel.style.color = name === 'idle' ? '' : s.color();
+    micBtn.classList.toggle('live', name === 'listening');
+  }
+
+  // ---- morphing blob creature ----
+  let t = 0;
+  let rot = 0;
+
+  // radius function: smooth closed curve, two gentle harmonics
+  function blobPoints(baseR, amp, lobes, phase, n){
+    const pts = [];
+    for(let i=0;i<n;i++){
+      const a = (i/n)*Math.PI*2;
+      const r = baseR * (1
+        + amp * Math.sin(lobes*a + phase)
+        + amp*0.35 * Math.sin((lobes+2)*a - phase*1.4));
+      pts.push({ x: cx + Math.cos(a+rot)*r, y: cy + Math.sin(a+rot)*r });
+    }
+    return pts;
+  }
+
+  // draw a smooth closed curve through points (quadratic midpoint technique)
+  function smoothPath(pts){
+    ctx.beginPath();
+    const n = pts.length;
+    const mid = (a,b)=>({x:(a.x+b.x)/2, y:(a.y+b.y)/2});
+    let m0 = mid(pts[n-1], pts[0]);
+    ctx.moveTo(m0.x, m0.y);
+    for(let i=0;i<n;i++){
+      const cur = pts[i], next = pts[(i+1)%n];
+      const m = mid(cur, next);
+      ctx.quadraticCurveTo(cur.x, cur.y, m.x, m.y);
+    }
+    ctx.closePath();
+  }
+
+  function draw(){
+    t += 0.016;
+    const target = STATES[current];
+    cur.amp   += (target.amp   - cur.amp)   * 0.05;
+    cur.speed += (target.speed - cur.speed) * 0.05;
+    cur.lobes += (target.lobes - cur.lobes) * 0.08;
+    cur.ring  += (target.ring  - cur.ring)  * 0.06;
+    rot += 0.0028 * cur.speed;
+
+    const tc = hexToRgb(target.color());
+    colorMix.r += (tc.r - colorMix.r) * 0.05;
+    colorMix.g += (tc.g - colorMix.g) * 0.05;
+    colorMix.b += (tc.b - colorMix.b) * 0.05;
+    const col = `${Math.round(colorMix.r)},${Math.round(colorMix.g)},${Math.round(colorMix.b)}`;
+    const sec = hueShift(colorMix, 38);
+    const secCol = `${sec.r},${sec.g},${sec.b}`;
+
+    ctx.clearRect(0,0,W,H);
+
+    const baseR = Math.min(W,H) * 0.2;
+    const breathe = 1 + Math.sin(t*cur.speed*0.9) * 0.03;
+    const lobes = Math.round(cur.lobes);
+
+    // outward pulse ring (speaking only)
+    if (cur.ring > 0.03){
+      const loops = 2;
+      for(let p=0;p<loops;p++){
+        const ph = ((t*0.55 + p/loops) % 1);
+        const r = baseR*1.05 + ph*baseR*1.3;
+        ctx.strokeStyle = `rgba(${col},${(1-ph)*0.22*cur.ring})`;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(cx,cy,r,0,Math.PI*2);
+        ctx.stroke();
+      }
+    }
+
+    // wide soft halo behind everything
+    const halo = ctx.createRadialGradient(cx,cy,0,cx,cy,baseR*2.7);
+    halo.addColorStop(0, `rgba(${col},0.28)`);
+    halo.addColorStop(1, `rgba(${col},0)`);
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(cx,cy,baseR*2.7,0,Math.PI*2);
+    ctx.fill();
+
+    // faint drifting light motes, behind the blob
+    for(const m of motes){
+      const ang = m.phase + t*m.speed*m.dir;
+      const r = baseR * m.radiusF * (1 + cur.amp*0.6);
+      const mx = cx + Math.cos(ang)*r;
+      const my = cy + Math.sin(ang*1.15)*r*0.9;
+      const twinkle = 0.35 + 0.65*(0.5+0.5*Math.sin(t*1.6+m.phase));
+      ctx.beginPath();
+      ctx.arc(mx,my,m.size,0,Math.PI*2);
+      ctx.fillStyle = `rgba(${secCol},${0.55*twinkle})`;
+      ctx.shadowColor = `rgba(${secCol},0.9)`;
+      ctx.shadowBlur = 6;
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+
+    // layered echoes of the same shape — soft, receding, gives it depth
+    function layer(scaleMult, alphaMult, phaseOffset, lobeOffset){
+      const phase = t*cur.speed*1.2 - phaseOffset;
+      const pts = blobPoints(baseR*breathe*scaleMult, cur.amp, lobes+lobeOffset, phase, 64);
+      smoothPath(pts);
+      const g = ctx.createRadialGradient(cx,cy,0,cx,cy,baseR*1.15*scaleMult);
+      g.addColorStop(0,   `rgba(${col},${0.85*alphaMult})`);
+      g.addColorStop(0.6, `rgba(${secCol},${0.45*alphaMult})`);
+      g.addColorStop(1,   `rgba(${col},${0.10*alphaMult})`);
+      ctx.fillStyle = g;
+      ctx.fill();
+    }
+    layer(1.42, 0.28, 0.55, 1);   // outer echo
+    layer(1.20, 0.45, 0.28, 0);   // mid echo
+
+    // core blob: full opacity, crisp rim, soft edge glow
+    const pts = blobPoints(baseR*breathe, cur.amp, lobes, t*cur.speed*1.2, 64);
+    smoothPath(pts);
+    const fill = ctx.createRadialGradient(cx,cy,0,cx,cy,baseR*1.15);
+    fill.addColorStop(0,   `rgba(${col},0.92)`);
+    fill.addColorStop(0.6, `rgba(${secCol},0.55)`);
+    fill.addColorStop(1,   `rgba(${col},0.16)`);
+    ctx.fillStyle = fill;
+    ctx.shadowColor = `rgba(${col},0.55)`;
+    ctx.shadowBlur = 22;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // crisp thin rim for definition
+    ctx.strokeStyle = `rgba(${col},0.65)`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+
+  // ---- interaction flow ----
+  let busy = false;
+  const REPLIES = [
+    "Got it — here's what I found for you.",
+    "Sure thing. Let me walk you through it.",
+    "That's a good question. Here's the short answer."
+  ];
+
+  function showCaption(text){
+    caption.textContent = text;
+    caption.classList.add('show');
+  }
+  function hideCaption(){
+    caption.classList.remove('show');
+  }
+
+  function startFlow(){
+    if (busy) return;
+    busy = true;
+    hideCaption();
+    setState('listening');
+
+    setTimeout(() => {
+      setState('thinking');
+      setTimeout(() => {
+        setState('speaking');
+        const reply = REPLIES[Math.floor(Math.random()*REPLIES.length)];
+        showCaption(reply);
+        setTimeout(() => {
+          hideCaption();
+          setState('idle');
+          busy = false;
+        }, 2600);
+      }, 1100);
+    }, 1800);
+  }
+
+  micBtn.addEventListener('click', startFlow);
+  wrap.addEventListener('click', startFlow);
+
+  setState('idle');
+})();
+</script>
+</body>
+</html>
