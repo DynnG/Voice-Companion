@@ -51,7 +51,7 @@ export const AppShell: React.FC<AppShellProps> = ({
               P
             </div>
             <span className="font-space font-semibold text-sm tracking-wide text-[#ffffff]">
-              Pal Companion
+              MockMate
             </span>
             {activeConversationTitle && (
               <span className="hidden sm:inline-block text-xs text-[#f5eedb]/60 truncate max-w-[200px] border-l border-[#046241]/40 pl-2 ml-1">

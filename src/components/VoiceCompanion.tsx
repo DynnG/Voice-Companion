@@ -6,13 +6,16 @@ import { ConversationHistory } from './ConversationHistory';
 import { VoiceExperience } from './VoiceExperience';
 import { LiveConversationPanel } from './LiveConversationPanel';
 import { DocumentAttachmentScreen } from './DocumentAttachmentScreen';
+import { fetchInitialInterviewQuestion } from '../services/sttService';
 
 export const VoiceCompanion: React.FC = () => {
   const [conversations, setConversations] = useState<Conversation[]>(initialMockConversations);
   const [activeConversationId, setActiveConversationId] = useState<string>('conv-active-1');
-  const [isLivePanelOpen, setIsLivePanelOpen] = useState<boolean>(false);
+  const [isLivePanelOpen, setIsLivePanelOpen] = useState<boolean>(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState<boolean>(false);
+  const [initialQuestionToSpeak, setInitialQuestionToSpeak] = useState<string | undefined>(undefined);
+  const [isThinking, setIsThinking] = useState<boolean>(false);
 
   // Find active conversation
   const activeConversation = conversations.find((c) => c.id === activeConversationId) || conversations[0];
@@ -20,6 +23,8 @@ export const VoiceCompanion: React.FC = () => {
   // Select a conversation from sidebar
   const handleSelectConversation = (conv: Conversation) => {
     setActiveConversationId(conv.id);
+    setInitialQuestionToSpeak(undefined);
+    setIsThinking(false);
     if (conv.status !== 'setup') {
       setIsLivePanelOpen(true);
     }
@@ -43,22 +48,29 @@ export const VoiceCompanion: React.FC = () => {
 
     setConversations((prev) => [newConv, ...prev]);
     setActiveConversationId(newId);
+    setInitialQuestionToSpeak(undefined);
+    setIsThinking(false);
     setIsLivePanelOpen(false);
   };
 
   // Transition from Document Attachment Screen to Voice Interview
-  const handleStartInterview = (jobRole: string, docs: AttachedDocument[]) => {
-    const title = `Interview - ${jobRole.trim() || 'Software Developer'}`;
+  const handleStartInterview = async (jobRole: string, docs: AttachedDocument[]) => {
+    const cleanRole = jobRole.trim() || 'Software Developer';
+    const title = `Interview - ${cleanRole}`;
+
+    // Generate initial interview question tailored to role and documents
+    const docSummary = docs.map((d) => ({ id: d.id, name: d.name, category: d.category }));
+    const questionText = await fetchInitialInterviewQuestion(cleanRole, docSummary);
+
     const initialPalMessage: Message = {
       id: `msg-${Date.now()}-init`,
       sender: 'Pal',
-      text: `Welcome to your mock interview for ${jobRole}! ${
-        docs.length > 0
-          ? `I've analyzed your ${docs.length} attached document(s) (${docs.map((d) => d.name).join(', ')}).`
-          : "I'm ready to begin whenever you are."
-      } Tap the microphone or creature to speak.`,
+      text: questionText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
+
+    setInitialQuestionToSpeak(questionText);
+    setIsLivePanelOpen(true);
 
     setConversations((prev) =>
       prev.map((c) => {
@@ -66,7 +78,7 @@ export const VoiceCompanion: React.FC = () => {
           return {
             ...c,
             title,
-            jobRole,
+            jobRole: cleanRole,
             attachedDocuments: docs,
             status: 'active',
             updatedAt: new Date().toISOString(),
@@ -78,7 +90,57 @@ export const VoiceCompanion: React.FC = () => {
     );
   };
 
-  // Handle transcribed audio message from faster-whisper STT backend
+  // Handle both user spoken transcription and Gemini AI follow-up response
+  const handleUserAnswerAndAiResponse = (userText: string, aiResponse: string) => {
+    const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const userMsg: Message = {
+      id: `msg-${Date.now()}-user`,
+      sender: 'You',
+      text: userText,
+      timestamp: nowStr,
+    };
+
+    const palMsg: Message = {
+      id: `msg-${Date.now() + 1}-pal`,
+      sender: 'Pal',
+      text: aiResponse,
+      timestamp: nowStr,
+    };
+
+    setConversations((prev) => {
+      let targetConv = prev.find((c) => c.id === activeConversationId);
+      if (!targetConv || targetConv.isReadOnly) {
+        const newId = `interview-${Date.now()}`;
+        const newConv: Conversation = {
+          id: newId,
+          title: 'Interview - Software Developer',
+          category: 'Today',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          status: 'active',
+          jobRole: 'Software Developer',
+          attachedDocuments: [],
+          messages: [userMsg, palMsg],
+          isReadOnly: false,
+        };
+        setActiveConversationId(newId);
+        return [newConv, ...prev];
+      }
+
+      return prev.map((c) => {
+        if (c.id === targetConv.id) {
+          return {
+            ...c,
+            updatedAt: new Date().toISOString(),
+            messages: [...c.messages, userMsg, palMsg],
+          };
+        }
+        return c;
+      });
+    });
+  };
+
+  // Fallback for user transcription only
   const handleUserTranscribed = (transcribedText: string) => {
     const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const userMsg: Message = {
@@ -166,7 +228,7 @@ export const VoiceCompanion: React.FC = () => {
         onToggleCollapseDesktop={() => setIsDesktopSidebarCollapsed((prev) => !prev)}
       />
 
-      {/* CENTRAL WORKSPACE: Setup Screen OR Locked Voice Companion UI */}
+      {/* CENTRAL WORKSPACE: Setup Screen OR Voice Companion Interview UI */}
       <main className="flex-1 h-full relative overflow-hidden bg-[#050810] flex items-center justify-center">
         {activeConversation?.status === 'setup' ? (
           <DocumentAttachmentScreen
@@ -176,11 +238,15 @@ export const VoiceCompanion: React.FC = () => {
           />
         ) : (
           <VoiceExperience
-            activeConversation={activeConversation}
+            onUserAnswerAndAiResponse={handleUserAnswerAndAiResponse}
             onUserTranscribed={handleUserTranscribed}
-            onPalResponse={handlePalResponse}
+            onThinkingChange={setIsThinking}
             isLivePanelOpen={isLivePanelOpen}
             onToggleLivePanel={() => setIsLivePanelOpen((prev) => !prev)}
+            jobRole={activeConversation?.jobRole}
+            attachedDocuments={activeConversation?.attachedDocuments || []}
+            conversationHistory={activeConversation?.messages || []}
+            initialQuestionToSpeak={initialQuestionToSpeak}
           />
         )}
       </main>
@@ -190,7 +256,9 @@ export const VoiceCompanion: React.FC = () => {
         conversation={activeConversation}
         isOpen={isLivePanelOpen}
         onClose={() => setIsLivePanelOpen(false)}
+        isThinking={isThinking}
       />
     </AppShell>
   );
 };
+
