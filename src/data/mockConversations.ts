@@ -3,156 +3,144 @@ import { Conversation } from '../types/conversation';
 export const initialMockConversations: Conversation[] = [
   {
     id: 'conv-active-1',
-    title: 'Morning Voice Check-in & Daily Schedule',
+    title: 'Interview - Software Developer',
     category: 'Today',
     createdAt: '2026-09-25T08:30:00Z',
     updatedAt: '2026-09-25T08:35:00Z',
+    status: 'active',
+    jobRole: 'Software Developer',
+    attachedDocuments: [
+      {
+        id: 'doc-1',
+        name: 'Alex_Developer_Resume.pdf',
+        category: 'resume',
+        size: '1.2 MB',
+        uploadedAt: '08:29 AM'
+      },
+      {
+        id: 'doc-2',
+        name: 'Senior_Software_Developer_JD.pdf',
+        category: 'job_description',
+        size: '480 KB',
+        uploadedAt: '08:30 AM'
+      }
+    ],
     isReadOnly: false,
     messages: [
       {
         id: 'm-1',
-        sender: 'You',
-        text: 'Good morning Pal, what does my schedule look like today?',
+        sender: 'Pal',
+        text: "Welcome to your mock interview for Software Developer! I've reviewed your resume and the job description. Let's start with your recent React projects.",
         timestamp: '08:30 AM'
       },
       {
         id: 'm-2',
-        sender: 'Pal',
-        text: "Good morning! You have a design sync at 10:00 AM, followed by a team catch-up at 2:00 PM. Would you like me to set reminders?",
-        timestamp: '08:30 AM'
+        sender: 'You',
+        text: 'I recently built a real-time voice companion interface with React state management and canvas animations.',
+        timestamp: '08:31 AM'
       },
       {
         id: 'm-3',
-        sender: 'You',
-        text: 'Yes please, set a reminder 15 minutes before each.',
-        timestamp: '08:31 AM'
-      },
-      {
-        id: 'm-4',
         sender: 'Pal',
-        text: "Got it — here's what I found for you. Reminders set for 9:45 AM and 1:45 PM.",
-        timestamp: '08:31 AM'
+        text: "That sounds impressive! How did you optimize the 60fps canvas rendering loop while preserving component responsiveness?",
+        timestamp: '08:32 AM'
       }
     ]
   },
   {
     id: 'conv-today-2',
-    title: 'Voice UI Prototype Architecture',
+    title: 'Interview - Senior Product Manager',
     category: 'Today',
     createdAt: '2026-09-25T07:10:00Z',
     updatedAt: '2026-09-25T07:20:00Z',
+    status: 'completed',
+    jobRole: 'Senior Product Manager',
+    attachedDocuments: [
+      {
+        id: 'doc-3',
+        name: 'PM_Resume_2026.pdf',
+        category: 'resume',
+        size: '950 KB',
+        uploadedAt: '07:08 AM'
+      },
+      {
+        id: 'doc-4',
+        name: 'Product_Portfolio_Highlights.pdf',
+        category: 'portfolio',
+        size: '2.4 MB',
+        uploadedAt: '07:09 AM'
+      }
+    ],
     isReadOnly: true,
     messages: [
       {
         id: 'm-10',
         sender: 'You',
-        text: 'How should we isolate the canvas creature from the dashboard shell?',
+        text: 'How do you prioritize features when dealing with competing engineering and design constraints?',
         timestamp: '07:10 AM'
       },
       {
         id: 'm-11',
         sender: 'Pal',
-        text: 'Sure thing. Let me walk you through it. We encapsulate the Canvas rendering in a dedicated VoiceCreature React component while using an AppShell layout wrapper for dashboard navigation.',
+        text: 'Sure thing. Let me walk you through it. I balance user impact, technical feasibility, and business urgency using RICE scoring.',
         timestamp: '07:11 AM'
-      },
-      {
-        id: 'm-12',
-        sender: 'You',
-        text: 'That sounds very modular. What about responsive sidebar behavior?',
-        timestamp: '07:12 AM'
-      },
-      {
-        id: 'm-13',
-        sender: 'Pal',
-        text: 'That\'s a good question. Here\'s the short answer: On desktop we use flex layout with collapsible sidebar, and on mobile we render overlay drawers.',
-        timestamp: '07:13 AM'
       }
     ]
   },
   {
     id: 'conv-yest-1',
-    title: 'React State Machine & Blob Animations',
+    title: 'Interview - AI Systems Engineer',
     category: 'Yesterday',
     createdAt: '2026-09-24T16:00:00Z',
     updatedAt: '2026-09-24T16:15:00Z',
+    status: 'completed',
+    jobRole: 'AI Systems Engineer',
+    attachedDocuments: [
+      {
+        id: 'doc-5',
+        name: 'AI_Systems_CV.pdf',
+        category: 'resume',
+        size: '1.8 MB',
+        uploadedAt: '03:55 PM'
+      }
+    ],
     isReadOnly: true,
     messages: [
       {
         id: 'm-20',
         sender: 'You',
-        text: 'Can you explain how the organic blob animation interpolates parameters?',
+        text: 'Can you explain your experience with LLM streaming APIs and audio buffer pipelines?',
         timestamp: '04:00 PM'
       },
       {
         id: 'm-21',
         sender: 'Pal',
-        text: 'The creature uses linear interpolation (lerp) on amplitude, speed, lobes, and color values toward state targets inside a requestAnimationFrame loop.',
+        text: 'I implemented chunked WebSocket streaming with Web Audio API context synchronization for sub-200ms latency.',
         timestamp: '04:01 PM'
       }
     ]
   },
   {
-    id: 'conv-yest-2',
-    title: 'Weekly Meal Planning & Grocery List',
-    category: 'Yesterday',
-    createdAt: '2026-09-24T11:20:00Z',
-    updatedAt: '2026-09-24T11:25:00Z',
-    isReadOnly: true,
-    messages: [
-      {
-        id: 'm-30',
-        sender: 'You',
-        text: 'Suggest three quick vegetarian dinner recipes for this week.',
-        timestamp: '11:20 AM'
-      },
-      {
-        id: 'm-31',
-        sender: 'Pal',
-        text: "Here are three options: 1. Creamy Spinach Tuscan Pasta, 2. Sweet Potato & Chickpea Curry, 3. Grilled Mediterranean Veggie Wraps.",
-        timestamp: '11:21 AM'
-      }
-    ]
-  },
-  {
-    id: 'conv-7days-1',
-    title: 'Voice Assistant Ambient Lighting Research',
-    category: 'Previous 7 Days',
-    createdAt: '2026-09-20T14:45:00Z',
-    updatedAt: '2026-09-20T15:00:00Z',
-    isReadOnly: true,
-    messages: [
-      {
-        id: 'm-40',
-        sender: 'You',
-        text: 'What color glows represent different voice assistant states best?',
-        timestamp: '02:45 PM'
-      },
-      {
-        id: 'm-41',
-        sender: 'Pal',
-        text: 'Teal for listening brings calm attention, purple/violet for thinking conveys depth, and warm amber for speaking feels human and clear.',
-        timestamp: '02:46 PM'
-      }
-    ]
-  },
-  {
     id: 'conv-older-1',
-    title: 'Initial Pal Voice Setup & Greetings',
+    title: 'Interview - UX Designer',
     category: 'Older',
     createdAt: '2026-09-10T09:00:00Z',
     updatedAt: '2026-09-10T09:05:00Z',
+    status: 'completed',
+    jobRole: 'UX Designer',
+    attachedDocuments: [],
     isReadOnly: true,
     messages: [
       {
         id: 'm-50',
         sender: 'You',
-        text: 'Hello Pal!',
+        text: 'Hello Pal, ready for my UX design interview setup.',
         timestamp: '09:00 AM'
       },
       {
         id: 'm-51',
         sender: 'Pal',
-        text: 'Hello! I am Pal, your voice companion. Tap to talk whenever you need me.',
+        text: 'Hello! I am Pal, your AI voice interviewer. Let’s explore your design process.',
         timestamp: '09:01 AM'
       }
     ]

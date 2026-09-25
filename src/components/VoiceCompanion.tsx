@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Conversation, Message } from '../types/conversation';
+import { Conversation, Message, AttachedDocument } from '../types/conversation';
 import { initialMockConversations } from '../data/mockConversations';
 import { AppShell } from './AppShell';
 import { ConversationHistory } from './ConversationHistory';
 import { VoiceExperience } from './VoiceExperience';
 import { LiveConversationPanel } from './LiveConversationPanel';
+import { DocumentAttachmentScreen } from './DocumentAttachmentScreen';
 
 export const VoiceCompanion: React.FC = () => {
   const [conversations, setConversations] = useState<Conversation[]>(initialMockConversations);
@@ -19,25 +20,62 @@ export const VoiceCompanion: React.FC = () => {
   // Select a conversation from sidebar
   const handleSelectConversation = (conv: Conversation) => {
     setActiveConversationId(conv.id);
-    setIsLivePanelOpen(true); // Requirement: Clicking a previous conversation opens its transcript in Live Conversation panel
+    if (conv.status !== 'setup') {
+      setIsLivePanelOpen(true);
+    }
   };
 
-  // Start a new conversation
-  const handleNewConversation = () => {
-    const newId = `conv-${Date.now()}`;
+  // Start a new interview workflow
+  const handleNewInterview = () => {
+    const newId = `interview-${Date.now()}`;
     const newConv: Conversation = {
       id: newId,
-      title: 'New Voice Conversation',
+      title: 'Interview - Software Developer',
       category: 'Today',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      status: 'setup',
+      jobRole: 'Software Developer',
+      attachedDocuments: [],
       messages: [],
       isReadOnly: false,
     };
 
     setConversations((prev) => [newConv, ...prev]);
     setActiveConversationId(newId);
-    setIsLivePanelOpen(true);
+    setIsLivePanelOpen(false);
+  };
+
+  // Transition from Document Attachment Screen to Voice Interview
+  const handleStartInterview = (jobRole: string, docs: AttachedDocument[]) => {
+    const title = `Interview - ${jobRole.trim() || 'Software Developer'}`;
+    const initialPalMessage: Message = {
+      id: `msg-${Date.now()}-init`,
+      sender: 'Pal',
+      text: `Welcome to your mock interview for ${jobRole}! ${
+        docs.length > 0
+          ? `I've analyzed your ${docs.length} attached document(s) (${docs.map((d) => d.name).join(', ')}).`
+          : "I'm ready to begin whenever you are."
+      } Tap the microphone or creature to begin your first question.`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    setConversations((prev) =>
+      prev.map((c) => {
+        if (c.id === activeConversationId) {
+          return {
+            ...c,
+            title,
+            jobRole,
+            attachedDocuments: docs,
+            status: 'active',
+            updatedAt: new Date().toISOString(),
+            messages: [initialPalMessage],
+          };
+        }
+        return c;
+      })
+    );
   };
 
   // Handle new message pair when voice interaction flow completes
@@ -57,17 +95,18 @@ export const VoiceCompanion: React.FC = () => {
     };
 
     setConversations((prev) => {
-      // Check if current active conversation is read-only
       let targetConv = prev.find((c) => c.id === activeConversationId);
       if (!targetConv || targetConv.isReadOnly) {
-        // Create a new editable live conversation
-        const newId = `conv-${Date.now()}`;
+        const newId = `interview-${Date.now()}`;
         const newConv: Conversation = {
           id: newId,
-          title: userText.length > 30 ? `${userText.slice(0, 30)}…` : userText,
+          title: 'Interview - Software Developer',
           category: 'Today',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
+          status: 'active',
+          jobRole: 'Software Developer',
+          attachedDocuments: [],
           messages: [userMsg, palMsg],
           isReadOnly: false,
         };
@@ -75,19 +114,11 @@ export const VoiceCompanion: React.FC = () => {
         return [newConv, ...prev];
       }
 
-      // Append to active conversation
       return prev.map((c) => {
         if (c.id === targetConv.id) {
           const updatedMessages = [...c.messages, userMsg, palMsg];
-          const updatedTitle =
-            c.messages.length === 0
-              ? userText.length > 32
-                ? `${userText.slice(0, 32)}…`
-                : userText
-              : c.title;
           return {
             ...c,
-            title: updatedTitle,
             updatedAt: new Date().toISOString(),
             messages: updatedMessages,
           };
@@ -111,20 +142,28 @@ export const VoiceCompanion: React.FC = () => {
         conversations={conversations}
         activeConversationId={activeConversationId}
         onSelectConversation={handleSelectConversation}
-        onNewConversation={handleNewConversation}
+        onNewConversation={handleNewInterview}
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
         isCollapsedDesktop={isDesktopSidebarCollapsed}
         onToggleCollapseDesktop={() => setIsDesktopSidebarCollapsed((prev) => !prev)}
       />
 
-      {/* CENTRAL VOICE UI EXPERIENCE (LOCKED DESIGN) */}
+      {/* CENTRAL WORKSPACE: Setup Screen OR Locked Voice Companion UI */}
       <main className="flex-1 h-full relative overflow-hidden bg-[#050810] flex items-center justify-center">
-        <VoiceExperience
-          onNewMessagePair={handleNewMessagePair}
-          isLivePanelOpen={isLivePanelOpen}
-          onToggleLivePanel={() => setIsLivePanelOpen((prev) => !prev)}
-        />
+        {activeConversation?.status === 'setup' ? (
+          <DocumentAttachmentScreen
+            initialJobRole={activeConversation.jobRole || 'Software Developer'}
+            initialDocuments={activeConversation.attachedDocuments || []}
+            onStartInterview={handleStartInterview}
+          />
+        ) : (
+          <VoiceExperience
+            onNewMessagePair={handleNewMessagePair}
+            isLivePanelOpen={isLivePanelOpen}
+            onToggleLivePanel={() => setIsLivePanelOpen((prev) => !prev)}
+          />
+        )}
       </main>
 
       {/* FEATURE 1: Live Conversation Panel */}

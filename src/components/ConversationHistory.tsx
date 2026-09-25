@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, MessageCircle, Clock, ChevronLeft, X, Lock } from 'lucide-react';
+import { Plus, MessageCircle, Clock, ChevronLeft, X, Lock, FileText } from 'lucide-react';
 import { Conversation } from '../types/conversation';
 
 interface ConversationHistoryProps {
@@ -44,7 +44,7 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
             P
           </div>
           <div className="font-space font-semibold text-sm tracking-wide text-[#ffffff]">
-            Conversation History
+            Interview History
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -67,7 +67,7 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
         </div>
       </div>
 
-      {/* New Conversation Button */}
+      {/* New Interview Action Button */}
       <div className="p-3.5">
         <button
           onClick={() => {
@@ -77,7 +77,7 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#046241] text-[#ffffff] font-space text-xs font-semibold tracking-wider uppercase hover:bg-[#046241]/85 active:scale-[0.98] transition-all shadow-md hover:shadow-lg border border-[#f5eedb]/20"
         >
           <Plus className="w-4 h-4 text-[#FFB347]" />
-          <span>New Conversation</span>
+          <span>New Interview</span>
         </button>
       </div>
 
@@ -94,6 +94,7 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
               <div className="space-y-1">
                 {items.map((conv) => {
                   const isActive = conv.id === activeConversationId;
+                  const docCount = conv.attachedDocuments?.length || 0;
                   return (
                     <button
                       key={conv.id}
@@ -113,19 +114,40 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
                             isActive ? 'text-[#FFB347]' : 'text-[#f5eedb]/50 group-hover:text-[#FFB347]'
                           }`}
                         />
-                        <span className="text-xs truncate leading-relaxed">
-                          {conv.title}
-                        </span>
+                        <div className="min-w-0 flex flex-col">
+                          <span className="text-xs truncate leading-snug">
+                            {conv.title}
+                          </span>
+                          {conv.status === 'setup' && (
+                            <span className="text-[10px] text-[#FFB347] font-medium leading-none mt-0.5">
+                              • Setup in progress
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      {conv.isReadOnly && (
-                        <span title="Read-only history">
-                          <Lock
-                            className={`w-3 h-3 shrink-0 ${
-                              isActive ? 'text-[#f5eedb]/80' : 'text-[#f5eedb]/40'
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        {docCount > 0 && (
+                          <span
+                            className={`flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-md ${
+                              isActive ? 'bg-[#133020] text-[#f5eedb]' : 'bg-[#046241]/40 text-[#f5eedb]/80'
                             }`}
-                          />
-                        </span>
-                      )}
+                            title={`${docCount} document(s) attached`}
+                          >
+                            <FileText className="w-2.5 h-2.5 text-[#FFB347]" />
+                            {docCount}
+                          </span>
+                        )}
+                        {conv.isReadOnly && (
+                          <span title="Read-only history">
+                            <Lock
+                              className={`w-3 h-3 ${
+                                isActive ? 'text-[#f5eedb]/80' : 'text-[#f5eedb]/40'
+                              }`}
+                            />
+                          </span>
+                        )}
+                      </div>
                     </button>
                   );
                 })}
@@ -157,7 +179,7 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
           <button
             onClick={onNewConversation}
             className="p-2 rounded-lg bg-[#046241]/40 text-[#f5eedb] hover:bg-[#046241] transition-colors"
-            title="New Conversation"
+            title="New Interview"
           >
             <Plus className="w-5 h-5" />
           </button>

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { X, Sparkles, User, Bot, Lock } from 'lucide-react';
+import { X, Sparkles, User, Bot, Lock, FileText } from 'lucide-react';
 import { Conversation } from '../types/conversation';
 
 interface LiveConversationPanelProps {
@@ -22,6 +22,8 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
   }, [conversation?.messages.length, isOpen]);
 
   if (!isOpen) return null;
+
+  const docs = conversation?.attachedDocuments || [];
 
   return (
     <>
@@ -55,7 +57,7 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h3 className="font-space font-semibold text-sm text-[#ffffff] truncate">
-                  {conversation ? conversation.title : 'Live Conversation'}
+                  {conversation ? conversation.title : 'Live Interview'}
                 </h3>
               </div>
               <p className="text-[11px] text-[#f5eedb]/70 font-inter flex items-center gap-1">
@@ -66,7 +68,7 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
                 ) : (
                   <span className="flex items-center gap-1 text-[#5eead4]">
                     <span className="w-2 h-2 rounded-full bg-[#5eead4] animate-pulse" />
-                    Live Transcript
+                    Live Interview Session
                   </span>
                 )}
               </p>
@@ -82,10 +84,25 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
           </button>
         </div>
 
+        {/* Attached Context Banner */}
+        {docs.length > 0 && (
+          <div className="bg-[#f5eedb] border-b border-[#046241]/20 px-4 py-2 text-[11px] text-[#133020] flex items-center gap-2 overflow-x-auto">
+            <FileText className="w-3.5 h-3.5 text-[#046241] shrink-0" />
+            <span className="font-semibold shrink-0">Context:</span>
+            <div className="flex items-center gap-1.5 truncate">
+              {docs.map((d) => (
+                <span key={d.id} className="bg-[#ffffff] px-2 py-0.5 rounded-md border border-[#046241]/20 truncate">
+                  {d.name}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Read-Only Banner */}
         {conversation?.isReadOnly && (
-          <div className="bg-[#f5eedb] border-b border-[#046241]/20 px-4 py-2 text-xs text-[#133020] font-medium flex items-center justify-between">
-            <span>Viewing past transcript. Tap mic to start live session.</span>
+          <div className="bg-[#133020]/10 border-b border-[#046241]/20 px-4 py-2 text-xs text-[#133020] font-medium flex items-center justify-between">
+            <span>Viewing past interview. Tap mic to start a live question.</span>
           </div>
         )}
 
@@ -119,7 +136,7 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
                     ) : (
                       <>
                         <Bot className="w-3 h-3 text-[#046241]" />
-                        <span>Pal</span>
+                        <span>Pal (Interviewer)</span>
                       </>
                     )}
                     <span className="text-[10px] font-normal text-[#133020]/50 lowercase">
@@ -150,7 +167,7 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
         {/* Panel Footer */}
         <div className="p-3 bg-[#ffffff] border-t border-[#046241]/15 text-[11px] text-[#133020]/60 text-center font-inter flex items-center justify-between px-4">
           <span>{conversation?.messages.length || 0} messages recorded</span>
-          <span className="text-[#046241] font-semibold font-space">Pal Companion</span>
+          <span className="text-[#046241] font-semibold font-space">Pal Interviewer</span>
         </div>
       </aside>
     </>
