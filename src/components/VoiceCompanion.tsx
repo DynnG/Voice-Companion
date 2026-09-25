@@ -56,7 +56,7 @@ export const VoiceCompanion: React.FC = () => {
         docs.length > 0
           ? `I've analyzed your ${docs.length} attached document(s) (${docs.map((d) => d.name).join(', ')}).`
           : "I'm ready to begin whenever you are."
-      } Tap the microphone or creature to begin your first question.`,
+      } Tap the microphone or creature to speak.`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
@@ -78,19 +78,13 @@ export const VoiceCompanion: React.FC = () => {
     );
   };
 
-  // Handle new message pair when voice interaction flow completes
-  const handleNewMessagePair = (userText: string, palText: string) => {
+  // Handle transcribed audio message from faster-whisper STT backend
+  const handleUserTranscribed = (transcribedText: string) => {
     const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const userMsg: Message = {
-      id: `msg-${Date.now()}-1`,
+      id: `msg-${Date.now()}-user`,
       sender: 'You',
-      text: userText,
-      timestamp: nowStr,
-    };
-    const palMsg: Message = {
-      id: `msg-${Date.now()}-2`,
-      sender: 'Pal',
-      text: palText,
+      text: transcribedText,
       timestamp: nowStr,
     };
 
@@ -107,7 +101,7 @@ export const VoiceCompanion: React.FC = () => {
           status: 'active',
           jobRole: 'Software Developer',
           attachedDocuments: [],
-          messages: [userMsg, palMsg],
+          messages: [userMsg],
           isReadOnly: false,
         };
         setActiveConversationId(newId);
@@ -116,11 +110,10 @@ export const VoiceCompanion: React.FC = () => {
 
       return prev.map((c) => {
         if (c.id === targetConv.id) {
-          const updatedMessages = [...c.messages, userMsg, palMsg];
           return {
             ...c,
             updatedAt: new Date().toISOString(),
-            messages: updatedMessages,
+            messages: [...c.messages, userMsg],
           };
         }
         return c;
@@ -159,7 +152,7 @@ export const VoiceCompanion: React.FC = () => {
           />
         ) : (
           <VoiceExperience
-            onNewMessagePair={handleNewMessagePair}
+            onUserTranscribed={handleUserTranscribed}
             isLivePanelOpen={isLivePanelOpen}
             onToggleLivePanel={() => setIsLivePanelOpen((prev) => !prev)}
           />

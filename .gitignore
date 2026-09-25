@@ -104,3 +104,32 @@ dist-ssr/
 *.njsproj
 *.sln
 *.sw?
+
+# Python / Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/.venv/
+backend/venv/
+.venv/
+venv/
+ENV/
+env/
+
+# faster-whisper / HuggingFace Model Cache
+.cache/
+models/
+huggingface/
+*.bin
+*.onnx
+
+# Audio test temp files
+temp_audio/
+*.wav
+*.mp3
+*.m4a
+*.ogg
+*.webm
+*.flac

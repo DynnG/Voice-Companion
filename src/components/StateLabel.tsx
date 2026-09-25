@@ -3,9 +3,10 @@ import { VoiceState } from '../types/conversation';
 
 interface StateLabelProps {
   state: VoiceState;
+  customLabel?: string;
 }
 
-const STATE_TEXT: Record<VoiceState, string> = {
+const DEFAULT_STATE_TEXT: Record<VoiceState, string> = {
   idle: 'tap to talk',
   listening: 'listening…',
   thinking: 'thinking…',
@@ -19,14 +20,16 @@ const STATE_COLORS: Record<VoiceState, string> = {
   speaking: 'var(--glow-c)',
 };
 
-export const StateLabel: React.FC<StateLabelProps> = ({ state }) => {
+export const StateLabel: React.FC<StateLabelProps> = ({ state, customLabel }) => {
+  const displayText = customLabel || DEFAULT_STATE_TEXT[state];
+
   return (
     <div
       className="state-label"
       id="stateLabel"
       style={{ color: STATE_COLORS[state] || undefined }}
     >
-      {STATE_TEXT[state]}
+      {displayText}
     </div>
   );
 };
