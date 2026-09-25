@@ -19,6 +19,29 @@ GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
 # Default to gemini-2.5-flash for fast conversational responses
 GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
+def _load_env_file():
+    possible_paths = [
+        os.path.join(os.getcwd(), ".env"),
+        os.path.join(os.path.dirname(__file__), ".env"),
+        os.path.join(os.path.dirname(__file__), "..", ".env"),
+    ]
+    for p in possible_paths:
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            k = k.strip()
+                            v = v.strip().strip('"').strip("'")
+                            if k and k not in os.environ:
+                                os.environ[k] = v
+            except Exception:
+                pass
+
+_load_env_file()
+
 # Whisper Model Configuration
 # Model size options: "tiny", "base", "small", "medium", "large-v3"
 # "small" is the recommended model for interview vocabulary accuracy and high reliability on CPU
@@ -49,3 +72,8 @@ CONDITION_ON_PREVIOUS_TEXT: bool = os.getenv("WHISPER_CONDITION_ON_PREV", "false
 # Host & Port for FastAPI Server
 HOST: str = os.getenv("HOST", "0.0.0.0")
 PORT: int = int(os.getenv("PORT", "8000"))
+
+# Gemini API Configuration (Job Interview Practice Brain)
+GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
+GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+

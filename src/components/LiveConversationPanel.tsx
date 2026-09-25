@@ -6,12 +6,14 @@ interface LiveConversationPanelProps {
   conversation: Conversation | null;
   isOpen: boolean;
   onClose: () => void;
+  isThinking?: boolean;
 }
 
 export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
   conversation,
   isOpen,
   onClose,
+  isThinking = false,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -19,7 +21,7 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
     if (isOpen && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [conversation?.messages.length, isOpen]);
+  }, [conversation?.messages.length, isOpen, isThinking]);
 
   if (!isOpen) return null;
 
@@ -160,6 +162,21 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
                 </div>
               );
             })
+          )}
+          {isThinking && (
+            <div className="flex flex-col items-start space-y-1">
+              <div className="flex items-center gap-1.5 px-1 text-[11px] font-space font-semibold text-[#046241] uppercase tracking-wider">
+                <Bot className="w-3 h-3 text-[#046241]" />
+                <span>Pal (Interviewer)</span>
+                <span className="text-[10px] font-normal text-[#133020]/50 lowercase">• thinking…</span>
+              </div>
+              <div className="bg-[#ffffff] text-[#133020] border border-[#046241]/20 rounded-2xl rounded-tl-xs px-4 py-3 text-sm flex items-center gap-2 shadow-xs">
+                <span className="w-2 h-2 rounded-full bg-[#046241] animate-bounce" />
+                <span className="w-2 h-2 rounded-full bg-[#046241] animate-bounce [animation-delay:0.2s]" />
+                <span className="w-2 h-2 rounded-full bg-[#046241] animate-bounce [animation-delay:0.4s]" />
+                <span className="text-xs text-[#133020]/70 font-medium ml-1">Formulating follow-up question…</span>
+              </div>
+            </div>
           )}
           <div ref={messagesEndRef} />
         </div>

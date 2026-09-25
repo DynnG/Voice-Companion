@@ -159,7 +159,7 @@ export const ConversationHistory: React.FC<ConversationHistoryProps> = ({
 
       {/* Footer info */}
       <div className="p-3 border-t border-[#046241]/30 text-[11px] text-[#f5eedb]/60 text-center font-inter">
-        Pal Voice Companion v1.0
+        MockMate - AI Powered Mockup Companion
       </div>
     </div>
   );
