@@ -16,6 +16,7 @@ try:
     )
     from .stt_service import STTService
     from .gemini_service import GeminiInterviewService
+    from .document_service import extract_document_text
 except ImportError:
     from config import (
         MODEL_SIZE, DEVICE, COMPUTE_TYPE, BEAM_SIZE, HOST, PORT, DEFAULT_LANGUAGE,
@@ -23,6 +24,7 @@ except ImportError:
     )
     from stt_service import STTService
     from gemini_service import GeminiInterviewService
+    from document_service import extract_document_text
 
 logging.basicConfig(
     level=logging.INFO,
@@ -176,6 +178,31 @@ async def generate_followup(req: FollowupRequest):
         "transcription": req.user_answer,
         "ai_response": ai_question
     }
+
+@app.post("/documents/extract", tags=["Document Processing"])
+async def extract_document(
+    file: UploadFile = File(..., description="Document file to extract text from (.pdf, .docx, .txt, .md)")
+):
+    """
+    Extract readable text from uploaded candidate materials (PDF, DOCX, TXT, MD).
+    Returns the extracted text, character count, and detected file type.
+    """
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filename is missing from upload."
+        )
+
+    try:
+        content_bytes = await file.read()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to read file bytes: {e}"
+        )
+
+    result = extract_document_text(content_bytes, file.filename)
+    return result
 
 @app.post("/transcribe", response_model=TranscribeResponse, tags=["Speech-to-Text & Interview Brain"])
 async def transcribe_audio(

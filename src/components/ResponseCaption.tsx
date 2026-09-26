@@ -7,7 +7,11 @@ interface ResponseCaptionProps {
 
 export const ResponseCaption: React.FC<ResponseCaptionProps> = ({ captionText, visible }) => {
   return (
-    <div className={`caption ${visible ? 'show' : ''}`} id="caption">
+    <div
+      className={`caption ${visible ? 'show' : ''}`}
+      id="caption"
+      title={captionText ? `${captionText} (Full message in Live Conversation panel)` : undefined}
+    >
       {captionText}
     </div>
   );

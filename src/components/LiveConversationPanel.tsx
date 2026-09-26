@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { X, Sparkles, User, Bot, Lock, FileText } from 'lucide-react';
+import { X, Sparkles, User, Bot, FileText } from 'lucide-react';
 import { Conversation } from '../types/conversation';
 
 interface LiveConversationPanelProps {
@@ -63,16 +63,10 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
                 </h3>
               </div>
               <p className="text-[11px] text-[#f5eedb]/70 font-inter flex items-center gap-1">
-                {conversation?.isReadOnly ? (
-                  <span className="flex items-center gap-1 text-[#FFB347]">
-                    <Lock className="w-3 h-3" /> Read-Only History
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-[#5eead4]">
-                    <span className="w-2 h-2 rounded-full bg-[#5eead4] animate-pulse" />
-                    Live Interview Session
-                  </span>
-                )}
+                <span className="flex items-center gap-1 text-[#5eead4]">
+                  <span className="w-2 h-2 rounded-full bg-[#5eead4] animate-pulse" />
+                  Live Interview Session
+                </span>
               </p>
             </div>
           </div>
@@ -98,13 +92,6 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
                 </span>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Read-Only Banner */}
-        {conversation?.isReadOnly && (
-          <div className="bg-[#133020]/10 border-b border-[#046241]/20 px-4 py-2 text-xs text-[#133020] font-medium flex items-center justify-between">
-            <span>Viewing past interview. Tap mic to start a live question.</span>
           </div>
         )}
 

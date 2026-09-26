@@ -17,7 +17,7 @@ else:
 # Gemini API Configuration
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
 # Default to gemini-2.5-flash for fast conversational responses
-GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
 def _load_env_file():
     possible_paths = [
@@ -75,5 +75,5 @@ PORT: int = int(os.getenv("PORT", "8000"))
 
 # Gemini API Configuration (Job Interview Practice Brain)
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
-GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 

@@ -8,6 +8,8 @@ export interface AttachedDocument {
   category: DocumentCategory;
   size: string;
   uploadedAt: string;
+  content?: string;
+  extractedText?: string;
 }
 
 export interface Message {

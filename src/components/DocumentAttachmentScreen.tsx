@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Upload, FileText, Briefcase, Trash2, Sparkles, Plus, CheckCircle2, ArrowRight } from 'lucide-react';
 import { AttachedDocument, DocumentCategory } from '../types/conversation';
+import { extractDocumentText } from '../services/sttService';
 
 interface DocumentAttachmentScreenProps {
   initialJobRole?: string;
@@ -21,28 +22,70 @@ const SAMPLE_TEMPLATES: Record<DocumentCategory, AttachedDocument> = {
     name: 'Candidate_Resume_2026.pdf',
     category: 'resume',
     size: '1.4 MB',
-    uploadedAt: 'Just now'
+    uploadedAt: 'Just now',
+    content: `Candidate Summary:
+Full Stack Software Engineer with 5+ years of experience specializing in TypeScript, React, Python FastAPI, distributed systems, and real-time audio/voice pipelines.
+
+Key Technical Skills:
+- Languages: TypeScript, JavaScript, Python, Go, SQL
+- Frontend: React 18, Next.js, Tailwind CSS, Web Audio API, WebSockets
+- Backend: FastAPI, Node.js, PostgreSQL, Redis, Docker, Microservices
+- AI & ML: LLM orchestration (Gemini), faster-whisper STT, prompt engineering
+
+Work Experience:
+Lead Software Engineer | Apex Tech Solutions (2023 - Present)
+- Architected and delivered an enterprise voice interaction engine using WebRTC and faster-whisper STT with sub-400ms turnaround time.
+- Scaled backend microservices on FastAPI handling 50k+ daily concurrent user interactions.
+- Mentored a team of 6 engineers and established CI/CD and automated testing standards.
+
+Senior Frontend Developer | CloudWave Systems (2021 - 2023)
+- Built modern single-page applications with React and TypeScript.
+- Implemented real-time streaming interfaces and state management.
+
+Education:
+B.S. in Computer Science | University of Technology (2017 - 2021)`
   },
   job_description: {
     id: 'sample-jd',
     name: 'Job_Description_Requirements.pdf',
     category: 'job_description',
     size: '520 KB',
-    uploadedAt: 'Just now'
+    uploadedAt: 'Just now',
+    content: `Job Description: Senior Full Stack Engineer (Voice & AI)
+We are seeking an experienced Senior Full Stack Engineer to lead the design and development of our real-time voice and conversational AI platform.
+
+Responsibilities:
+- Build low-latency conversational audio interfaces with Web Audio API and WebSockets.
+- Develop robust backend APIs in Python (FastAPI).
+- Integrate cutting-edge speech recognition (Whisper) and generative AI models (Gemini).
+- Optimize end-to-end latency and audio streaming performance.
+
+Qualifications:
+- 4+ years of professional full-stack development experience.
+- Strong proficiency in React, TypeScript, and modern CSS frameworks.
+- Demonstrated experience building APIs in Python or Go.`
   },
   portfolio: {
     id: 'sample-portfolio',
     name: 'Portfolio_Project_Highlights.pdf',
     category: 'portfolio',
     size: '2.8 MB',
-    uploadedAt: 'Just now'
+    uploadedAt: 'Just now',
+    content: `Selected Portfolio Projects:
+1. Voice Companion - Real-time conversational interview coach using faster-whisper STT and Gemini 2.5 Flash.
+2. Distributed Workflow Orchestrator - High-throughput task pipeline processing 100k events/sec.
+3. Open-source Audio VAD Library - Lightweight Web Audio worklet for robust voice activity detection.`
   },
   other: {
     id: 'sample-other',
     name: 'Technical_Preparation_Notes.docx',
     category: 'other',
     size: '310 KB',
-    uploadedAt: 'Just now'
+    uploadedAt: 'Just now',
+    content: `Interview Preparation Notes:
+- Focus on system design trade-offs: latency vs accuracy in speech recognition pipelines.
+- Highlight behavioral examples using the STAR method (Situation, Task, Action, Result).
+- Discuss incident response and scaling distributed WebSocket services.`
   }
 };
 
@@ -77,17 +120,38 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
     setDocuments((prev) => prev.filter((d) => d.id !== id));
   };
 
-  const handleCustomFileUpload = (e: React.ChangeEvent<HTMLInputElement>, cat: DocumentCategory) => {
+  const handleCustomFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, cat: DocumentCategory) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      const docId = `doc-${Date.now()}`;
       const newDoc: AttachedDocument = {
-        id: `doc-${Date.now()}`,
+        id: docId,
         name: file.name,
         category: cat,
         size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-        uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        content: ''
       };
       setDocuments((prev) => [...prev, newDoc]);
+
+      try {
+        const extraction = await extractDocumentText(file);
+        if (extraction.extracted_text) {
+          setDocuments((prev) =>
+            prev.map((d) =>
+              d.id === docId
+                ? {
+                    ...d,
+                    content: extraction.extracted_text,
+                    extractedText: extraction.extracted_text
+                  }
+                : d
+            )
+          );
+        }
+      } catch (err) {
+        console.error('Failed to extract document text:', err);
+      }
     }
   };
 
@@ -195,7 +259,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
                       <input
                         type="file"
                         className="hidden"
-                        accept=".pdf,.doc,.docx,.txt"
+                        accept=".pdf,.doc,.docx,.txt,.md"
                         onChange={(e) => handleCustomFileUpload(e, cat)}
                       />
                     </label>

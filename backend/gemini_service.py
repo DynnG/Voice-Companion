@@ -63,16 +63,34 @@ class GeminiInterviewService:
         attached_docs: Optional[List[Dict[str, Any]]]
     ) -> str:
         role = job_role.strip() if job_role else "Software Developer"
-        doc_lines = []
+        context_str = f"Target Role: {role}\n"
+
         if attached_docs:
+            doc_sections = []
             for doc in attached_docs:
                 name = doc.get("name", "Document")
-                category = doc.get("category", "document")
-                doc_lines.append(f"- {category.replace('_', ' ').title()}: {name}")
+                category = doc.get("category", "document").replace("_", " ").title()
+                raw_content = (
+                    doc.get("content")
+                    or doc.get("extracted_text")
+                    or doc.get("extractedText")
+                    or doc.get("text")
+                    or ""
+                ).strip()
 
-        context_str = f"Target Role: {role}\n"
-        if doc_lines:
-            context_str += "Attached Candidate Materials:\n" + "\n".join(doc_lines) + "\n"
+                if raw_content:
+                    doc_sections.append(
+                        f"--- Attached {category}: {name} ---\n"
+                        f"{raw_content}\n"
+                        f"--- End of {name} ---"
+                    )
+                else:
+                    doc_sections.append(f"- {category}: {name} (filename only provided)")
+
+            if doc_sections:
+                context_str += "Attached Candidate Materials (Full Extracted Content):\n"
+                context_str += "\n\n".join(doc_sections) + "\n"
+
         return context_str
 
     def get_api_key(self) -> str:
@@ -99,10 +117,12 @@ class GeminiInterviewService:
         api_key = self.get_api_key()
         context_header = self._build_context_header(job_role, attached_docs)
         prompt = (
-            f"{context_header}\n"
+            f"[Interview Setup]\n{context_header}\n\n"
+            f"You are Pal, an expert and empathetic technical and behavioral interviewer. "
             f"You are beginning a new job interview practice session with the candidate. "
-            f"Generate a friendly, professional opening interview question tailored to the {job_role or 'role'} "
-            f"and any attached candidate materials (e.g. asking them to introduce themselves and highlight relevant experience)."
+            f"Review the candidate's target role and attached materials (e.g. resume, portfolio, notes) carefully. "
+            f"Generate a friendly, professional opening interview question tailored specifically to their background, projects, or experience "
+            f"mentioned in their resume/documents and the target role."
         )
 
         if not api_key:
@@ -151,8 +171,11 @@ class GeminiInterviewService:
 
         # System and background context injected as the first turn
         initial_context_prompt = (
-            f"[Interview Setup]\n{context_header}\n"
-            f"Conduct the interview based on the candidate's answers."
+            f"[Interview Setup]\n{context_header}\n\n"
+            f"You are Pal, an expert interviewer conducting a live conversational interview for the position of {job_role or 'the target role'}. "
+            f"You have full access to the candidate's attached materials (resume, job description, etc.) provided above. "
+            f"Carefully reference the candidate's actual projects, skills, education, and past experience when evaluating their answers and formulating relevant, concise follow-up questions. "
+            f"Never state that you don't have access to their documents when document contents are provided."
         )
 
         contents.append({
@@ -161,7 +184,7 @@ class GeminiInterviewService:
         })
         contents.append({
             "role": "model",
-            "parts": [{"text": "Understood. I am ready to conduct the interview and ask relevant questions."}]
+            "parts": [{"text": "Understood. I have reviewed the candidate's resume and attached documents, and I am ready to conduct the interview and reference their background in my questions."}]
         })
 
         # Append previous history turns
@@ -211,10 +234,11 @@ class GeminiInterviewService:
         models_to_try = [
             self.get_model_name(),
             "gemini-3.8-flash",
+            "gemini-3.7-flash",
+            "gemini-3.5-flash",
+            "gemini-flash-latest",
+            "gemini-3.1-flash-lite",
             "gemini-2.5-flash",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-1.5-pro"
         ]
         # Deduplicate while preserving order
         unique_models = list(dict.fromkeys(models_to_try))
@@ -231,7 +255,10 @@ class GeminiInterviewService:
                 "generationConfig": {
                     "temperature": 0.7,
                     "topP": 0.95,
-                    "maxOutputTokens": 250
+                    "maxOutputTokens": 2048,
+                    "thinkingConfig": {
+                        "thinkingBudget": 0
+                    }
                 }
             }
 

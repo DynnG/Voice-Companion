@@ -26,9 +26,9 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
         <button
           className={`mic-btn ${state === 'listening' ? 'live' : ''}`}
           id="micBtn"
-          aria-label={state === 'listening' ? 'Stop recording and transcribe' : 'Start talking'}
+          aria-label={state === 'listening' ? 'Listening to your answer...' : 'Start talking'}
           onClick={onStartFlow}
-          title={state === 'listening' ? 'Tap to finish speaking' : 'Tap to talk'}
+          title={state === 'listening' ? 'Listening... auto-stops when you finish speaking' : 'Tap to start speaking'}
         >
           <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z" />

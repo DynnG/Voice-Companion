@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Conversation, Message, AttachedDocument } from '../types/conversation';
-import { initialMockConversations } from '../data/mockConversations';
 import { AppShell } from './AppShell';
 import { ConversationHistory } from './ConversationHistory';
 import { VoiceExperience } from './VoiceExperience';
@@ -8,9 +7,22 @@ import { LiveConversationPanel } from './LiveConversationPanel';
 import { DocumentAttachmentScreen } from './DocumentAttachmentScreen';
 import { fetchInitialInterviewQuestion } from '../services/sttService';
 
+const createInitialInterview = (): Conversation => ({
+  id: `interview-${Date.now()}`,
+  title: 'Interview - Software Developer',
+  category: 'Today',
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  status: 'setup',
+  jobRole: 'Software Developer',
+  attachedDocuments: [],
+  messages: [],
+  isReadOnly: false,
+});
+
 export const VoiceCompanion: React.FC = () => {
-  const [conversations, setConversations] = useState<Conversation[]>(initialMockConversations);
-  const [activeConversationId, setActiveConversationId] = useState<string>('conv-active-1');
+  const [conversations, setConversations] = useState<Conversation[]>(() => [createInitialInterview()]);
+  const [activeConversationId, setActiveConversationId] = useState<string>(() => conversations[0]?.id || `interview-init`);
   const [isLivePanelOpen, setIsLivePanelOpen] = useState<boolean>(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState<boolean>(false);
@@ -59,7 +71,13 @@ export const VoiceCompanion: React.FC = () => {
     const title = `Interview - ${cleanRole}`;
 
     // Generate initial interview question tailored to role and documents
-    const docSummary = docs.map((d) => ({ id: d.id, name: d.name, category: d.category }));
+    const docSummary = docs.map((d) => ({
+      id: d.id,
+      name: d.name,
+      category: d.category,
+      content: d.content || d.extractedText,
+      extracted_text: d.content || d.extractedText
+    }));
     const questionText = await fetchInitialInterviewQuestion(cleanRole, docSummary);
 
     const initialPalMessage: Message = {
@@ -90,57 +108,7 @@ export const VoiceCompanion: React.FC = () => {
     );
   };
 
-  // Handle both user spoken transcription and Gemini AI follow-up response
-  const handleUserAnswerAndAiResponse = (userText: string, aiResponse: string) => {
-    const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const userMsg: Message = {
-      id: `msg-${Date.now()}-user`,
-      sender: 'You',
-      text: userText,
-      timestamp: nowStr,
-    };
-
-    const palMsg: Message = {
-      id: `msg-${Date.now() + 1}-pal`,
-      sender: 'Pal',
-      text: aiResponse,
-      timestamp: nowStr,
-    };
-
-    setConversations((prev) => {
-      let targetConv = prev.find((c) => c.id === activeConversationId);
-      if (!targetConv || targetConv.isReadOnly) {
-        const newId = `interview-${Date.now()}`;
-        const newConv: Conversation = {
-          id: newId,
-          title: 'Interview - Software Developer',
-          category: 'Today',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          status: 'active',
-          jobRole: 'Software Developer',
-          attachedDocuments: [],
-          messages: [userMsg, palMsg],
-          isReadOnly: false,
-        };
-        setActiveConversationId(newId);
-        return [newConv, ...prev];
-      }
-
-      return prev.map((c) => {
-        if (c.id === targetConv.id) {
-          return {
-            ...c,
-            updatedAt: new Date().toISOString(),
-            messages: [...c.messages, userMsg, palMsg],
-          };
-        }
-        return c;
-      });
-    });
-  };
-
-  // Fallback for user transcription only
+  // Step 1: Immediately commit user transcript to conversation messages
   const handleUserTranscribed = (transcribedText: string) => {
     const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const userMsg: Message = {
@@ -183,7 +151,7 @@ export const VoiceCompanion: React.FC = () => {
     });
   };
 
-  // Handle AI Interviewer response from Gemini
+  // Step 2: Commit Pal (Gemini Interviewer) follow-up response in its own separate state update
   const handlePalResponse = (palText: string) => {
     const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const palMsg: Message = {
@@ -238,8 +206,8 @@ export const VoiceCompanion: React.FC = () => {
           />
         ) : (
           <VoiceExperience
-            onUserAnswerAndAiResponse={handleUserAnswerAndAiResponse}
             onUserTranscribed={handleUserTranscribed}
+            onPalResponse={handlePalResponse}
             onThinkingChange={setIsThinking}
             isLivePanelOpen={isLivePanelOpen}
             onToggleLivePanel={() => setIsLivePanelOpen((prev) => !prev)}

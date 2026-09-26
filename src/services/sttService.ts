@@ -14,11 +14,82 @@ export interface ConversationHistoryItem {
   text: string;
 }
 
+export interface AttachedDocumentPayload {
+  id: string;
+  name: string;
+  category: string;
+  content?: string;
+  extracted_text?: string;
+}
+
 export interface TranscribeContext {
   jobRole?: string;
-  attachedDocuments?: Array<{ id: string; name: string; category: string }>;
+  attachedDocuments?: AttachedDocumentPayload[];
   history?: ConversationHistoryItem[];
   generateAiResponse?: boolean;
+}
+
+export async function extractDocumentText(file: File): Promise<{
+  filename: string;
+  file_type: string;
+  extracted_text: string;
+  char_count: number;
+  status: string;
+}> {
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+
+  // Quick client-side extraction for plain text and markdown
+  if (ext === 'txt' || ext === 'md' || ext === 'markdown') {
+    try {
+      const text = await file.text();
+      return {
+        filename: file.name,
+        file_type: ext,
+        extracted_text: text.trim(),
+        char_count: text.trim().length,
+        status: 'success'
+      };
+    } catch (e) {
+      console.warn('Failed client-side text read, falling back to backend extract:', e);
+    }
+  }
+
+  // Backend extraction for PDF, DOCX, and fallback
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+  const apiUrl = `${baseUrl}/documents/extract`;
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        filename: data.filename || file.name,
+        file_type: data.file_type || ext,
+        extracted_text: data.extracted_text || '',
+        char_count: data.char_count || 0,
+        status: data.status || 'success'
+      };
+    }
+    const errText = await response.text();
+    console.error(`Document extract failed (${response.status}):`, errText);
+  } catch (err) {
+    console.error('Network error during document extraction:', err);
+  }
+
+  return {
+    filename: file.name,
+    file_type: ext,
+    extracted_text: '',
+    char_count: 0,
+    status: 'failed'
+  };
 }
 
 export async function transcribeAudio(
@@ -85,7 +156,7 @@ export async function transcribeAudio(
 
 export async function fetchInitialInterviewQuestion(
   jobRole: string,
-  attachedDocuments?: Array<{ id: string; name: string; category: string }>
+  attachedDocuments?: AttachedDocumentPayload[]
 ): Promise<string> {
   const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
   const apiUrl = `${baseUrl}/interview/initial-question`;
@@ -109,5 +180,37 @@ export async function fetchInitialInterviewQuestion(
   }
 
   return `Welcome to your interview practice for the ${jobRole || 'position'} role! To start off, could you please tell me about yourself and your background?`;
+}
+
+export async function fetchFollowupInterviewQuestion(
+  userAnswer: string,
+  jobRole?: string,
+  conversationHistory?: ConversationHistoryItem[],
+  attachedDocuments?: AttachedDocumentPayload[]
+): Promise<string> {
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+  const apiUrl = `${baseUrl}/interview/followup`;
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_answer: userAnswer,
+        job_role: jobRole || 'Software Developer',
+        conversation_history: conversationHistory || [],
+        attached_documents: attachedDocuments || []
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return (data.ai_response || '').trim();
+    }
+  } catch (e) {
+    console.warn('Could not fetch follow-up interview question from backend:', e);
+  }
+
+  return 'Thank you for sharing that. Could you tell me more about how you would apply those skills in this role?';
 }
 
