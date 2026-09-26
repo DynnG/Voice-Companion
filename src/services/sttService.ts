@@ -154,9 +154,63 @@ export async function transcribeAudio(
   }
 }
 
+export function extractConversationalText(rawText: string): string {
+  if (!rawText) return '';
+  let text = rawText.trim();
+
+  // Strip markdown code fences if wrapped
+  const fenceMatch = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenceMatch && fenceMatch[1]) {
+    text = fenceMatch[1].trim();
+  } else {
+    const blockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (blockMatch && blockMatch[1] && blockMatch[1].includes('{') && blockMatch[1].includes('}')) {
+      text = blockMatch[1].trim();
+    }
+  }
+
+  // Parse JSON if structure has braces
+  if (text.includes('{') && text.includes('}')) {
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    const jsonSlice = text.slice(firstBrace, lastBrace + 1);
+    try {
+      const parsed = JSON.parse(jsonSlice);
+      if (parsed && typeof parsed.response === 'string' && parsed.response.trim()) {
+        let clean = parsed.response.trim();
+        if ((clean.startsWith('"') && clean.endsWith('"')) || (clean.startsWith("'") && clean.endsWith("'"))) {
+          clean = clean.slice(1, -1).trim();
+        }
+        return clean;
+      }
+    } catch {
+      // Regex fallback if JSON.parse fails due to unescaped control chars
+      const respMatch = text.match(/"response"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
+      if (respMatch && respMatch[1]) {
+        try {
+          return JSON.parse(`"${respMatch[1]}"`).trim();
+        } catch {
+          return respMatch[1].replace(/\\"/g, '"').replace(/\\n/g, ' ').trim();
+        }
+      }
+    }
+  }
+
+  // Remove leftover markdown fences or quotes
+  if (text.startsWith('```')) {
+    text = text.replace(/^```[a-z]*\s*/i, '').replace(/\s*```$/i, '').trim();
+  }
+  if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+    text = text.slice(1, -1).trim();
+  }
+
+  return text;
+}
+
 export async function fetchInitialInterviewQuestion(
   jobRole: string,
-  attachedDocuments?: AttachedDocumentPayload[]
+  attachedDocuments?: AttachedDocumentPayload[],
+  interviewId?: string
 ): Promise<string> {
   const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
   const apiUrl = `${baseUrl}/interview/initial-question`;
@@ -167,27 +221,43 @@ export async function fetchInitialInterviewQuestion(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         job_role: jobRole,
-        attached_documents: attachedDocuments || []
+        attached_documents: attachedDocuments || [],
+        interview_id: interviewId
       })
     });
 
     if (response.ok) {
       const data = await response.json();
-      return data.ai_response || data.question;
+      const raw = data.ai_response || data.question || '';
+      return extractConversationalText(raw);
+    } else {
+      if (response.status === 429) {
+        return "AI interviewer is temporarily unavailable because the Gemini API usage limit has been reached. Please try again later.";
+      }
+      return "AI interviewer is temporarily unavailable due to an AI service error. Please try again in a moment.";
     }
   } catch (e) {
     console.warn('Could not fetch initial interview question from backend:', e);
+    return "AI interviewer is temporarily unavailable due to a connection error. Please try again in a moment.";
   }
+}
 
-  return `Welcome to your interview practice for the ${jobRole || 'position'} role! To start off, could you please tell me about yourself and your background?`;
+export interface FollowupQuestionResult {
+  response: string;
+  should_end: boolean;
+  reason?: string;
+  status?: 'success' | 'error';
+  error_type?: string;
+  error_message?: string;
 }
 
 export async function fetchFollowupInterviewQuestion(
   userAnswer: string,
   jobRole?: string,
   conversationHistory?: ConversationHistoryItem[],
-  attachedDocuments?: AttachedDocumentPayload[]
-): Promise<string> {
+  attachedDocuments?: AttachedDocumentPayload[],
+  interviewId?: string
+): Promise<FollowupQuestionResult> {
   const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
   const apiUrl = `${baseUrl}/interview/followup`;
 
@@ -199,18 +269,49 @@ export async function fetchFollowupInterviewQuestion(
         user_answer: userAnswer,
         job_role: jobRole || 'Software Developer',
         conversation_history: conversationHistory || [],
-        attached_documents: attachedDocuments || []
+        attached_documents: attachedDocuments || [],
+        interview_id: interviewId
       })
     });
 
     if (response.ok) {
       const data = await response.json();
-      return (data.ai_response || '').trim();
+      const cleanResponse = extractConversationalText(data.ai_response || '');
+      const isError = data.status === 'error' || Boolean(data.error_type);
+      return {
+        response: cleanResponse,
+        should_end: Boolean(data.should_end),
+        reason: data.reason,
+        status: isError ? 'error' : 'success',
+        error_type: data.error_type,
+        error_message: data.error_message || (isError ? cleanResponse : undefined)
+      };
+    } else {
+      const errStatus = response.status;
+      const isQuota = errStatus === 429;
+      const errorMsg = isQuota
+        ? 'AI interviewer is temporarily unavailable because the Gemini API usage limit has been reached. Please try again later.'
+        : 'AI interviewer is temporarily unavailable due to an AI service error. Please try again in a moment.';
+      return {
+        response: errorMsg,
+        should_end: false,
+        reason: isQuota ? 'gemini_quota_exceeded' : 'gemini_ai_service_error',
+        status: 'error',
+        error_type: isQuota ? 'quota_exceeded' : 'ai_service_error',
+        error_message: errorMsg
+      };
     }
   } catch (e) {
     console.warn('Could not fetch follow-up interview question from backend:', e);
+    const networkErrorMsg = 'AI interviewer is temporarily unavailable due to a connection error. Please try again in a moment.';
+    return {
+      response: networkErrorMsg,
+      should_end: false,
+      reason: 'gemini_connection_error',
+      status: 'error',
+      error_type: 'connection_error',
+      error_message: networkErrorMsg
+    };
   }
-
-  return 'Thank you for sharing that. Could you tell me more about how you would apply those skills in this role?';
 }
 

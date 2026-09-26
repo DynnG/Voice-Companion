@@ -22,10 +22,10 @@ export interface Message {
 export interface Conversation {
   id: string;
   title: string;
-  category: 'Today' | 'Yesterday' | 'Previous 7 Days' | 'Older';
+  category?: 'Today' | 'Yesterday' | 'Previous 7 Days' | 'Older';
   createdAt: string;
   updatedAt: string;
-  status: 'setup' | 'active' | 'completed';
+  status: 'setup' | 'active' | 'ending' | 'completed';
   jobRole?: string;
   attachedDocuments?: AttachedDocument[];
   messages: Message[];

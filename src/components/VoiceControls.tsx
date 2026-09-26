@@ -9,6 +9,7 @@ interface VoiceControlsProps {
   onTogglePanel: () => void;
   unreadCount?: number;
   statusHint?: string;
+  isCompleted?: boolean;
 }
 
 export const VoiceControls: React.FC<VoiceControlsProps> = ({
@@ -18,17 +19,19 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
   onTogglePanel,
   unreadCount = 0,
   statusHint,
+  isCompleted = false,
 }) => {
   return (
     <footer className="voice-footer">
       <div className="mic-row">
         {/* Existing Microphone Button - Design Locked */}
         <button
-          className={`mic-btn ${state === 'listening' ? 'live' : ''}`}
+          className={`mic-btn ${state === 'listening' ? 'live' : ''} ${isCompleted ? 'opacity-40 cursor-not-allowed' : ''}`}
           id="micBtn"
-          aria-label={state === 'listening' ? 'Listening to your answer...' : 'Start talking'}
-          onClick={onStartFlow}
-          title={state === 'listening' ? 'Listening... auto-stops when you finish speaking' : 'Tap to start speaking'}
+          aria-label={isCompleted ? 'Interview concluded' : state === 'listening' ? 'Listening to your answer...' : 'Start talking'}
+          onClick={isCompleted ? undefined : onStartFlow}
+          disabled={isCompleted}
+          title={isCompleted ? 'Interview concluded. Start a new interview from sidebar to practice again.' : state === 'listening' ? 'Listening... auto-stops when you finish speaking' : 'Tap to start speaking'}
         >
           <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z" />

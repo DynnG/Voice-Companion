@@ -1,64 +1,57 @@
 import React from 'react';
-import { Menu, MessageSquare, PanelLeftOpen } from 'lucide-react';
+import { Plus, MessageSquare } from 'lucide-react';
+import mockMateLogo from '../assets/MockMate-logo.png';
 
 interface AppShellProps {
   children: React.ReactNode;
-  onOpenMobileSidebar: () => void;
-  isDesktopSidebarCollapsed: boolean;
-  onToggleDesktopSidebar: () => void;
+  onNewInterview: () => void;
   isLivePanelOpen: boolean;
   onToggleLivePanel: () => void;
-  activeConversationTitle?: string;
+  activeRole?: string;
+  showNewInterviewButton?: boolean;
 }
 
 export const AppShell: React.FC<AppShellProps> = ({
   children,
-  onOpenMobileSidebar,
-  isDesktopSidebarCollapsed,
-  onToggleDesktopSidebar,
+  onNewInterview,
   isLivePanelOpen,
   onToggleLivePanel,
-  activeConversationTitle,
+  activeRole,
+  showNewInterviewButton = false,
 }) => {
   return (
     <div className="w-screen h-screen flex flex-col bg-[#133020] text-[#f5eedb] overflow-hidden select-none font-inter">
       {/* Top Application Shell Navbar */}
       <header className="h-14 bg-[#133020] border-b border-[#046241]/40 px-4 flex items-center justify-between z-30 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
-          {/* Mobile Hamburger Button */}
-          <button
-            onClick={onOpenMobileSidebar}
-            className="md:hidden p-2 rounded-lg text-[#f5eedb] hover:bg-[#046241]/40 transition-colors"
-            title="Open Conversation History"
-          >
-            <Menu className="w-5 h-5 text-[#f5eedb]" />
-          </button>
-
-          {/* Desktop Expand Sidebar Button (when collapsed) */}
-          {isDesktopSidebarCollapsed && (
-            <button
-              onClick={onToggleDesktopSidebar}
-              className="hidden md:flex p-2 rounded-lg text-[#f5eedb] hover:bg-[#046241]/40 transition-colors"
-              title="Expand Conversation History"
-            >
-              <PanelLeftOpen className="w-5 h-5 text-[#FFB347]" />
-            </button>
-          )}
-
           {/* Shell Brand Title */}
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-[#046241] flex items-center justify-center font-space font-bold text-xs text-[#ffffff] shadow-xs">
-              P
-            </div>
+            <img
+              src={mockMateLogo}
+              alt="MockMate Logo"
+              className="w-7 h-7 rounded-lg object-contain shadow-xs"
+            />
             <span className="font-space font-semibold text-sm tracking-wide text-[#ffffff]">
               MockMate
             </span>
-            {activeConversationTitle && (
+            {activeRole && (
               <span className="hidden sm:inline-block text-xs text-[#f5eedb]/60 truncate max-w-[200px] border-l border-[#046241]/40 pl-2 ml-1">
-                {activeConversationTitle}
+                {activeRole}
               </span>
             )}
           </div>
+
+          {/* Simple New Interview Action Button (available during active interview) */}
+          {showNewInterviewButton && (
+            <button
+              onClick={onNewInterview}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-space font-semibold bg-[#046241] text-[#ffffff] hover:bg-[#046241]/85 active:scale-95 transition-all shadow-xs border border-[#f5eedb]/20 ml-2"
+              title="Start a new interview session"
+            >
+              <Plus className="w-3.5 h-3.5 text-[#FFB347]" />
+              <span>New Interview</span>
+            </button>
+          )}
         </div>
 
         {/* Top Navbar Actions */}
@@ -88,3 +81,4 @@ export const AppShell: React.FC<AppShellProps> = ({
     </div>
   );
 };
+

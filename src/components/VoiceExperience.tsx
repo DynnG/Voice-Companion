@@ -8,9 +8,12 @@ import { VoiceControls } from './VoiceControls';
 import { transcribeAudio, fetchFollowupInterviewQuestion } from '../services/sttService';
 
 interface VoiceExperienceProps {
+  interviewId?: string;
   onUserTranscribed?: (userText: string) => void;
   onPalResponse?: (palText: string) => void;
   onThinkingChange?: (thinking: boolean) => void;
+  onInterviewCompleted?: (reason?: string) => void;
+  interviewStatus?: 'setup' | 'active' | 'ending' | 'completed';
   isLivePanelOpen: boolean;
   onToggleLivePanel: () => void;
   unreadCount?: number;
@@ -27,9 +30,12 @@ const MIN_SPEECH_DURATION_MS = 800;         // Minimum speech duration (800ms) b
 const MAX_RECORDING_DURATION_MS = 60000;    // 60s hard ceiling safeguard
 
 export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
+  interviewId,
   onUserTranscribed,
   onPalResponse,
   onThinkingChange,
+  onInterviewCompleted,
+  interviewStatus = 'active',
   isLivePanelOpen,
   onToggleLivePanel,
   unreadCount = 0,
@@ -38,11 +44,24 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   conversationHistory = [],
   initialQuestionToSpeak
 }) => {
+  const isCompleted = interviewStatus === 'completed';
   const [state, setState] = useState<VoiceState>('idle');
-  const [customLabel, setCustomLabel] = useState<string | undefined>(undefined);
+  const [customLabel, setCustomLabel] = useState<string | undefined>(
+    isCompleted ? 'Interview Complete' : undefined
+  );
   const [captionText, setCaptionText] = useState('');
   const [captionVisible, setCaptionVisible] = useState(false);
-  const [statusHint, setStatusHint] = useState<string | undefined>(undefined);
+  const [statusHint, setStatusHint] = useState<string | undefined>(
+    isCompleted ? 'Interview Complete · Review the full transcript in the side panel' : undefined
+  );
+
+  useEffect(() => {
+    if (isCompleted) {
+      setCustomLabel('Interview Complete');
+      setStatusHint('Interview Complete · Review the full transcript in the side panel');
+      setState('idle');
+    }
+  }, [isCompleted]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -210,7 +229,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
    * Auto-detection handles the stop.
    */
   const startRecording = async () => {
-    if (isProcessingRef.current) return;
+    if (isCompleted || isProcessingRef.current) return;
     cleanupAudioResources();
     hideCaption();
     setStatusHint(undefined);
@@ -320,6 +339,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
    * 7. Reset mic state so it is ready for the next response.
    */
   const processAudioTranscriptionAndInterview = async (audioBlob: Blob) => {
+    isProcessingRef.current = true;
     // Keep voice sphere indicator internal during Whisper transcription; do NOT show chat thinking bubble yet
     setState('thinking');
     setCustomLabel('transcribing answer…');
@@ -364,7 +384,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         ];
 
         // Step 6: Query Gemini API for next follow-up question (including document contents!)
-        const aiResponse = await fetchFollowupInterviewQuestion(
+        const followupResult = await fetchFollowupInterviewQuestion(
           userText,
           jobRole,
           updatedHistory,
@@ -374,10 +394,15 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             category: d.category,
             content: d.content || d.extractedText,
             extracted_text: d.content || d.extractedText
-          }))
+          })),
+          interviewId
         );
 
-        console.log('[Live Interview] 2. Gemini follow-up response:', aiResponse);
+        const aiResponse = followupResult.response;
+        const shouldEnd = followupResult.should_end;
+        const endReason = followupResult.reason;
+
+        console.log('[Live Interview] 2. Gemini follow-up response:', aiResponse, 'should_end:', shouldEnd, 'reason:', endReason);
         // Turn off chat thinking bubble before rendering Pal follow-up
         onThinkingChange?.(false);
 
@@ -386,16 +411,72 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
           onPalResponse(aiResponse);
         }
 
-        // Step 7: Display interviewer follow-up
+        // Step 7: Display interviewer follow-up, closing statement, or unavailable notice
         if (aiResponse) {
           showCaption(aiResponse);
-          setCustomLabel('Interviewer follow-up');
+
+          const isErrorState = followupResult.status === 'error' || Boolean(followupResult.error_type);
+
+          if (isErrorState) {
+            const isQuota = followupResult.error_type === 'quota_exceeded' || followupResult.error_type === 'quota_exhausted' || aiResponse.includes('usage limit');
+            const isConnection = followupResult.error_type === 'connection_error' || aiResponse.includes('connection error');
+            setCustomLabel('Interviewer unavailable');
+            setStatusHint(
+              isQuota
+                ? 'Gemini usage limit reached · You can retry once service is available'
+                : isConnection
+                ? 'Connection error · Tap the mic to try speaking again'
+                : 'AI service error · Tap the mic to try speaking again'
+            );
+            setState('speaking');
+
+            // Reset creature to idle ready for retry, keeping interview active
+            setTimeout(() => {
+              setState('idle');
+              setCustomLabel('Interviewer unavailable');
+              setStatusHint(
+                isQuota
+                  ? 'Gemini usage limit reached · Tap the mic to retry when available'
+                  : isConnection
+                  ? 'Connection error · Tap the mic to try speaking again'
+                  : 'AI service error · Tap the mic to try speaking again'
+              );
+              isProcessingRef.current = false;
+            }, 3500);
+            return;
+          }
+
+          if (shouldEnd) {
+            setCustomLabel('Interview Complete');
+            setStatusHint('Interview Complete · Well done!');
+            setState('speaking');
+            onInterviewCompleted?.(endReason);
+
+            // After closing speech ends, remain in completed state and disable mic
+            setTimeout(() => {
+              setState('idle');
+              setCustomLabel('Interview Complete');
+              setStatusHint('Interview Complete · Review the full transcript in the side panel');
+              isProcessingRef.current = false;
+            }, 3800);
+            return;
+          }
+
+          if (endReason === 'wrapup_question') {
+            setCustomLabel('Wrap-up question');
+            setStatusHint('Wrap-up · Feel free to share anything not yet covered');
+          } else {
+            setCustomLabel('Interviewer follow-up');
+          }
           setState('speaking');
 
           // Reset mic ready for the next turn
           setTimeout(() => {
             setState('idle');
-            setCustomLabel(undefined);
+            setCustomLabel(endReason === 'wrapup_question' ? 'Wrap-up question' : undefined);
+            if (endReason === 'wrapup_question') {
+              setStatusHint('Wrap-up · Feel free to share anything not yet covered');
+            }
             isProcessingRef.current = false;
           }, 3500);
         } else {
@@ -438,6 +519,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
    * If already listening, user can optionally tap to finish early.
    */
   const handleToggleFlow = () => {
+    if (isCompleted || isProcessingRef.current) return;
     if (state === 'idle' || state === 'speaking') {
       startRecording();
     } else if (state === 'listening') {
@@ -454,7 +536,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
       {/* 2. Responsive Central Interactive Area */}
       <div className="flex-1 min-h-0 w-full flex flex-col items-center justify-center px-4 py-1 sm:py-2">
-        <VoiceCreature state={state} onTap={handleToggleFlow} />
+        <VoiceCreature state={state} onTap={isCompleted ? undefined : handleToggleFlow} />
 
         <div className="shrink-0 mt-1 sm:mt-2 min-h-[20px] flex items-center justify-center">
           <StateLabel state={state} customLabel={customLabel} />
@@ -474,7 +556,8 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
           isPanelOpen={isLivePanelOpen}
           onTogglePanel={onToggleLivePanel}
           unreadCount={unreadCount}
-          statusHint={statusHint || 'Tap microphone once to speak · Auto-detects when you finish'}
+          statusHint={statusHint || (isCompleted ? 'Interview Complete · Review the full transcript in the side panel' : 'Tap microphone once to speak · Auto-detects when you finish')}
+          isCompleted={isCompleted}
         />
       </div>
     </div>

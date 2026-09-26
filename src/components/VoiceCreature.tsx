@@ -3,7 +3,7 @@ import { VoiceState } from '../types/conversation';
 
 interface VoiceCreatureProps {
   state: VoiceState;
-  onTap: () => void;
+  onTap?: () => void;
 }
 
 const STATE_CONFIG: Record<VoiceState, { colorVar: string; amp: number; speed: number; lobes: number; ring: number }> = {

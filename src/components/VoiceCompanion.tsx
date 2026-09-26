@@ -1,76 +1,47 @@
 import React, { useState } from 'react';
 import { Conversation, Message, AttachedDocument } from '../types/conversation';
 import { AppShell } from './AppShell';
-import { ConversationHistory } from './ConversationHistory';
 import { VoiceExperience } from './VoiceExperience';
 import { LiveConversationPanel } from './LiveConversationPanel';
 import { DocumentAttachmentScreen } from './DocumentAttachmentScreen';
 import { fetchInitialInterviewQuestion } from '../services/sttService';
 
-const createInitialInterview = (): Conversation => ({
-  id: `interview-${Date.now()}`,
-  title: 'Interview - Software Developer',
-  category: 'Today',
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-  status: 'setup',
+interface InterviewSession {
+  id: string;
+  jobRole: string;
+  status: 'setup' | 'active' | 'completed';
+  attachedDocuments: AttachedDocument[];
+  messages: Message[];
+}
+
+const createInitialSession = (): InterviewSession => ({
+  id: `session-${Date.now()}`,
   jobRole: 'Software Developer',
+  status: 'setup',
   attachedDocuments: [],
-  messages: [],
-  isReadOnly: false,
+  messages: []
 });
 
 export const VoiceCompanion: React.FC = () => {
-  const [conversations, setConversations] = useState<Conversation[]>(() => [createInitialInterview()]);
-  const [activeConversationId, setActiveConversationId] = useState<string>(() => conversations[0]?.id || `interview-init`);
-  const [isLivePanelOpen, setIsLivePanelOpen] = useState<boolean>(true);
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
-  const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState<boolean>(false);
+  // Session-only state: strictly held in memory for the active interview
+  const [session, setSession] = useState<InterviewSession>(createInitialSession);
+  const [isLivePanelOpen, setIsLivePanelOpen] = useState<boolean>(false);
   const [initialQuestionToSpeak, setInitialQuestionToSpeak] = useState<string | undefined>(undefined);
   const [isThinking, setIsThinking] = useState<boolean>(false);
 
-  // Find active conversation
-  const activeConversation = conversations.find((c) => c.id === activeConversationId) || conversations[0];
-
-  // Select a conversation from sidebar
-  const handleSelectConversation = (conv: Conversation) => {
-    setActiveConversationId(conv.id);
-    setInitialQuestionToSpeak(undefined);
-    setIsThinking(false);
-    if (conv.status !== 'setup') {
-      setIsLivePanelOpen(true);
-    }
-  };
-
-  // Start a new interview workflow
+  // Start a new interview workflow: clears all previous documents, messages, and context
   const handleNewInterview = () => {
-    const newId = `interview-${Date.now()}`;
-    const newConv: Conversation = {
-      id: newId,
-      title: 'Interview - Software Developer',
-      category: 'Today',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      status: 'setup',
-      jobRole: 'Software Developer',
-      attachedDocuments: [],
-      messages: [],
-      isReadOnly: false,
-    };
-
-    setConversations((prev) => [newConv, ...prev]);
-    setActiveConversationId(newId);
+    setSession(createInitialSession());
     setInitialQuestionToSpeak(undefined);
     setIsThinking(false);
     setIsLivePanelOpen(false);
   };
 
-  // Transition from Document Attachment Screen to Voice Interview
+  // Transition from Document Attachment Screen to Live Voice Interview
   const handleStartInterview = async (jobRole: string, docs: AttachedDocument[]) => {
     const cleanRole = jobRole.trim() || 'Software Developer';
-    const title = `Interview - ${cleanRole}`;
 
-    // Generate initial interview question tailored to role and documents
+    // 1. Prepare in-memory documents summary for initial Gemini question
     const docSummary = docs.map((d) => ({
       id: d.id,
       name: d.name,
@@ -78,7 +49,9 @@ export const VoiceCompanion: React.FC = () => {
       content: d.content || d.extractedText,
       extracted_text: d.content || d.extractedText
     }));
-    const questionText = await fetchInitialInterviewQuestion(cleanRole, docSummary);
+
+    // 2. Fetch initial question from Gemini tailored to role and attached documents (in-memory)
+    const questionText = await fetchInitialInterviewQuestion(cleanRole, docSummary, session.id);
 
     const initialPalMessage: Message = {
       id: `msg-${Date.now()}-init`,
@@ -90,136 +63,102 @@ export const VoiceCompanion: React.FC = () => {
     setInitialQuestionToSpeak(questionText);
     setIsLivePanelOpen(true);
 
-    setConversations((prev) =>
-      prev.map((c) => {
-        if (c.id === activeConversationId) {
-          return {
-            ...c,
-            title,
-            jobRole: cleanRole,
-            attachedDocuments: docs,
-            status: 'active',
-            updatedAt: new Date().toISOString(),
-            messages: [initialPalMessage],
-          };
-        }
-        return c;
-      })
-    );
+    // 3. Update session state to active with in-memory documents and opening question
+    setSession((prev) => ({
+      ...prev,
+      jobRole: cleanRole,
+      status: 'active',
+      attachedDocuments: docs,
+      messages: [initialPalMessage]
+    }));
   };
 
-  // Step 1: Immediately commit user transcript to conversation messages
+  // Step 1: Immediately commit user transcript to session messages in memory
   const handleUserTranscribed = (transcribedText: string) => {
-    const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const userMsg: Message = {
       id: `msg-${Date.now()}-user`,
       sender: 'You',
       text: transcribedText,
-      timestamp: nowStr,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    setConversations((prev) => {
-      let targetConv = prev.find((c) => c.id === activeConversationId);
-      if (!targetConv || targetConv.isReadOnly) {
-        const newId = `interview-${Date.now()}`;
-        const newConv: Conversation = {
-          id: newId,
-          title: 'Interview - Software Developer',
-          category: 'Today',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          status: 'active',
-          jobRole: 'Software Developer',
-          attachedDocuments: [],
-          messages: [userMsg],
-          isReadOnly: false,
-        };
-        setActiveConversationId(newId);
-        return [newConv, ...prev];
-      }
-
-      return prev.map((c) => {
-        if (c.id === targetConv.id) {
-          return {
-            ...c,
-            updatedAt: new Date().toISOString(),
-            messages: [...c.messages, userMsg],
-          };
-        }
-        return c;
-      });
-    });
+    setSession((prev) => ({
+      ...prev,
+      messages: [...prev.messages, userMsg]
+    }));
   };
 
-  // Step 2: Commit Pal (Gemini Interviewer) follow-up response in its own separate state update
+  // Step 2: Commit Pal (Gemini Interviewer) follow-up response to session messages in memory
   const handlePalResponse = (palText: string) => {
-    const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const palMsg: Message = {
       id: `msg-${Date.now()}-pal`,
       sender: 'Pal',
       text: palText,
-      timestamp: nowStr,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    setConversations((prev) =>
-      prev.map((c) => {
-        if (c.id === activeConversationId) {
-          return {
-            ...c,
-            updatedAt: new Date().toISOString(),
-            messages: [...c.messages, palMsg],
-          };
-        }
-        return c;
-      })
-    );
+    setSession((prev) => ({
+      ...prev,
+      messages: [...prev.messages, palMsg]
+    }));
+  };
+
+  // Step 3: Handle interview completion when Gemini signals should_end
+  const handleInterviewCompleted = (reason?: string) => {
+    console.log(`[Session Interview] Completed (reason: ${reason})`);
+    setSession((prev) => ({
+      ...prev,
+      status: 'completed'
+    }));
+  };
+
+  // Format session as Conversation object for LiveConversationPanel
+  const activeConversation: Conversation = {
+    id: session.id,
+    title: `Interview - ${session.jobRole}`,
+    jobRole: session.jobRole,
+    status: session.status,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    attachedDocuments: session.attachedDocuments,
+    messages: session.messages
   };
 
   return (
     <AppShell
-      onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
-      isDesktopSidebarCollapsed={isDesktopSidebarCollapsed}
-      onToggleDesktopSidebar={() => setIsDesktopSidebarCollapsed((prev) => !prev)}
+      onNewInterview={handleNewInterview}
       isLivePanelOpen={isLivePanelOpen}
       onToggleLivePanel={() => setIsLivePanelOpen((prev) => !prev)}
-      activeConversationTitle={activeConversation?.title}
+      activeRole={session.status !== 'setup' ? session.jobRole : undefined}
+      showNewInterviewButton={session.status !== 'setup'}
     >
-      {/* FEATURE 2: Conversation History Sidebar */}
-      <ConversationHistory
-        conversations={conversations}
-        activeConversationId={activeConversationId}
-        onSelectConversation={handleSelectConversation}
-        onNewConversation={handleNewInterview}
-        isOpenMobile={isMobileSidebarOpen}
-        onCloseMobile={() => setIsMobileSidebarOpen(false)}
-        isCollapsedDesktop={isDesktopSidebarCollapsed}
-        onToggleCollapseDesktop={() => setIsDesktopSidebarCollapsed((prev) => !prev)}
-      />
-
-      {/* CENTRAL WORKSPACE: Setup Screen OR Voice Companion Interview UI */}
+      {/* CENTRAL WORKSPACE: Setup Screen (Upload Documents) OR Live Voice Interview */}
       <main className="flex-1 h-full relative overflow-hidden bg-[#050810] flex items-center justify-center">
-        {activeConversation?.status === 'setup' ? (
+        {session.status === 'setup' ? (
           <DocumentAttachmentScreen
-            initialJobRole={activeConversation.jobRole || 'Software Developer'}
-            initialDocuments={activeConversation.attachedDocuments || []}
+            initialJobRole={session.jobRole}
+            initialDocuments={session.attachedDocuments}
             onStartInterview={handleStartInterview}
           />
         ) : (
           <VoiceExperience
+            interviewId={session.id}
             onUserTranscribed={handleUserTranscribed}
             onPalResponse={handlePalResponse}
             onThinkingChange={setIsThinking}
+            onInterviewCompleted={handleInterviewCompleted}
+            interviewStatus={session.status}
             isLivePanelOpen={isLivePanelOpen}
             onToggleLivePanel={() => setIsLivePanelOpen((prev) => !prev)}
-            jobRole={activeConversation?.jobRole}
-            attachedDocuments={activeConversation?.attachedDocuments || []}
-            conversationHistory={activeConversation?.messages || []}
+            jobRole={session.jobRole}
+            attachedDocuments={session.attachedDocuments}
+            conversationHistory={session.messages}
             initialQuestionToSpeak={initialQuestionToSpeak}
           />
         )}
       </main>
 
-      {/* FEATURE 1: Live Conversation Panel */}
+      {/* Live Conversation Transcript Panel */}
       <LiveConversationPanel
         conversation={activeConversation}
         isOpen={isLivePanelOpen}
@@ -229,4 +168,3 @@ export const VoiceCompanion: React.FC = () => {
     </AppShell>
   );
 };
-

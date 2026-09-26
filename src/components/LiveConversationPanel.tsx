@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { X, Sparkles, User, Bot, FileText } from 'lucide-react';
+import { X, Sparkles, User, Bot, FileText, AlertCircle } from 'lucide-react';
 import { Conversation } from '../types/conversation';
 
 interface LiveConversationPanelProps {
@@ -63,10 +63,17 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
                 </h3>
               </div>
               <p className="text-[11px] text-[#f5eedb]/70 font-inter flex items-center gap-1">
-                <span className="flex items-center gap-1 text-[#5eead4]">
-                  <span className="w-2 h-2 rounded-full bg-[#5eead4] animate-pulse" />
-                  Live Interview Session
-                </span>
+                {conversation?.status === 'completed' ? (
+                  <span className="flex items-center gap-1 text-[#FFB347]">
+                    <span className="w-2 h-2 rounded-full bg-[#FFB347]" />
+                    Interview Complete
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-[#5eead4]">
+                    <span className="w-2 h-2 rounded-full bg-[#5eead4] animate-pulse" />
+                    Live Interview Session
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -110,6 +117,7 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
           ) : (
             conversation.messages.map((msg) => {
               const isUser = msg.sender === 'You';
+              const isNotice = !isUser && msg.text.includes('AI interviewer is temporarily unavailable');
               return (
                 <div
                   key={msg.id}
@@ -117,7 +125,12 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
                 >
                   {/* Sender & Timestamp */}
                   <div className="flex items-center gap-1.5 px-1 text-[11px] font-space font-semibold text-[#133020]/70 uppercase tracking-wider">
-                    {isUser ? (
+                    {isNotice ? (
+                      <>
+                        <AlertCircle className="w-3 h-3 text-amber-600" />
+                        <span className="text-amber-800">Interviewer Notice</span>
+                      </>
+                    ) : isUser ? (
                       <>
                         <span>You</span>
                         <User className="w-3 h-3 text-[#046241]" />
@@ -138,7 +151,9 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
                     className={`
                       max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-xs font-inter
                       ${
-                        isUser
+                        isNotice
+                          ? 'bg-amber-50 text-amber-900 border border-amber-300 rounded-tl-xs'
+                          : isUser
                           ? 'bg-[#133020] text-[#ffffff] rounded-tr-xs'
                           : 'bg-[#ffffff] text-[#133020] border border-[#046241]/20 rounded-tl-xs'
                       }
@@ -163,6 +178,17 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
                 <span className="w-2 h-2 rounded-full bg-[#046241] animate-bounce [animation-delay:0.4s]" />
                 <span className="text-xs text-[#133020]/70 font-medium ml-1">Formulating follow-up question…</span>
               </div>
+            </div>
+          )}
+          {conversation?.status === 'completed' && (
+            <div className="p-3 my-2 bg-[#046241]/10 border border-[#046241]/30 rounded-xl text-center">
+              <div className="text-xs font-space font-semibold text-[#046241] flex items-center justify-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-[#FFB347]" />
+                Interview Completed
+              </div>
+              <p className="text-[11px] text-[#133020]/70 font-inter mt-0.5">
+                This interview has concluded and is saved in your history.
+              </p>
             </div>
           )}
           <div ref={messagesEndRef} />

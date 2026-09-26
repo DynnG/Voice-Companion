@@ -105,6 +105,11 @@ dist-ssr/
 *.sln
 *.sw?
 
+# SQLite / Database
+*.db
+*.sqlite
+*.sqlite3
+
 # Python / Virtual Environments
 __pycache__/
 *.py[cod]
