@@ -135,7 +135,7 @@ export const VoiceCompanion: React.FC = () => {
       showNewInterviewButton={session.status !== 'setup'}
     >
       {/* CENTRAL WORKSPACE: Setup Screen (Upload Documents) OR Live Voice Interview */}
-      <main className="flex-1 h-full relative overflow-hidden bg-[#050810] flex items-center justify-center">
+      <main className="flex-1 h-full w-full relative overflow-hidden bg-[#050810] flex flex-col">
         {session.status === 'setup' ? (
           <DocumentAttachmentScreen
             initialJobRole={session.jobRole}

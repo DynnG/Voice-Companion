@@ -1,4 +1,5 @@
 @import './voice-experience.css';
+@import './setup-screen.css';
 
 @tailwind base;
 @tailwind components;
