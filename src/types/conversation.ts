@@ -31,3 +31,33 @@ export interface Conversation {
   messages: Message[];
   isReadOnly?: boolean;
 }
+
+export interface AnswerAttempt {
+  attemptNumber: 1 | 2;
+  audioBlob: Blob;
+  audioUrl: string;
+  transcript: string;
+  durationSeconds: number;
+  aiNotes: string[];
+  aiNotesStatus: 'idle' | 'loading' | 'success' | 'error';
+  errorMessage?: string;
+}
+
+export interface AnswerComparison {
+  improvements: string[];
+  stillImprove: string[];
+  attempt2Notes: string[];
+  status: 'idle' | 'loading' | 'success' | 'error';
+  errorMessage?: string;
+}
+
+export interface ReplayState {
+  questionText: string;
+  attempt1: AnswerAttempt | null;
+  attempt2: AnswerAttempt | null;
+  comparison: AnswerComparison | null;
+  isRetryMode: boolean;
+  isVisible: boolean;
+  isMinimized: boolean;
+}
+

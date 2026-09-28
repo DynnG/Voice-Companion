@@ -194,6 +194,39 @@ class TTSRequest(BaseModel):
     voice: Optional[str] = None
     speed: Optional[float] = 1.0
 
+class AnswerNotesRequest(BaseModel):
+    interview_id: Optional[str] = None
+    question: str
+    user_answer: str
+    job_role: Optional[str] = "Software Developer"
+    attached_documents: Optional[List[Dict[str, Any]]] = None
+    duration_seconds: Optional[float] = None
+
+class AnswerNotesResponse(BaseModel):
+    status: str = "success"
+    notes: List[str] = []
+    error_type: Optional[str] = None
+    error_message: Optional[str] = None
+
+class AnswerComparisonRequest(BaseModel):
+    interview_id: Optional[str] = None
+    question: str
+    attempt1_answer: str
+    attempt1_duration_seconds: Optional[float] = None
+    attempt2_answer: str
+    attempt2_duration_seconds: Optional[float] = None
+    job_role: Optional[str] = "Software Developer"
+    attached_documents: Optional[List[Dict[str, Any]]] = None
+
+class AnswerComparisonResponse(BaseModel):
+    status: str = "success"
+    improvements: List[str] = []
+    still_improve: List[str] = []
+    attempt2_notes: List[str] = []
+    error_type: Optional[str] = None
+    error_message: Optional[str] = None
+
+
 
 def get_effective_interview_documents(
     interview_id: Optional[str],
@@ -347,6 +380,56 @@ async def generate_followup(req: FollowupRequest, db: Session = Depends(get_db))
         "error_type": result.get("error_type"),
         "error_message": result.get("error_message")
     }
+
+
+@app.post("/interview/replay/notes", response_model=AnswerNotesResponse, tags=["Answer Replay"])
+async def get_answer_notes(req: AnswerNotesRequest, db: Session = Depends(get_db)):
+    """
+    Generate short, actionable coaching notes for a candidate's answer (Session-only, no DB writes).
+    """
+    effective_docs = get_effective_interview_documents(req.interview_id, req.attached_documents, db)
+    gemini = GeminiInterviewService.get_instance()
+    res = await gemini.generate_answer_ai_notes(
+        question=req.question,
+        user_answer=req.user_answer,
+        job_role=req.job_role,
+        attached_docs=effective_docs,
+        interview_id=req.interview_id,
+        duration_seconds=req.duration_seconds
+    )
+    return AnswerNotesResponse(
+        status=res.get("status", "success"),
+        notes=res.get("notes", []),
+        error_type=res.get("error_type"),
+        error_message=res.get("error_message")
+    )
+
+
+@app.post("/interview/replay/compare", response_model=AnswerComparisonResponse, tags=["Answer Replay"])
+async def compare_answers(req: AnswerComparisonRequest, db: Session = Depends(get_db)):
+    """
+    Compare Attempt 1 and Attempt 2 for the same interview question (Session-only, no DB writes).
+    """
+    effective_docs = get_effective_interview_documents(req.interview_id, req.attached_documents, db)
+    gemini = GeminiInterviewService.get_instance()
+    res = await gemini.generate_answer_comparison(
+        question=req.question,
+        attempt1_answer=req.attempt1_answer,
+        attempt1_duration=req.attempt1_duration_seconds,
+        attempt2_answer=req.attempt2_answer,
+        attempt2_duration=req.attempt2_duration_seconds,
+        job_role=req.job_role,
+        attached_docs=effective_docs,
+        interview_id=req.interview_id
+    )
+    return AnswerComparisonResponse(
+        status=res.get("status", "success"),
+        improvements=res.get("improvements", []),
+        still_improve=res.get("still_improve", []),
+        attempt2_notes=res.get("attempt2_notes", []),
+        error_type=res.get("error_type"),
+        error_message=res.get("error_message")
+    )
 
 
 @app.post("/tts", tags=["Text-to-Speech"])

@@ -95,6 +95,65 @@ Core Guidelines:
    }
 """
 
+REPLAY_NOTES_SYSTEM_PROMPT = """You are an expert interview coach and technical hiring evaluator for MockMate.
+Your role is to analyze a candidate's spoken answer and provide SHORT, actionable coaching notes.
+
+Guidelines:
+1. Ground your analysis strictly in what the candidate actually said, the question asked, and any provided document context.
+2. Focus on observable answer quality:
+   - Relevance to the question
+   - Specificity
+   - Completeness
+   - Technical/detail quality
+   - Structure
+   - Clarity
+   - Whether claims have supporting details
+   - Whether the answer gives a concrete result/example
+3. Strict Prohibitions:
+   - Do NOT generate vague praise (e.g. "Great answer", "Good job", "Nice work").
+   - Do NOT use "confidence" as a metric.
+   - Do NOT invent information.
+   - Do NOT criticize pronunciation unless the speech transcript contains clear evidence.
+4. Limit AI Notes to approximately 2 to 4 concise bullet points.
+5. Return valid JSON matching:
+   {
+     "notes": [
+       "<bullet 1>",
+       "<bullet 2>",
+       "<bullet 3>"
+     ]
+   }
+"""
+
+REPLAY_COMPARE_SYSTEM_PROMPT = """You are an expert interview coach for MockMate.
+Your role is to compare two consecutive attempts (Attempt 1 vs Attempt 2) made by a candidate for the same interview question.
+
+Guidelines:
+1. Base the comparison strictly on the actual observable differences between Attempt 1 and Attempt 2.
+2. Identify 1 to 3 concrete observable improvements in Attempt 2 compared to Attempt 1 (e.g. "More specific result", "Shorter answer", "Clearer explanation").
+3. Identify 1 to 2 areas that could still be improved (e.g. "Explain the technical trade-off more clearly").
+4. Provide 2 to 3 concise coaching notes specifically for Attempt 2.
+5. Strict Prohibitions:
+   - Do NOT create an arbitrary numeric "improvement score" or percentage.
+   - Do NOT use "confidence" as a metric.
+   - Do NOT generate vague praise.
+   - Do NOT invent information.
+6. Return valid JSON matching:
+   {
+     "improvements": [
+       "<improvement 1>",
+       "<improvement 2>"
+     ],
+     "still_improve": [
+       "<area 1>"
+     ],
+     "attempt2_notes": [
+       "<note 1>",
+       "<note 2>"
+     ]
+   }
+"""
+
 # FALLBACK_FOLLOWUP_QUESTIONS is disabled for normal interview operation.
 # Gemini is the sole source of dynamically generated interview questions.
 # Quota, rate limits, and network errors return structured error states instead of generic fake questions.
@@ -254,6 +313,8 @@ def extract_candidate_name(attached_docs: Optional[List[Dict[str, Any]]]) -> Opt
 def extract_first_project_name(attached_docs: Optional[List[Dict[str, Any]]]) -> Optional[str]:
     """Extract the first identifiable project name from attached documents."""
     if not attached_docs:
+
+        
         return None
     for doc in attached_docs:
         text = (
@@ -987,7 +1048,8 @@ class GeminiInterviewService:
         self,
         contents: List[Dict[str, Any]],
         api_key: Optional[str] = None,
-        enforce_json: bool = False
+        enforce_json: bool = False,
+        system_instruction: Optional[str] = None
     ) -> str:
         """
         Execute request to Google Generative Language API.
@@ -1000,6 +1062,7 @@ class GeminiInterviewService:
         unique_models = list(dict.fromkeys(models_to_try))
 
         last_exception = None
+        instruction_text = system_instruction or INTERVIEW_SYSTEM_PROMPT
 
         for model_name in unique_models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={effective_key}"
@@ -1014,7 +1077,7 @@ class GeminiInterviewService:
 
             payload = {
                 "system_instruction": {
-                    "parts": [{"text": INTERVIEW_SYSTEM_PROMPT}]
+                    "parts": [{"text": instruction_text}]
                 },
                 "contents": contents,
                 "generationConfig": gen_config
@@ -1080,3 +1143,262 @@ class GeminiInterviewService:
                     break
 
         raise last_exception or GeminiServiceError("All Gemini model attempts failed.")
+
+    def _parse_json_notes(self, raw_text: str) -> List[str]:
+        """Safely parse JSON bullet notes returned by Gemini for AI notes."""
+        if not raw_text:
+            return []
+        text = raw_text.strip()
+        fence_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+        if fence_match:
+            text = fence_match.group(1).strip()
+
+        try:
+            first_brace = text.find("{")
+            last_brace = text.rfind("}")
+            if first_brace != -1 and last_brace != -1:
+                data = json.loads(text[first_brace:last_brace + 1], strict=False)
+                if isinstance(data, dict) and "notes" in data and isinstance(data["notes"], list):
+                    return [str(n).strip() for n in data["notes"] if str(n).strip()]
+        except Exception:
+            pass
+
+        # Fallback line extraction if raw bullets returned
+        lines = [re.sub(r"^[\s*•\-\d\.]+", "", line).strip() for line in text.split("\n") if line.strip()]
+        valid = [l for l in lines if l and not l.startswith("{") and not l.startswith("}") and not l.startswith('"notes"')]
+        return valid[:4]
+
+    def _parse_json_comparison(self, raw_text: str) -> Dict[str, List[str]]:
+        """Safely parse JSON comparison returned by Gemini for Attempt 1 vs Attempt 2."""
+        if not raw_text:
+            return {"improvements": [], "still_improve": [], "attempt2_notes": []}
+        text = raw_text.strip()
+        fence_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, re.IGNORECASE)
+        if fence_match:
+            text = fence_match.group(1).strip()
+
+        try:
+            first_brace = text.find("{")
+            last_brace = text.rfind("}")
+            if first_brace != -1 and last_brace != -1:
+                data = json.loads(text[first_brace:last_brace + 1], strict=False)
+                if isinstance(data, dict):
+                    return {
+                        "improvements": [str(x).strip() for x in data.get("improvements", []) if str(x).strip()],
+                        "still_improve": [str(x).strip() for x in data.get("still_improve", []) if str(x).strip()],
+                        "attempt2_notes": [str(x).strip() for x in data.get("attempt2_notes", []) if str(x).strip()]
+                    }
+        except Exception:
+            pass
+
+        return {"improvements": [], "still_improve": [], "attempt2_notes": []}
+
+    async def generate_answer_ai_notes(
+        self,
+        question: str,
+        user_answer: str,
+        job_role: Optional[str] = None,
+        attached_docs: Optional[List[Dict[str, Any]]] = None,
+        interview_id: Optional[str] = None,
+        duration_seconds: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Use Gemini to analyze the candidate's latest answer and generate SHORT, actionable coaching notes.
+        Analyzes the actual latest answer, previous PAL question, and available document context.
+        """
+        clean_answer = (user_answer or "").strip()
+        clean_question = (question or "").strip()
+        if not clean_answer:
+            return {
+                "status": "error",
+                "notes": [],
+                "error_type": "empty_answer",
+                "error_message": "AI notes are unavailable right now."
+            }
+
+        api_key = self.get_api_key()
+        if not api_key:
+            return {
+                "status": "error",
+                "notes": [],
+                "error_type": "api_key_missing",
+                "error_message": "AI notes are unavailable right now."
+            }
+
+        context_header = self._build_context_header(job_role, attached_docs, interview_id=interview_id)
+        role = (job_role or "Software Developer").strip()
+        dur_str = f"{int(round(duration_seconds))} seconds" if duration_seconds else "not specified"
+
+        prompt = (
+            f"[Interview Coaching Setup]\n{context_header}\n\n"
+            f"You are an expert interview coach analyzing a candidate's answer for the role of {role}.\n\n"
+            f"Interviewer Question: {clean_question or 'Describe your technical experience.'}\n"
+            f"Candidate's Actual Spoken Answer: {clean_answer}\n"
+            f"Answer Duration: {dur_str}\n\n"
+            f"COACHING EVALUATION GUIDELINES:\n"
+            f"Analyze the candidate's actual latest answer, the interviewer question asked, and available document context.\n"
+            f"Focus on observable answer quality such as:\n"
+            f"- relevance to the question\n"
+            f"- specificity\n"
+            f"- completeness\n"
+            f"- technical/detail quality\n"
+            f"- structure\n"
+            f"- clarity\n"
+            f"- whether claims have supporting details\n"
+            f"- whether the answer gives a concrete result/example\n\n"
+            f"STRICT RULES:\n"
+            f"1. Do NOT generate vague praise (e.g., 'Great answer', 'Good job', 'Nice work').\n"
+            f"2. Do NOT use 'confidence' as a metric.\n"
+            f"3. Do NOT invent information.\n"
+            f"4. Do NOT criticize pronunciation unless the speech transcript contains clear evidence.\n"
+            f"5. Limit AI Notes to approximately 2 to 4 concise bullet points.\n"
+            f"6. Each bullet point should be a concise phrase (5-12 words max), actionable or descriptive of strength/gap.\n"
+            f"Return a valid JSON object matching this schema:\n"
+            f'{{\n  "notes": ["<bullet 1>", "<bullet 2>", "<bullet 3>"]\n}}'
+        )
+
+        try:
+            logger.info(f"[Answer Replay] Requesting AI coaching notes for answer: \"{clean_answer[:60]}...\"")
+            raw_text = await self._call_gemini_api(
+                contents=[{"role": "user", "parts": [{"text": prompt}]}],
+                api_key=api_key,
+                enforce_json=True,
+                system_instruction=REPLAY_NOTES_SYSTEM_PROMPT
+            )
+            parsed_notes = self._parse_json_notes(raw_text)
+            if not parsed_notes:
+                logger.warning(f"[Answer Replay] Could not extract valid notes from Gemini response: {raw_text[:100]}")
+                return {
+                    "status": "error",
+                    "notes": [],
+                    "error_type": "malformed_response",
+                    "error_message": "AI notes are unavailable right now."
+                }
+            logger.info(f"[Answer Replay] Successfully generated {len(parsed_notes)} AI notes.")
+            return {
+                "status": "success",
+                "notes": parsed_notes[:4],
+                "error_type": None,
+                "error_message": None
+            }
+        except Exception as e:
+            err_type = classify_gemini_error(e)
+            sanitized = sanitize_error_message(str(e))
+            logger.warning(f"[Answer Replay] Failed generating AI notes ({err_type}): {sanitized}")
+            return {
+                "status": "error",
+                "notes": [],
+                "error_type": err_type,
+                "error_message": "AI notes are unavailable right now."
+            }
+
+    async def generate_answer_comparison(
+        self,
+        question: str,
+        attempt1_answer: str,
+        attempt1_duration: Optional[float],
+        attempt2_answer: str,
+        attempt2_duration: Optional[float],
+        job_role: Optional[str] = None,
+        attached_docs: Optional[List[Dict[str, Any]]] = None,
+        interview_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Compare Attempt 1 and Attempt 2 for the same interview question.
+        Generates concrete improvements, areas still to improve, and Attempt 2 notes.
+        """
+        clean_q = (question or "").strip()
+        clean_a1 = (attempt1_answer or "").strip()
+        clean_a2 = (attempt2_answer or "").strip()
+        if not clean_a1 or not clean_a2:
+            return {
+                "status": "error",
+                "improvements": [],
+                "still_improve": [],
+                "attempt2_notes": [],
+                "error_type": "empty_answer",
+                "error_message": "AI notes are unavailable right now."
+            }
+
+        api_key = self.get_api_key()
+        if not api_key:
+            return {
+                "status": "error",
+                "improvements": [],
+                "still_improve": [],
+                "attempt2_notes": [],
+                "error_type": "api_key_missing",
+                "error_message": "AI notes are unavailable right now."
+            }
+
+        context_header = self._build_context_header(job_role, attached_docs, interview_id=interview_id)
+        role = (job_role or "Software Developer").strip()
+        dur1_str = f"{int(round(attempt1_duration))}s" if attempt1_duration else "N/A"
+        dur2_str = f"{int(round(attempt2_duration))}s" if attempt2_duration else "N/A"
+
+        prompt = (
+            f"[Interview Coaching Comparison Setup]\n{context_header}\n\n"
+            f"You are an expert interview coach for {role}. "
+            f"A candidate answered the same interview question twice (Attempt 1 vs Attempt 2).\n\n"
+            f"Interviewer Question: {clean_q}\n\n"
+            f"ANSWER ATTEMPT 1 ({dur1_str}):\n{clean_a1}\n\n"
+            f"ANSWER ATTEMPT 2 ({dur2_str}):\n{clean_a2}\n\n"
+            f"COMPARISON REQUIREMENTS:\n"
+            f"1. Compare the actual differences between Attempt 1 and Attempt 2.\n"
+            f"2. Identify 1 to 3 concrete observable improvements in Attempt 2 compared to Attempt 1 (e.g., 'More specific result', 'Shorter answer', 'Clearer explanation', 'Included measurable metrics').\n"
+            f"3. Identify 1 to 2 concrete points that could still be improved (e.g., 'Explain the technical trade-off more clearly').\n"
+            f"4. Provide 2 to 3 concise AI coaching notes specifically for Attempt 2.\n"
+            f"STRICT RULES:\n"
+            f"- Do NOT create an arbitrary numeric 'improvement score' or percentage.\n"
+            f"- Do NOT use 'confidence' as a metric.\n"
+            f"- Do NOT invent information.\n"
+            f"- Keep bullet points concise and professional.\n\n"
+            f"Return a valid JSON object matching this schema:\n"
+            f'{{\n'
+            f'  "improvements": ["<improvement 1>", "<improvement 2>"],\n'
+            f'  "still_improve": ["<point 1>"],\n'
+            f'  "attempt2_notes": ["<note 1>", "<note 2>"]\n'
+            f'}}'
+        )
+
+        try:
+            logger.info(f"[Answer Replay] Requesting comparison for Question: \"{clean_q[:50]}\"")
+            raw_text = await self._call_gemini_api(
+                contents=[{"role": "user", "parts": [{"text": prompt}]}],
+                api_key=api_key,
+                enforce_json=True,
+                system_instruction=REPLAY_COMPARE_SYSTEM_PROMPT
+            )
+            parsed = self._parse_json_comparison(raw_text)
+            if not parsed or (not parsed.get("improvements") and not parsed.get("attempt2_notes")):
+                logger.warning(f"[Answer Replay] Could not extract valid comparison from Gemini: {raw_text[:100]}")
+                return {
+                    "status": "error",
+                    "improvements": [],
+                    "still_improve": [],
+                    "attempt2_notes": [],
+                    "error_type": "malformed_response",
+                    "error_message": "AI notes are unavailable right now."
+                }
+            logger.info(f"[Answer Replay] Successfully generated answer comparison ({len(parsed.get('improvements', []))} improvements).")
+            return {
+                "status": "success",
+                "improvements": parsed.get("improvements", [])[:4],
+                "still_improve": parsed.get("still_improve", [])[:3],
+                "attempt2_notes": parsed.get("attempt2_notes", [])[:4],
+                "error_type": None,
+                "error_message": None
+            }
+        except Exception as e:
+            err_type = classify_gemini_error(e)
+            sanitized = sanitize_error_message(str(e))
+            logger.warning(f"[Answer Replay] Failed generating comparison ({err_type}): {sanitized}")
+            return {
+                "status": "error",
+                "improvements": [],
+                "still_improve": [],
+                "attempt2_notes": [],
+                "error_type": err_type,
+                "error_message": "AI notes are unavailable right now."
+            }
+

@@ -1,9 +1,34 @@
 import React, { useEffect, useRef } from 'react';
 import { VoiceState } from '../types/conversation';
 
-interface VoiceCreatureProps {
+export interface VoiceReactiveConfig {
+  micSensitivity?: number;      // Multiplier for microphone amplitude response (default 1.0)
+  micExpansionMax?: number;     // Maximum radius expansion ratio during loud speech (default 0.08 = +8% to +10%)
+  micLobeDistortionMax?: number;// Maximum organic contour distortion from speech (default 0.05)
+  speechPulseSpeed?: number;    // Frequency of procedural AI speech cadence (default 4.8)
+  speechPulseMax?: number;      // Maximum expansion during AI speech (default 0.06)
+  thinkingSpeed?: number;       // Speed of cognitive pulsation (default 1.4)
+  idleBreathingAmp?: number;    // Subtle breathing amplitude in idle state (default 0.015)
+}
+
+const DEFAULT_CONFIG: Required<VoiceReactiveConfig> = {
+  micSensitivity: 1.0,
+  micExpansionMax: 0.08,        // Subtly bounded: 1.00 -> 1.08 (up to ~1.10 max)
+  micLobeDistortionMax: 0.05,   // Gentle contour ripple
+  speechPulseSpeed: 4.8,
+  speechPulseMax: 0.06,         // Subtly bounded for AI voice
+  thinkingSpeed: 1.4,
+  idleBreathingAmp: 0.015,      // Very gentle organic breathing (+-1.5%)
+};
+
+export interface VoiceCreatureProps {
   state: VoiceState;
   onTap?: () => void;
+  audioLevelRef?: React.MutableRefObject<number> | React.RefObject<number>;
+  audioLevel?: number;
+  config?: VoiceReactiveConfig;
+  className?: string;
+  compact?: boolean;
 }
 
 const STATE_CONFIG: Record<VoiceState, { colorVar: string; amp: number; speed: number; lobes: number; ring: number }> = {
@@ -65,14 +90,37 @@ function hueShift({ r, g, b }: { r: number; g: number; b: number }, deg: number)
   return { r: Math.round(r2 * 255), g: Math.round(g2 * 255), b: Math.round(b2 * 255) };
 }
 
-export const VoiceCreature: React.FC<VoiceCreatureProps> = ({ state, onTap }) => {
+export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
+  state,
+  onTap,
+  audioLevelRef,
+  audioLevel,
+  config,
+  className,
+  compact
+}) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const currentStateRef = useRef<VoiceState>(state);
+  const audioLevelPropRef = useRef<number | undefined>(audioLevel);
+  const externalAudioRef = useRef<React.MutableRefObject<number> | React.RefObject<number> | undefined>(audioLevelRef);
+  const configRef = useRef<VoiceReactiveConfig | undefined>(config);
 
   useEffect(() => {
     currentStateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    audioLevelPropRef.current = audioLevel;
+  }, [audioLevel]);
+
+  useEffect(() => {
+    externalAudioRef.current = audioLevelRef;
+  }, [audioLevelRef]);
+
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -114,13 +162,14 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({ state, onTap }) =>
       ring: 0
     };
     let colorMix = { r: 75, g: 86, b: 117 };
+    let smoothedMicLevel = 0;
 
     const motes = Array.from({ length: 18 }, (_, i) => ({
-      radiusF: 1.15 + Math.random() * 0.75,
+      radiusF: 1.10 + Math.random() * 0.45,
       speed: 0.2 + Math.random() * 0.4,
       dir: i % 2 === 0 ? 1 : -1,
       phase: Math.random() * Math.PI * 2,
-      size: 1 + Math.random() * 1.5
+      size: 1 + Math.random() * 1.3
     }));
 
     let t = 0;
@@ -165,13 +214,37 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({ state, onTap }) =>
       t += 0.016;
       const currentName = currentStateRef.current;
       const target = STATE_CONFIG[currentName];
+      const cfg = { ...DEFAULT_CONFIG, ...configRef.current };
 
+      // 1. Audio amplitude input & smoothing
+      let rawMicInput = 0;
+      if (currentName === 'listening') {
+        const fromRef = externalAudioRef.current?.current;
+        const fromProp = audioLevelPropRef.current;
+        const val = typeof fromRef === 'number' ? fromRef : fromProp;
+        if (typeof val === 'number' && !isNaN(val)) {
+          // Clamped input range [0.0, 1.0]
+          rawMicInput = Math.max(0, Math.min(1.0, val * cfg.micSensitivity));
+        }
+      }
+
+      // Asymmetrical attack / decay envelope follower (0.28 attack, 0.10 decay)
+      if (rawMicInput > smoothedMicLevel) {
+        smoothedMicLevel += (rawMicInput - smoothedMicLevel) * 0.28;
+      } else {
+        smoothedMicLevel += (rawMicInput - smoothedMicLevel) * 0.10;
+      }
+      if (smoothedMicLevel < 0.001) smoothedMicLevel = 0;
+      smoothedMicLevel = Math.min(1.0, smoothedMicLevel);
+
+      // Lerp baseline state attributes
       cur.amp += (target.amp - cur.amp) * 0.05;
       cur.speed += (target.speed - cur.speed) * 0.05;
       cur.lobes += (target.lobes - cur.lobes) * 0.08;
       cur.ring += (target.ring - cur.ring) * 0.06;
       rot += 0.0028 * cur.speed;
 
+      // Color transition
       const targetHex = hex(target.colorVar);
       const tc = hexToRgb(targetHex);
       colorMix.r += (tc.r - colorMix.r) * 0.05;
@@ -185,17 +258,67 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({ state, onTap }) =>
       if (!ctx) return;
       ctx.clearRect(0, 0, W, H);
 
-      const baseR = Math.min(W, H) * 0.2;
-      const breathe = 1 + Math.sin(t * cur.speed * 0.9) * 0.03;
-      const lobes = Math.round(cur.lobes);
+      // Controlled base radius and maximum safe distance to canvas edge
+      const baseR = Math.min(W, H) * 0.18;
+      const maxSafeRadius = Math.min(cx, cy); // Distance from center to closest canvas boundary
+      let dynBaseR = baseR;
+      let dynAmp = cur.amp;
+      let dynLobes = Math.round(cur.lobes);
+      let dynPhase = t * cur.speed * 1.2;
+      let dynRing = cur.ring;
 
-      // Outward pulse ring (speaking state)
-      if (cur.ring > 0.03) {
+      if (currentName === 'listening') {
+        // 2. USER IS SPEAKING:
+        // Subtle, restrained scale range: 1.00 -> ~1.08 / 1.10 max
+        const voiceExpansion = smoothedMicLevel * cfg.micExpansionMax;
+        const voiceMicroPulse = Math.sin(t * 6.5) * (smoothedMicLevel * 0.018);
+        const voiceBreathe = Math.sin(t * cur.speed * 0.9) * 0.012;
+
+        const totalScale = Math.min(1.10, Math.max(0.98, 1 + voiceBreathe + voiceExpansion + voiceMicroPulse));
+        dynBaseR = baseR * totalScale;
+        dynAmp = cur.amp + smoothedMicLevel * cfg.micLobeDistortionMax;
+        dynPhase = t * (cur.speed + smoothedMicLevel * 0.8) * 1.2;
+
+        // Subtle energy ring only on louder emphasis
+        if (smoothedMicLevel > 0.45) {
+          dynRing = Math.max(dynRing, (smoothedMicLevel - 0.45) * 0.8);
+        }
+      } else if (currentName === 'thinking') {
+        // 3. THINKING:
+        // Slower, intelligent dual-harmonic rhythm
+        const cognitivePulse = Math.sin(t * cfg.thinkingSpeed) * 0.035 + Math.sin(t * 0.65) * 0.018;
+        dynBaseR = baseR * (1 + cognitivePulse);
+        dynAmp = cur.amp + Math.sin(t * 1.8) * 0.012;
+        dynPhase = t * cur.speed * 1.1;
+      } else if (currentName === 'speaking') {
+        // 4. AI IS SPEAKING:
+        // Expressive speech cadence simulating natural vocal prosody
+        const syllabicCadence = Math.sin(t * cfg.speechPulseSpeed);
+        const phraseCadence = Math.sin(t * (cfg.speechPulseSpeed * 0.45) + 0.6);
+        const breathCadence = Math.sin(t * 1.2 + 1.0);
+        const speechEnvelope = Math.max(0, syllabicCadence * 0.45 + phraseCadence * 0.35 + breathCadence * 0.2);
+
+        const speechExpansion = speechEnvelope * cfg.speechPulseMax;
+        dynBaseR = baseR * (1.02 + speechExpansion);
+        dynAmp = cur.amp + speechEnvelope * 0.04;
+        dynPhase = t * (cur.speed + speechEnvelope * 0.25) * 1.2;
+      } else {
+        // 1. IDLE:
+        // Mostly calm, gentle organic breathing
+        const idleBreathing = Math.sin(t * cur.speed * 0.9) * cfg.idleBreathingAmp;
+        dynBaseR = baseR * (1 + idleBreathing);
+        dynAmp = cur.amp;
+        dynPhase = t * cur.speed * 1.2;
+      }
+
+      // Outward pulse ring
+      if (dynRing > 0.02) {
         const loops = 2;
         for (let p = 0; p < loops; p++) {
           const ph = ((t * 0.55 + p / loops) % 1);
-          const r = baseR * 1.05 + ph * baseR * 1.3;
-          ctx.strokeStyle = `rgba(${col},${(1 - ph) * 0.22 * cur.ring})`;
+          // Ring extends up to dynBaseR * 1.65, safely within canvas bounds
+          const r = dynBaseR * 1.05 + ph * dynBaseR * 0.60;
+          ctx.strokeStyle = `rgba(${col},${(1 - ph) * 0.22 * dynRing})`;
           ctx.lineWidth = 1.2;
           ctx.beginPath();
           ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -204,56 +327,68 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({ state, onTap }) =>
       }
 
       // Soft halo background
-      const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseR * 2.7);
-      halo.addColorStop(0, `rgba(${col},0.28)`);
-      halo.addColorStop(1, `rgba(${col},0)`);
+      // MUST guarantee that halo radius is safely smaller than maxSafeRadius (canvas edge),
+      // and that the radial gradient smoothly fades to 100% transparent before reaching maxSafeRadius.
+      const haloBoost = currentName === 'listening' ? smoothedMicLevel * 0.12 : currentName === 'speaking' ? 0.06 : 0;
+      const haloAlpha = 0.26 + haloBoost;
+      // Cap haloR at maxSafeRadius * 0.88 so it NEVER touches or exceeds the canvas boundary
+      const haloR = Math.min(maxSafeRadius * 0.88, dynBaseR * (2.1 + (currentName === 'listening' ? smoothedMicLevel * 0.15 : 0)));
+      
+      const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloR);
+      halo.addColorStop(0,    `rgba(${col},${haloAlpha})`);
+      halo.addColorStop(0.30, `rgba(${col},${haloAlpha * 0.55})`);
+      halo.addColorStop(0.65, `rgba(${col},${haloAlpha * 0.18})`);
+      halo.addColorStop(0.88, `rgba(${col},${haloAlpha * 0.04})`);
+      halo.addColorStop(1,    `rgba(${col},0)`);
       ctx.fillStyle = halo;
       ctx.beginPath();
-      ctx.arc(cx, cy, baseR * 2.7, 0, Math.PI * 2);
+      ctx.arc(cx, cy, haloR, 0, Math.PI * 2);
       ctx.fill();
 
-      // Light motes
+      // Light motes (particles)
       for (const m of motes) {
         const ang = m.phase + t * m.speed * m.dir;
-        const r = baseR * m.radiusF * (1 + cur.amp * 0.6);
+        const moteBonus = currentName === 'listening' ? smoothedMicLevel * 0.12 : 0;
+        // Keep motes comfortably within canvas bounds
+        const r = Math.min(maxSafeRadius * 0.78, dynBaseR * m.radiusF * (1 + dynAmp * 0.4 + moteBonus));
         const mx = cx + Math.cos(ang) * r;
         const my = cy + Math.sin(ang * 1.15) * r * 0.9;
-        const twinkle = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * 1.6 + m.phase));
+        const twinkle = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * (1.6 + (currentName === 'listening' ? smoothedMicLevel * 1.2 : 0)) + m.phase));
         ctx.beginPath();
         ctx.arc(mx, my, m.size, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(${secCol},${0.55 * twinkle})`;
-        ctx.shadowColor = `rgba(${secCol},0.9)`;
-        ctx.shadowBlur = 6;
+        ctx.shadowColor = `rgba(${secCol},0.8)`;
+        ctx.shadowBlur = 5;
         ctx.fill();
       }
       ctx.shadowBlur = 0;
 
       // Layered echoes
       function layer(scaleMult: number, alphaMult: number, phaseOffset: number, lobeOffset: number) {
-        const phase = t * cur.speed * 1.2 - phaseOffset;
-        const pts = blobPoints(baseR * breathe * scaleMult, cur.amp, lobes + lobeOffset, phase, 64);
+        const phase = dynPhase - phaseOffset;
+        const pts = blobPoints(dynBaseR * scaleMult, dynAmp, dynLobes + lobeOffset, phase, 64);
         smoothPath(pts);
         if (!ctx) return;
-        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseR * 1.15 * scaleMult);
+        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, dynBaseR * 1.15 * scaleMult);
         g.addColorStop(0,   `rgba(${col},${0.85 * alphaMult})`);
         g.addColorStop(0.6, `rgba(${secCol},${0.45 * alphaMult})`);
         g.addColorStop(1,   `rgba(${col},${0.10 * alphaMult})`);
         ctx.fillStyle = g;
         ctx.fill();
       }
-      layer(1.42, 0.28, 0.55, 1);
-      layer(1.20, 0.45, 0.28, 0);
+      layer(1.36, 0.28, 0.55, 1);
+      layer(1.18, 0.45, 0.28, 0);
 
       // Core blob
-      const pts = blobPoints(baseR * breathe, cur.amp, lobes, t * cur.speed * 1.2, 64);
+      const pts = blobPoints(dynBaseR, dynAmp, dynLobes, dynPhase, 64);
       smoothPath(pts);
-      const fill = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseR * 1.15);
+      const fill = ctx.createRadialGradient(cx, cy, 0, cx, cy, dynBaseR * 1.15);
       fill.addColorStop(0,   `rgba(${col},0.92)`);
       fill.addColorStop(0.6, `rgba(${secCol},0.55)`);
       fill.addColorStop(1,   `rgba(${col},0.16)`);
       ctx.fillStyle = fill;
-      ctx.shadowColor = `rgba(${col},0.55)`;
-      ctx.shadowBlur = 22;
+      ctx.shadowColor = `rgba(${col},0.45)`;
+      ctx.shadowBlur = 18;
       ctx.fill();
       ctx.shadowBlur = 0;
 
@@ -274,8 +409,14 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({ state, onTap }) =>
   }, []);
 
   return (
-    <div className="canvas-wrap" ref={wrapRef} onClick={onTap} id="creature">
+    <div
+      className={`canvas-wrap ${compact ? 'canvas-wrap--compact' : ''} ${className || ''}`}
+      ref={wrapRef}
+      onClick={onTap}
+      id="creature"
+    >
       <canvas ref={canvasRef} className="voice-canvas" id="c" />
     </div>
   );
 };
+

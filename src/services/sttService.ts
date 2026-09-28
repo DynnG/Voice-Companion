@@ -29,6 +29,15 @@ export interface TranscribeContext {
   generateAiResponse?: boolean;
 }
 
+export function getApiBaseUrl(): string {
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) {
+      return import.meta.env.VITE_API_BASE_URL;
+    }
+  } catch {}
+  return 'http://localhost:8000';
+}
+
 export async function extractDocumentText(file: File): Promise<{
   filename: string;
   file_type: string;
@@ -55,7 +64,7 @@ export async function extractDocumentText(file: File): Promise<{
   }
 
   // Backend extraction for PDF, DOCX, and fallback
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+  const baseUrl = getApiBaseUrl();
   const apiUrl = `${baseUrl}/documents/extract`;
 
   const formData = new FormData();
@@ -126,7 +135,7 @@ export async function transcribeAudio(
     formData.append('generate_ai_response', String(context.generateAiResponse));
   }
 
-  const apiUrl = import.meta.env.VITE_STT_API_URL || 'http://localhost:8000/transcribe';
+  const apiUrl = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_STT_API_URL) || `${getApiBaseUrl()}/transcribe`;
 
   try {
     const response = await fetch(apiUrl, {
@@ -212,7 +221,7 @@ export async function fetchInitialInterviewQuestion(
   attachedDocuments?: AttachedDocumentPayload[],
   interviewId?: string
 ): Promise<string> {
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+  const baseUrl = getApiBaseUrl();
   const apiUrl = `${baseUrl}/interview/initial-question`;
 
   try {
@@ -258,7 +267,7 @@ export async function fetchFollowupInterviewQuestion(
   attachedDocuments?: AttachedDocumentPayload[],
   interviewId?: string
 ): Promise<FollowupQuestionResult> {
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+  const baseUrl = getApiBaseUrl();
   const apiUrl = `${baseUrl}/interview/followup`;
 
   try {
@@ -314,4 +323,135 @@ export async function fetchFollowupInterviewQuestion(
     };
   }
 }
+
+export interface AnswerAiNotesResult {
+  status: 'success' | 'error';
+  notes: string[];
+  error_type?: string;
+  error_message?: string;
+}
+
+export interface AnswerComparisonResult {
+  status: 'success' | 'error';
+  improvements: string[];
+  still_improve: string[];
+  attempt2_notes: string[];
+  error_type?: string;
+  error_message?: string;
+}
+
+export async function fetchAnswerAiNotes(params: {
+  interviewId?: string;
+  question: string;
+  userAnswer: string;
+  jobRole?: string;
+  attachedDocuments?: AttachedDocumentPayload[];
+  durationSeconds?: number;
+}): Promise<AnswerAiNotesResult> {
+  const baseUrl = getApiBaseUrl();
+  const apiUrl = `${baseUrl}/interview/replay/notes`;
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        interview_id: params.interviewId,
+        question: params.question,
+        user_answer: params.userAnswer,
+        job_role: params.jobRole || 'Software Developer',
+        attached_documents: params.attachedDocuments || [],
+        duration_seconds: params.durationSeconds
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        status: data.status === 'error' ? 'error' : 'success',
+        notes: data.notes || [],
+        error_type: data.error_type,
+        error_message: data.error_message || (data.status === 'error' ? 'AI notes are unavailable right now.' : undefined)
+      };
+    } else {
+      return {
+        status: 'error',
+        notes: [],
+        error_type: response.status === 429 ? 'quota_exceeded' : 'service_error',
+        error_message: 'AI notes are unavailable right now.'
+      };
+    }
+  } catch (err) {
+    console.warn('Could not fetch AI notes from backend:', err);
+    return {
+      status: 'error',
+      notes: [],
+      error_type: 'network_error',
+      error_message: 'AI notes are unavailable right now.'
+    };
+  }
+}
+
+export async function fetchAnswerComparison(params: {
+  interviewId?: string;
+  question: string;
+  attempt1Answer: string;
+  attempt1DurationSeconds?: number;
+  attempt2Answer: string;
+  attempt2DurationSeconds?: number;
+  jobRole?: string;
+  attachedDocuments?: AttachedDocumentPayload[];
+}): Promise<AnswerComparisonResult> {
+  const baseUrl = getApiBaseUrl();
+  const apiUrl = `${baseUrl}/interview/replay/compare`;
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        interview_id: params.interviewId,
+        question: params.question,
+        attempt1_answer: params.attempt1Answer,
+        attempt1_duration_seconds: params.attempt1DurationSeconds,
+        attempt2_answer: params.attempt2Answer,
+        attempt2_duration_seconds: params.attempt2DurationSeconds,
+        job_role: params.jobRole || 'Software Developer',
+        attached_documents: params.attachedDocuments || []
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        status: data.status === 'error' ? 'error' : 'success',
+        improvements: data.improvements || [],
+        still_improve: data.still_improve || [],
+        attempt2_notes: data.attempt2_notes || [],
+        error_type: data.error_type,
+        error_message: data.error_message || (data.status === 'error' ? 'AI notes are unavailable right now.' : undefined)
+      };
+    } else {
+      return {
+        status: 'error',
+        improvements: [],
+        still_improve: [],
+        attempt2_notes: [],
+        error_type: response.status === 429 ? 'quota_exceeded' : 'service_error',
+        error_message: 'AI notes are unavailable right now.'
+      };
+    }
+  } catch (err) {
+    console.warn('Could not fetch answer comparison from backend:', err);
+    return {
+      status: 'error',
+      improvements: [],
+      still_improve: [],
+      attempt2_notes: [],
+      error_type: 'network_error',
+      error_message: 'AI notes are unavailable right now.'
+    };
+  }
+}
+
 

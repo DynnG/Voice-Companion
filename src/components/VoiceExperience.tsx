@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { VoiceState, AttachedDocument, Message } from '../types/conversation';
+import { VoiceState, AttachedDocument, Message, AnswerAttempt, ReplayState } from '../types/conversation';
 import { Header } from './Header';
 import { VoiceCreature } from './VoiceCreature';
 import { StateLabel } from './StateLabel';
 import { ResponseCaption } from './ResponseCaption';
 import { VoiceControls } from './VoiceControls';
-import { transcribeAudio, fetchFollowupInterviewQuestion } from '../services/sttService';
-import { speakText, stopSpeaking } from '../services/ttsService';
+import { AnswerReplayCard } from './AnswerReplayCard';
+import { transcribeAudio, fetchFollowupInterviewQuestion, fetchAnswerAiNotes, fetchAnswerComparison } from '../services/sttService';
+import { speakText, stopSpeaking, unlockAudio } from '../services/ttsService';
 
 interface VoiceExperienceProps {
   interviewId?: string;
@@ -56,6 +57,30 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     isCompleted ? 'Interview Complete · Review the full transcript in the side panel' : undefined
   );
 
+  // Session-Only Answer Replay State
+  const [replayState, setReplayState] = useState<ReplayState>({
+    questionText: initialQuestionToSpeak || '',
+    attempt1: null,
+    attempt2: null,
+    comparison: null,
+    isRetryMode: false,
+    isVisible: false,
+    isMinimized: false
+  });
+  const replayAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingAttempt, setPlayingAttempt] = useState<(1 | 2) | null>(null);
+  const [playbackCurrentTime, setPlaybackCurrentTime] = useState<number>(0);
+  const [playbackProgress, setPlaybackProgress] = useState<number>(0);
+  const objectUrlsRef = useRef<string[]>([]);
+  const recordingStartTimeRef = useRef<number>(0);
+  const currentQuestionBeingAnsweredRef = useRef<string>(initialQuestionToSpeak || '');
+
+  useEffect(() => {
+    if (initialQuestionToSpeak) {
+      currentQuestionBeingAnsweredRef.current = initialQuestionToSpeak;
+    }
+  }, [initialQuestionToSpeak]);
+
   useEffect(() => {
     if (isCompleted) {
       setCustomLabel('Interview Complete');
@@ -78,6 +103,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   const speechStartTimeRef = useRef<number>(0);
   const silenceStartTimeRef = useRef<number | null>(null);
   const maxRecordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const micAudioLevelRef = useRef<number>(0);
 
   // Play initial interviewer question with Kokoro TTS on mount if provided
   useEffect(() => {
@@ -110,11 +136,109 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   useEffect(() => {
     return () => {
       cleanupAudioResources();
+      stopReplayPlayback();
+      objectUrlsRef.current.forEach((url) => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {}
+      });
+      objectUrlsRef.current = [];
     };
   }, []);
 
-  const cleanupAudioResources = () => {
+  const stopReplayPlayback = () => {
+    if (replayAudioRef.current) {
+      try {
+        replayAudioRef.current.pause();
+      } catch {}
+      replayAudioRef.current = null;
+    }
+    setPlayingAttempt(null);
+    setPlaybackCurrentTime(0);
+    setPlaybackProgress(0);
+  };
+
+  const playAttempt = (attemptNum: 1 | 2) => {
     stopSpeaking();
+    stopReplayPlayback();
+
+    const attempt = attemptNum === 1 ? replayState.attempt1 : replayState.attempt2;
+    if (!attempt || !attempt.audioUrl) return;
+
+    try {
+      const audio = new Audio(attempt.audioUrl);
+      replayAudioRef.current = audio;
+      setPlayingAttempt(attemptNum);
+
+      audio.ontimeupdate = () => {
+        if (audio.duration && audio.duration > 0) {
+          setPlaybackCurrentTime(audio.currentTime);
+          setPlaybackProgress(audio.currentTime / audio.duration);
+        }
+      };
+
+      audio.onended = () => {
+        setPlayingAttempt(null);
+        setPlaybackCurrentTime(0);
+        setPlaybackProgress(0);
+        replayAudioRef.current = null;
+      };
+
+      audio.onerror = (e) => {
+        console.warn('[Answer Replay] Audio playback error:', e);
+        setPlayingAttempt(null);
+        replayAudioRef.current = null;
+      };
+
+      audio.play().catch((playErr) => {
+        console.warn('[Answer Replay] Audio play prevented:', playErr);
+        setPlayingAttempt(null);
+      });
+    } catch (e) {
+      console.warn('[Answer Replay] Could not initialize audio:', e);
+      setPlayingAttempt(null);
+    }
+  };
+
+  const handleTryAgain = () => {
+    stopSpeaking();
+    stopReplayPlayback();
+    setReplayState((prev) => ({
+      ...prev,
+      isRetryMode: true,
+      isMinimized: false
+    }));
+    setCustomLabel('Attempt 2 · Tap mic to record');
+    setStatusHint('Attempt 2 · Tap microphone once to speak your revised answer');
+  };
+
+  const handleCancelRetry = () => {
+    setReplayState((prev) => ({
+      ...prev,
+      isRetryMode: false
+    }));
+    setCustomLabel(undefined);
+    setStatusHint(undefined);
+  };
+
+  const handleResumeInterview = () => {
+    stopReplayPlayback();
+    setReplayState((prev) => ({
+      ...prev,
+      isRetryMode: false,
+      isVisible: false
+    }));
+    setCustomLabel(undefined);
+    setStatusHint(undefined);
+    if (currentQuestionBeingAnsweredRef.current) {
+      showCaption(currentQuestionBeingAnsweredRef.current);
+    }
+  };
+
+  const cleanupAudioResources = () => {
+    micAudioLevelRef.current = 0;
+    stopSpeaking();
+    stopReplayPlayback();
 
     if (vadAnimationIdRef.current) {
       cancelAnimationFrame(vadAnimationIdRef.current);
@@ -201,6 +325,13 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
           sumSquares += normalized * normalized;
         }
         const rms = Math.sqrt(sumSquares / dataArray.length);
+
+        // Normalize microphone audio amplitude to 0.0 - 1.0 for dynamic voice-reactive orb
+        // Quiet ambient noise is below 0.012. Soft-saturate with tanh so sudden loud mic bursts cannot blow up.
+        const rawEnergy = Math.max(0, rms - 0.012);
+        const saturatedLevel = Math.min(1.0, Math.tanh(rawEnergy * 8.0));
+        micAudioLevelRef.current = saturatedLevel;
+
         const now = Date.now();
 
         if (rms > SILENCE_THRESHOLD_RMS) {
@@ -209,6 +340,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             hasSpokenRef.current = true;
             speechStartTimeRef.current = now;
             setCustomLabel('listening to your answer…');
+            stopSpeaking();
           }
           silenceStartTimeRef.current = null;
         } else {
@@ -289,9 +421,11 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         await processAudioTranscriptionAndInterview(audioBlob);
       };
 
+      recordingStartTimeRef.current = Date.now();
+      stopReplayPlayback();
       mediaRecorder.start();
       setState('listening');
-      setCustomLabel('listening… speak your answer');
+      setCustomLabel(replayState.isRetryMode ? 'listening… speak revised answer' : 'listening… speak your answer');
 
       // Start silence / speech endpoint detection
       startSilenceDetection(stream);
@@ -326,6 +460,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
    * Automatically triggered when speech silence is detected.
    */
   const stopRecordingAutomatically = () => {
+    micAudioLevelRef.current = 0;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
       // Keep voice sphere indicator active internally, but DO NOT show chat thinking bubble yet
@@ -366,9 +501,153 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       });
 
       const userText = (result.transcription || result.text || '').trim();
+      const durationSeconds = result.duration && result.duration > 0
+        ? Math.round(result.duration)
+        : Math.max(1, Math.round((Date.now() - recordingStartTimeRef.current) / 1000));
 
       if (userText.length > 0) {
+        if (replayState.isRetryMode) {
+          console.log('[Live Interview] User spoken Attempt 2 transcription:', userText);
+          const audioUrl2 = URL.createObjectURL(audioBlob);
+          objectUrlsRef.current.push(audioUrl2);
+
+          const attempt2Data: AnswerAttempt = {
+            attemptNumber: 2,
+            audioBlob,
+            audioUrl: audioUrl2,
+            transcript: userText,
+            durationSeconds,
+            aiNotes: [],
+            aiNotesStatus: 'loading'
+          };
+
+          setReplayState((prev) => ({
+            ...prev,
+            attempt2: attempt2Data,
+            comparison: {
+              improvements: [],
+              stillImprove: [],
+              attempt2Notes: [],
+              status: 'loading'
+            },
+            isRetryMode: false,
+            isVisible: true,
+            isMinimized: false
+          }));
+
+          showCaption(`"Attempt 2: ${userText}"`);
+          if (onUserTranscribed) {
+            onUserTranscribed(`(Attempt 2) ${userText}`);
+          }
+
+          setState('idle');
+          setCustomLabel('Attempt 2 complete');
+          setStatusHint('Compare your answers above · Click Resume Interview to continue');
+          isProcessingRef.current = false;
+
+          const questionToCompare = replayState.questionText || currentQuestionBeingAnsweredRef.current || 'Interview Question';
+          fetchAnswerComparison({
+            interviewId,
+            question: questionToCompare,
+            attempt1Answer: replayState.attempt1?.transcript || '',
+            attempt1DurationSeconds: replayState.attempt1?.durationSeconds,
+            attempt2Answer: userText,
+            attempt2DurationSeconds: durationSeconds,
+            jobRole,
+            attachedDocuments: attachedDocuments.map((d) => ({
+              id: d.id,
+              name: d.name,
+              category: d.category,
+              content: d.content || d.extractedText,
+              extracted_text: d.content || d.extractedText
+            }))
+          }).then((compRes) => {
+            setReplayState((prev) => {
+              if (!prev.attempt2) return prev;
+              return {
+                ...prev,
+                attempt2: {
+                  ...prev.attempt2,
+                  aiNotes: compRes.attempt2_notes || [],
+                  aiNotesStatus: compRes.status === 'success' ? 'success' : 'error',
+                  errorMessage: compRes.error_message
+                },
+                comparison: {
+                  improvements: compRes.improvements || [],
+                  stillImprove: compRes.still_improve || [],
+                  attempt2Notes: compRes.attempt2_notes || [],
+                  status: compRes.status === 'success' ? 'success' : 'error',
+                  errorMessage: compRes.error_message
+                }
+              };
+            });
+          });
+
+          return;
+        }
+
+        // --- Standard Interview Turn (Attempt 1) ---
         console.log('[Live Interview] 1. User spoken transcription:', userText);
+
+        // Revoke previous turn object URLs to keep session memory clean
+        objectUrlsRef.current.forEach((u) => {
+          try { URL.revokeObjectURL(u); } catch {}
+        });
+        objectUrlsRef.current = [];
+
+        const audioUrl1 = URL.createObjectURL(audioBlob);
+        objectUrlsRef.current.push(audioUrl1);
+
+        const questionAnswered = currentQuestionBeingAnsweredRef.current || initialQuestionToSpeak || 'Interview Question';
+
+        const attempt1Data: AnswerAttempt = {
+          attemptNumber: 1,
+          audioBlob,
+          audioUrl: audioUrl1,
+          transcript: userText,
+          durationSeconds,
+          aiNotes: [],
+          aiNotesStatus: 'loading'
+        };
+
+        setReplayState({
+          questionText: questionAnswered,
+          attempt1: attempt1Data,
+          attempt2: null,
+          comparison: null,
+          isRetryMode: false,
+          isVisible: true,
+          isMinimized: false
+        });
+
+        // Fire AI notes generation asynchronously (does NOT delay interview turn)
+        fetchAnswerAiNotes({
+          interviewId,
+          question: questionAnswered,
+          userAnswer: userText,
+          jobRole,
+          attachedDocuments: attachedDocuments.map((d) => ({
+            id: d.id,
+            name: d.name,
+            category: d.category,
+            content: d.content || d.extractedText,
+            extracted_text: d.content || d.extractedText
+          })),
+          durationSeconds
+        }).then((notesRes) => {
+          setReplayState((prev) => {
+            if (!prev.attempt1 || prev.attempt1.audioUrl !== audioUrl1) return prev;
+            return {
+              ...prev,
+              attempt1: {
+                ...prev.attempt1,
+                aiNotes: notesRes.notes || [],
+                aiNotesStatus: notesRes.status === 'success' ? 'success' : 'error',
+                errorMessage: notesRes.error_message
+              }
+            };
+          });
+        });
 
         // Step 2: Immediately commit & render user's message as "You"
         if (onUserTranscribed) {
@@ -423,6 +702,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         // Step 6: Append Gemini response as separate "Pal (Interviewer)" state update
         if (onPalResponse && aiResponse) {
           onPalResponse(aiResponse);
+          currentQuestionBeingAnsweredRef.current = aiResponse;
         }
 
         // Step 7: Display interviewer follow-up, closing statement, or unavailable notice
@@ -549,6 +829,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
    * or finishes recording early when listening.
    */
   const handleToggleFlow = () => {
+    unlockAudio();
     if (isCompleted) return;
 
     // Barge-in: if Pal is currently speaking, tapping mic immediately stops speech and starts recording
@@ -567,6 +848,8 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     }
   };
 
+  const isCompactVisual = Boolean(replayState.isVisible && replayState.attempt1 && !replayState.isMinimized);
+
   return (
     <div className="stage relative w-full h-full flex flex-col items-center justify-between overflow-hidden select-none">
       {/* 1. Fixed Header */}
@@ -575,17 +858,50 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       </div>
 
       {/* 2. Responsive Central Interactive Area */}
-      <div className="flex-1 min-h-0 w-full flex flex-col items-center justify-center px-4 py-1 sm:py-2">
-        <VoiceCreature state={state} onTap={isCompleted ? undefined : handleToggleFlow} />
+      <div className="flex-1 min-h-0 w-full flex flex-col items-center justify-between px-3 sm:px-6 py-1 sm:py-2 overflow-hidden">
+        {/* Upper Zone: Pal / Voice Visualization */}
+        <div className={`w-full flex flex-col items-center justify-center transition-all duration-300 overflow-visible ${
+          isCompactVisual ? 'shrink-0 pt-0.5' : 'flex-1'
+        }`}>
+          <VoiceCreature
+            state={state}
+            onTap={isCompleted ? undefined : handleToggleFlow}
+            audioLevelRef={micAudioLevelRef}
+            compact={isCompactVisual}
+          />
 
-        <div className="shrink-0 mt-1 sm:mt-2 min-h-[20px] flex items-center justify-center">
-          <StateLabel state={state} customLabel={customLabel} />
+          <div className="shrink-0 mt-1 sm:mt-1.5 min-h-[18px] flex items-center justify-center">
+            <StateLabel state={state} customLabel={customLabel} />
+          </div>
+
+          {/* Dynamic Subtitle Slot: Visible when caption text exists, or collapsed to save space during replay */}
+          {captionVisible ? (
+            <div className="w-full max-w-lg h-[46px] shrink-0 flex items-center justify-center mt-1 px-2 overflow-hidden">
+              <ResponseCaption captionText={captionText} visible={captionVisible} />
+            </div>
+          ) : !replayState.isVisible ? (
+            <div className="w-full max-w-lg h-[46px] shrink-0 flex items-center justify-center mt-1 px-2 overflow-hidden" />
+          ) : null}
         </div>
 
-        {/* Dynamic Subtitle Slot: Fixed stable height constraint to ensure controls never move */}
-        <div className="w-full max-w-lg h-[62px] shrink-0 flex items-center justify-center mt-1 px-2 overflow-hidden">
-          <ResponseCaption captionText={captionText} visible={captionVisible} />
-        </div>
+        {/* Dedicated Lower-Middle Zone: Answer Comparison / Replay Panel */}
+        {replayState.isVisible && replayState.attempt1 && (
+          <div className="w-full flex-1 min-h-0 flex flex-col items-center justify-center my-1 sm:my-2 px-1 sm:px-2 z-10">
+            <AnswerReplayCard
+              replayState={replayState}
+              onPlayAttempt={playAttempt}
+              onStopPlayback={stopReplayPlayback}
+              playingAttempt={playingAttempt}
+              playbackCurrentTime={playbackCurrentTime}
+              playbackProgress={playbackProgress}
+              onTryAgain={handleTryAgain}
+              onCancelRetry={handleCancelRetry}
+              onResumeInterview={handleResumeInterview}
+              onToggleMinimize={() => setReplayState((prev) => ({ ...prev, isMinimized: !prev.isMinimized }))}
+              onClose={() => setReplayState((prev) => ({ ...prev, isVisible: false }))}
+            />
+          </div>
+        )}
       </div>
 
       {/* 3. Anchored Bottom Controls: Mic button ALWAYS fixed in position */}

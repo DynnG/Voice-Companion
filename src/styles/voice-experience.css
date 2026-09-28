@@ -53,6 +53,13 @@
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
+  transition: width 0.3s ease, height 0.3s ease;
+  overflow: visible;
+}
+
+.canvas-wrap.canvas-wrap--compact {
+  width: min(38vw, min(18vh, 150px));
+  height: min(38vw, min(18vh, 150px));
 }
 
 .state-label {

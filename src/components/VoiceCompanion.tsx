@@ -5,7 +5,7 @@ import { VoiceExperience } from './VoiceExperience';
 import { LiveConversationPanel } from './LiveConversationPanel';
 import { DocumentAttachmentScreen } from './DocumentAttachmentScreen';
 import { fetchInitialInterviewQuestion } from '../services/sttService';
-import { stopSpeaking } from '../services/ttsService';
+import { stopSpeaking, unlockAudio } from '../services/ttsService';
 
 interface InterviewSession {
   id: string;
@@ -41,6 +41,7 @@ export const VoiceCompanion: React.FC = () => {
 
   // Transition from Document Attachment Screen to Live Voice Interview
   const handleStartInterview = async (jobRole: string, docs: AttachedDocument[]) => {
+    unlockAudio();
     const cleanRole = jobRole.trim() || 'Software Developer';
 
     // 1. Prepare in-memory documents summary for initial Gemini question
