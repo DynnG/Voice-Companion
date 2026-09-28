@@ -17,6 +17,7 @@ export default {
         }
       },
       fontFamily: {
+        manrope: ['Manrope', 'system-ui', 'sans-serif'],
         space: ['"Space Grotesk"', 'sans-serif'],
         inter: ['Inter', 'sans-serif'],
       }

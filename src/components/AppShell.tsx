@@ -22,7 +22,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   return (
     <div className="w-screen h-screen flex flex-col bg-[#133020] text-[#f5eedb] overflow-hidden select-none font-inter">
       {/* Top Application Shell Navbar */}
-      <header className="h-14 bg-[#133020] border-b border-[#046241]/40 px-4 flex items-center justify-between z-30 shrink-0 shadow-sm">
+      <header className="h-14 bg-[#133020] border-b border-[#046241]/40 px-5 flex items-center justify-between z-30 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
           {/* Shell Brand Title */}
           <div className="flex items-center gap-2">
