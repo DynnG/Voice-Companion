@@ -27,6 +27,11 @@ A high-performance Speech-to-Text (STT) backend service powered by [FastAPI](htt
 | `WHISPER_CPU_THREADS` | `4` | Integer | CPU thread allocation |
 | `WHISPER_VAD_FILTER` | `false` | `true`, `false` | Silero Voice Activity Detection filter |
 | `WHISPER_CONDITION_ON_PREV` | `false` | `true`, `false` | Text conditioning across segments |
+| `TTS_ENABLED` | `true` | `true`, `false` | Enable/disable Kokoro ONNX TTS engine |
+| `KOKORO_MODEL` | `onnx-community/Kokoro-82M-v1.0-ONNX` | Model identifier | ONNX model source |
+| `KOKORO_VOICE` | `af_bella` | 54 available voices | Default voice for interview responses |
+| `KOKORO_MODEL_PATH` | *(auto)* | File path | Optional custom path to `.onnx` file |
+| `KOKORO_VOICES_PATH` | *(auto)* | File path | Optional custom path to `voices.bin` |
 | `PORT` | `8000` | Integer | Server port |
 
 ---
@@ -86,9 +91,41 @@ A high-performance Speech-to-Text (STT) backend service powered by [FastAPI](htt
 
 ---
 
+### 3. Text-to-Speech (Kokoro-82M ONNX)
+- **Endpoint**: `POST /tts`
+- **Content-Type**: `application/json`
+- **Request Body**:
+```json
+{
+  "text": "Hello, welcome to your mock interview.",
+  "voice": "af_bella",
+  "speed": 1.0
+}
+```
+- **Response**: `200 OK` with binary `audio/wav` (24kHz 16-bit PCM WAV) for direct browser playback.
+
+### 4. TTS Status
+- **Endpoint**: `GET /tts/status`
+- **Response**:
+```json
+{
+  "enabled": true,
+  "loaded": true,
+  "default_voice": "af_bella",
+  "model": "onnx-community/Kokoro-82M-v1.0-ONNX",
+  "available_voices": ["af_bella", "af_heart", "af_sarah", "..."],
+  "error": null
+}
+```
+
+---
+
 ## Running Benchmarks and Tests
 
 ```powershell
+# Run comprehensive Kokoro ONNX TTS verification suite
+& backend\.venv\Scripts\python.exe backend\test_kokoro_tts.py
+
 # Run comprehensive pipeline latency, reliability & accuracy test suite
 & backend\.venv\Scripts\python.exe backend\test_pipeline.py
 

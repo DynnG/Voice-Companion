@@ -5,7 +5,7 @@ import logging
 from typing import Optional, List, Dict, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status, Depends
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -14,7 +14,8 @@ from sqlalchemy.sql import func
 try:
     from .config import (
         MODEL_SIZE, DEVICE, COMPUTE_TYPE, BEAM_SIZE, HOST, PORT, DEFAULT_LANGUAGE,
-        GEMINI_API_KEY, GEMINI_MODEL
+        GEMINI_API_KEY, GEMINI_MODEL,
+        TTS_ENABLED, KOKORO_MODEL, KOKORO_VOICE
     )
     from .stt_service import STTService
     from .gemini_service import (
@@ -22,6 +23,7 @@ try:
         classify_gemini_error, get_user_friendly_error_message,
         sanitize_error_message
     )
+    from .tts_service import TTSService
     from .document_service import extract_document_text
     from .database import engine, Base, get_db
     from .models import Interview, Document, Message
@@ -33,7 +35,8 @@ try:
 except ImportError:
     from config import (
         MODEL_SIZE, DEVICE, COMPUTE_TYPE, BEAM_SIZE, HOST, PORT, DEFAULT_LANGUAGE,
-        GEMINI_API_KEY, GEMINI_MODEL
+        GEMINI_API_KEY, GEMINI_MODEL,
+        TTS_ENABLED, KOKORO_MODEL, KOKORO_VOICE
     )
     from stt_service import STTService
     from gemini_service import (
@@ -41,6 +44,7 @@ except ImportError:
         classify_gemini_error, get_user_friendly_error_message,
         sanitize_error_message
     )
+    from tts_service import TTSService
     from document_service import extract_document_text
     from database import engine, Base, get_db
     from models import Interview, Document, Message
@@ -67,6 +71,22 @@ async def lifespan(app: FastAPI):
         logger.info("STT Model is preloaded and ready for ultra-low latency transcription.")
     except Exception as e:
         logger.error(f"Failed to preload STT model on startup: {e}")
+
+    # Initialize Kokoro-82M ONNX TTS Service (Local CPU)
+    if TTS_ENABLED:
+        logger.info(
+            f"Initializing Kokoro TTS Service (Model: {KOKORO_MODEL}, Voice: {KOKORO_VOICE})..."
+        )
+        try:
+            TTSService.get_instance().load_model()
+            if TTSService.get_instance().is_loaded():
+                logger.info("Kokoro ONNX TTS Model is preloaded and ready for CPU speech synthesis.")
+            else:
+                logger.warning(f"Kokoro TTS model could not be loaded: {TTSService.get_instance().get_error()}")
+        except Exception as e:
+            logger.error(f"Failed to preload Kokoro TTS model on startup: {e}")
+    else:
+        logger.info("Kokoro TTS is disabled via configuration (TTS_ENABLED=false).")
 
     # Initialize SQLite database schema
     try:
@@ -168,6 +188,11 @@ class InterviewChatResponse(BaseModel):
     text: str
     model: str
     latency_ms: float
+
+class TTSRequest(BaseModel):
+    text: str
+    voice: Optional[str] = None
+    speed: Optional[float] = 1.0
 
 
 def get_effective_interview_documents(
@@ -322,6 +347,70 @@ async def generate_followup(req: FollowupRequest, db: Session = Depends(get_db))
         "error_type": result.get("error_type"),
         "error_message": result.get("error_message")
     }
+
+
+@app.post("/tts", tags=["Text-to-Speech"])
+async def text_to_speech(req: TTSRequest):
+    """
+    Synthesize speech from text using Kokoro-82M ONNX on CPU.
+    Returns 24kHz 16-bit PCM WAV audio for direct browser playback.
+    """
+    if not req.text or not req.text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Text content cannot be empty."
+        )
+
+    tts = TTSService.get_instance()
+    if not tts.is_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Text-to-speech is disabled (TTS_ENABLED=false)."
+        )
+
+    if not tts.is_loaded():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Kokoro TTS model is not available: {tts.get_error() or 'Model failed to load'}"
+        )
+
+    try:
+        wav_bytes, sample_rate = tts.synthesize(
+            text=req.text.strip(),
+            voice=req.voice,
+            speed=req.speed or 1.0
+        )
+        return Response(
+            content=wav_bytes,
+            media_type="audio/wav",
+            headers={
+                "Content-Disposition": "inline; filename=speech.wav",
+                "X-Sample-Rate": str(sample_rate)
+            }
+        )
+    except Exception as e:
+        logger.error(f"TTS synthesis error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"TTS synthesis failed: {str(e)}"
+        )
+
+
+@app.get("/tts/status", tags=["Text-to-Speech"])
+def get_tts_status():
+    """
+    Check Kokoro TTS engine status, default voice, and available voices.
+    """
+    tts = TTSService.get_instance()
+    return {
+        "enabled": tts.is_enabled(),
+        "loaded": tts.is_loaded(),
+        "default_voice": tts.default_voice,
+        "model": tts.model_name,
+        "available_voices": tts.get_available_voices(),
+        "error": tts.get_error()
+    }
+
 
 @app.post("/documents/extract", tags=["Document Processing"])
 async def extract_document(

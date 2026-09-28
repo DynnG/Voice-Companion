@@ -5,6 +5,7 @@ import { VoiceExperience } from './VoiceExperience';
 import { LiveConversationPanel } from './LiveConversationPanel';
 import { DocumentAttachmentScreen } from './DocumentAttachmentScreen';
 import { fetchInitialInterviewQuestion } from '../services/sttService';
+import { stopSpeaking } from '../services/ttsService';
 
 interface InterviewSession {
   id: string;
@@ -31,6 +32,7 @@ export const VoiceCompanion: React.FC = () => {
 
   // Start a new interview workflow: clears all previous documents, messages, and context
   const handleNewInterview = () => {
+    stopSpeaking();
     setSession(createInitialSession());
     setInitialQuestionToSpeak(undefined);
     setIsThinking(false);

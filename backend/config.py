@@ -77,3 +77,10 @@ PORT: int = int(os.getenv("PORT", "8000"))
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
 GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
+# Kokoro ONNX TTS Configuration (Local CPU Text-to-Speech)
+TTS_ENABLED: bool = os.getenv("TTS_ENABLED", "true").lower() in ("true", "1", "yes")
+KOKORO_MODEL: str = os.getenv("KOKORO_MODEL", "onnx-community/Kokoro-82M-v1.0-ONNX")
+KOKORO_VOICE: str = os.getenv("KOKORO_VOICE", "af_bella")
+KOKORO_MODEL_PATH: Optional[str] = os.getenv("KOKORO_MODEL_PATH", None)
+KOKORO_VOICES_PATH: Optional[str] = os.getenv("KOKORO_VOICES_PATH", None)
+
