@@ -1,124 +1,185 @@
 /**
- * Text-to-Speech (TTS) Service using Web Speech API with natural voice selection.
+ * Text-to-Speech (TTS) Service using Kokoro-82M ONNX backend.
+ * Provides singleton audio playback, natural speech lifecycle callbacks,
+ * and guaranteed prevention of overlapping speech or orphaned audio streams.
  */
 
-let activeUtterance: SpeechSynthesisUtterance | null = null;
-let speakingTimeout: any = null;
+let activeAudio: HTMLAudioElement | null = null;
+let activeAbortController: AbortController | null = null;
+let activeObjectUrl: string | null = null;
+let isAudioPlaying = false;
+
+export interface SpeakOptions {
+  voice?: string;
+  speed?: number;
+  onStart?: () => void;
+  onEnd?: () => void;
+  onError?: (err: any) => void;
+}
 
 /**
- * Get available English voice or natural voice.
+ * Stop any current audio playback or pending TTS request immediately.
+ * Ensures no overlapping audio streams or memory leaks from Blob URLs.
  */
-function getBestVoice(): SpeechSynthesisVoice | null {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return null;
-
-  const voices = window.speechSynthesis.getVoices();
-  if (!voices || voices.length === 0) return null;
-
-  // Prioritize high-quality / natural English voices
-  const preferredVoices = [
-    'Google US English',
-    'Microsoft Jenny Online (Natural) - English (United States)',
-    'Microsoft Guy Online (Natural) - English (United States)',
-    'Microsoft Aria Online (Natural) - English (United States)',
-    'Microsoft David - English (United States)',
-    'Microsoft Zira - English (United States)',
-    'Samantha',
-    'Karen',
-    'Daniel'
-  ];
-
-  for (const name of preferredVoices) {
-    const matched = voices.find((v) => v.name.includes(name) || v.name === name);
-    if (matched) return matched;
-  }
-
-  // Fallback to any en-US or en voice
-  return voices.find((v) => v.lang.startsWith('en-US')) || voices.find((v) => v.lang.startsWith('en')) || voices[0] || null;
-}
-
 export function stopSpeaking(): void {
-  if (typeof window !== 'undefined' && window.speechSynthesis) {
-    window.speechSynthesis.cancel();
+  // 1. Cancel in-flight HTTP request
+  if (activeAbortController) {
+    try {
+      activeAbortController.abort();
+    } catch {}
+    activeAbortController = null;
   }
-  if (speakingTimeout) {
-    clearTimeout(speakingTimeout);
-    speakingTimeout = null;
+
+  // 2. Pause and disconnect current audio element
+  if (activeAudio) {
+    try {
+      activeAudio.pause();
+      activeAudio.onplay = null;
+      activeAudio.onended = null;
+      activeAudio.onerror = null;
+      activeAudio.currentTime = 0;
+      activeAudio.src = '';
+    } catch {}
+    activeAudio = null;
   }
-  if (activeUtterance) {
-    activeUtterance = null;
+
+  // 3. Revoke Blob URL to free browser memory
+  if (activeObjectUrl) {
+    try {
+      URL.revokeObjectURL(activeObjectUrl);
+    } catch {}
+    activeObjectUrl = null;
   }
+
+  isAudioPlaying = false;
 }
 
-export function speakText(
-  text: string,
-  callbacks?: {
-    onStart?: () => void;
-    onEnd?: () => void;
-    onError?: (err: any) => void;
-  }
-): void {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-    console.warn('SpeechSynthesis API not supported in this browser.');
-    callbacks?.onStart?.();
-    const duration = Math.min(Math.max(text.length * 55, 2000), 7000);
-    setTimeout(() => callbacks?.onEnd?.(), duration);
-    return;
-  }
+/**
+ * Check if Kokoro speech audio is currently playing.
+ */
+export function isSpeaking(): boolean {
+  return isAudioPlaying;
+}
 
+/**
+ * Synthesize and play speech from text using the Kokoro-82M ONNX backend.
+ * 
+ * - Automatically interrupts any existing audio to prevent duplicate/overlapping speech.
+ * - Handles errors gracefully: if TTS is disabled or fails, triggers onError and onEnd so the UI never hangs.
+ */
+export async function speakText(
+  text: string,
+  options?: SpeakOptions
+): Promise<void> {
+  // Always stop previous speech first to prevent overlapping audio
   stopSpeaking();
 
   if (!text || !text.trim()) {
-    callbacks?.onEnd?.();
+    options?.onEnd?.();
     return;
   }
 
   const cleanText = text.trim();
-  const utterance = new SpeechSynthesisUtterance(cleanText);
-  activeUtterance = utterance;
+  const abortController = new AbortController();
+  activeAbortController = abortController;
 
-  const bestVoice = getBestVoice();
-  if (bestVoice) {
-    utterance.voice = bestVoice;
-    utterance.lang = bestVoice.lang;
-  } else {
-    utterance.lang = 'en-US';
-  }
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+  const ttsUrl = `${baseUrl}/tts`;
 
-  utterance.pitch = 1.0;
-  utterance.rate = 1.02;
+  try {
+    const response = await fetch(ttsUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: cleanText,
+        voice: options?.voice,
+        speed: options?.speed || 1.0,
+      }),
+      signal: abortController.signal,
+    });
 
-  let hasEnded = false;
-
-  const cleanupAndEnd = () => {
-    if (hasEnded) return;
-    hasEnded = true;
-    if (speakingTimeout) {
-      clearTimeout(speakingTimeout);
-      speakingTimeout = null;
+    if (!response.ok) {
+      let errDetail = '';
+      try {
+        const errJson = await response.json();
+        errDetail = errJson.detail || JSON.stringify(errJson);
+      } catch {
+        errDetail = await response.text();
+      }
+      throw new Error(`TTS server returned ${response.status}: ${errDetail || response.statusText}`);
     }
-    activeUtterance = null;
-    callbacks?.onEnd?.();
-  };
 
-  utterance.onstart = () => {
-    callbacks?.onStart?.();
-  };
+    const audioBlob = await response.blob();
 
-  utterance.onend = () => {
-    cleanupAndEnd();
-  };
+    // Check if request was aborted while downloading
+    if (abortController.signal.aborted) {
+      return;
+    }
 
-  utterance.onerror = (e) => {
-    console.warn('SpeechSynthesis error:', e);
-    cleanupAndEnd();
-  };
+    const objectUrl = URL.createObjectURL(audioBlob);
+    activeObjectUrl = objectUrl;
 
-  // Fallback timeout in case browser speech synthesis event doesn't fire
-  const estimatedDurationMs = Math.min(Math.max(cleanText.length * 80, 3000), 20000);
-  speakingTimeout = setTimeout(() => {
-    cleanupAndEnd();
-  }, estimatedDurationMs);
+    const audio = new Audio(objectUrl);
+    activeAudio = audio;
 
-  // Trigger speech synthesis
-  window.speechSynthesis.speak(utterance);
+    let hasCleanedUp = false;
+    const finalize = (triggerEnd: boolean) => {
+      if (hasCleanedUp) return;
+      hasCleanedUp = true;
+      isAudioPlaying = false;
+      if (activeObjectUrl === objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+        activeObjectUrl = null;
+      }
+      if (activeAudio === audio) {
+        activeAudio = null;
+      }
+      if (activeAbortController === abortController) {
+        activeAbortController = null;
+      }
+      if (triggerEnd) {
+        options?.onEnd?.();
+      }
+    };
+
+    audio.onplay = () => {
+      isAudioPlaying = true;
+      options?.onStart?.();
+    };
+
+    audio.onended = () => {
+      finalize(true);
+    };
+
+    audio.onerror = (e) => {
+      console.warn('[Kokoro TTS] Audio element playback error:', e);
+      finalize(false);
+      options?.onError?.(e);
+      options?.onEnd?.();
+    };
+
+    try {
+      await audio.play();
+    } catch (playErr: any) {
+      if (playErr.name === 'AbortError') {
+        // Normal interruption if user spoke or started recording
+        finalize(false);
+        return;
+      }
+      console.warn('[Kokoro TTS] Audio play prevented (e.g. autoplay policy):', playErr);
+      finalize(false);
+      options?.onError?.(playErr);
+      options?.onEnd?.();
+    }
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      // Intentionally aborted
+      return;
+    }
+    console.warn('[Kokoro TTS] Failed to fetch or play speech audio:', err.message || err);
+    options?.onError?.(err);
+    options?.onEnd?.();
+  }
 }

@@ -6,6 +6,7 @@ import { StateLabel } from './StateLabel';
 import { ResponseCaption } from './ResponseCaption';
 import { VoiceControls } from './VoiceControls';
 import { transcribeAudio, fetchFollowupInterviewQuestion } from '../services/sttService';
+import { speakText, stopSpeaking } from '../services/ttsService';
 
 interface VoiceExperienceProps {
   interviewId?: string;
@@ -78,19 +79,30 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   const silenceStartTimeRef = useRef<number | null>(null);
   const maxRecordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Show initial interviewer question on mount if provided
+  // Play initial interviewer question with Kokoro TTS on mount if provided
   useEffect(() => {
     if (initialQuestionToSpeak) {
       showCaption(initialQuestionToSpeak);
       setCustomLabel('Pal (Interviewer)');
-      setState('speaking');
 
-      const timer = setTimeout(() => {
-        setState('idle');
-        setCustomLabel(undefined);
-      }, 3500);
+      speakText(initialQuestionToSpeak, {
+        onStart: () => {
+          setState('speaking');
+        },
+        onEnd: () => {
+          setState('idle');
+          setCustomLabel(undefined);
+        },
+        onError: (err) => {
+          console.warn('[VoiceExperience] Kokoro TTS initial question error:', err);
+          setState('idle');
+          setCustomLabel(undefined);
+        }
+      });
 
-      return () => clearTimeout(timer);
+      return () => {
+        stopSpeaking();
+      };
     }
   }, [initialQuestionToSpeak]);
 
@@ -102,6 +114,8 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   }, []);
 
   const cleanupAudioResources = () => {
+    stopSpeaking();
+
     if (vadAnimationIdRef.current) {
       cancelAnimationFrame(vadAnimationIdRef.current);
       vadAnimationIdRef.current = null;
@@ -275,7 +289,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         await processAudioTranscriptionAndInterview(audioBlob);
       };
 
-      mediaRecorder.start(250);
+      mediaRecorder.start();
       setState('listening');
       setCustomLabel('listening… speak your answer');
 
@@ -449,36 +463,51 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
           if (shouldEnd) {
             setCustomLabel('Interview Complete');
             setStatusHint('Interview Complete · Well done!');
-            setState('speaking');
             onInterviewCompleted?.(endReason);
 
-            // After closing speech ends, remain in completed state and disable mic
-            setTimeout(() => {
-              setState('idle');
-              setCustomLabel('Interview Complete');
-              setStatusHint('Interview Complete · Review the full transcript in the side panel');
-              isProcessingRef.current = false;
-            }, 3800);
+            speakText(aiResponse, {
+              onStart: () => {
+                setState('speaking');
+              },
+              onEnd: () => {
+                setState('idle');
+                setCustomLabel('Interview Complete');
+                setStatusHint('Interview Complete · Review the full transcript in the side panel');
+                isProcessingRef.current = false;
+              },
+              onError: (err) => {
+                console.warn('[VoiceExperience] Kokoro TTS closing statement error:', err);
+                setState('idle');
+                setCustomLabel('Interview Complete');
+                setStatusHint('Interview Complete · Review the full transcript in the side panel');
+                isProcessingRef.current = false;
+              }
+            });
             return;
           }
 
-          if (endReason === 'wrapup_question') {
-            setCustomLabel('Wrap-up question');
-            setStatusHint('Wrap-up · Feel free to share anything not yet covered');
-          } else {
-            setCustomLabel('Interviewer follow-up');
-          }
-          setState('speaking');
+          const currentTurnLabel = endReason === 'wrapup_question' ? 'Wrap-up question' : 'Interviewer follow-up';
+          setCustomLabel(currentTurnLabel);
 
-          // Reset mic ready for the next turn
-          setTimeout(() => {
-            setState('idle');
-            setCustomLabel(endReason === 'wrapup_question' ? 'Wrap-up question' : undefined);
-            if (endReason === 'wrapup_question') {
-              setStatusHint('Wrap-up · Feel free to share anything not yet covered');
+          speakText(aiResponse, {
+            onStart: () => {
+              setState('speaking');
+            },
+            onEnd: () => {
+              setState('idle');
+              setCustomLabel(endReason === 'wrapup_question' ? 'Wrap-up question' : undefined);
+              if (endReason === 'wrapup_question') {
+                setStatusHint('Wrap-up · Feel free to share anything not yet covered');
+              }
+              isProcessingRef.current = false;
+            },
+            onError: (err) => {
+              console.warn('[VoiceExperience] Kokoro TTS speech playback error:', err);
+              setState('idle');
+              setCustomLabel(endReason === 'wrapup_question' ? 'Wrap-up question' : undefined);
+              isProcessingRef.current = false;
             }
-            isProcessingRef.current = false;
-          }, 3500);
+          });
         } else {
           setState('idle');
           setCustomLabel(undefined);
@@ -515,12 +544,23 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   };
 
   /**
-   * Flow handler: Mic button click ONLY starts the turn when idle or speaking.
-   * If already listening, user can optionally tap to finish early.
+   * Flow handler: Mic button click starts turn when idle,
+   * interrupts and starts answering when speaking (barge-in),
+   * or finishes recording early when listening.
    */
   const handleToggleFlow = () => {
-    if (isCompleted || isProcessingRef.current) return;
-    if (state === 'idle' || state === 'speaking') {
+    if (isCompleted) return;
+
+    // Barge-in: if Pal is currently speaking, tapping mic immediately stops speech and starts recording
+    if (state === 'speaking') {
+      stopSpeaking();
+      isProcessingRef.current = false;
+      startRecording();
+      return;
+    }
+
+    if (isProcessingRef.current) return;
+    if (state === 'idle') {
       startRecording();
     } else if (state === 'listening') {
       stopRecordingManually();
