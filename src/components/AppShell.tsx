@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, MessageSquare } from 'lucide-react';
+import { Plus, MessageSquare, Download } from 'lucide-react';
 import mockMateLogo from '../assets/MockMate-logo.png';
 
 interface AppShellProps {
@@ -9,6 +9,11 @@ interface AppShellProps {
   onToggleLivePanel: () => void;
   activeRole?: string;
   showNewInterviewButton?: boolean;
+  isCompleted?: boolean;
+  onOpenReview?: () => void;
+  canDownloadReview?: boolean;
+  onDownloadReview?: () => void;
+  isDownloadingReview?: boolean;
 }
 
 export const AppShell: React.FC<AppShellProps> = ({
@@ -18,6 +23,11 @@ export const AppShell: React.FC<AppShellProps> = ({
   onToggleLivePanel,
   activeRole,
   showNewInterviewButton = false,
+  isCompleted = false,
+  onOpenReview,
+  canDownloadReview = false,
+  onDownloadReview,
+  isDownloadingReview = false,
 }) => {
   return (
     <div className="w-screen h-screen flex flex-col bg-[#133020] text-[#f5eedb] overflow-hidden select-none font-inter">
@@ -50,6 +60,35 @@ export const AppShell: React.FC<AppShellProps> = ({
             >
               <Plus className="w-3.5 h-3.5 text-[#FFB347]" />
               <span>New Interview</span>
+            </button>
+          )}
+
+          {/* Download Interview Review Button (available after at least 2 answers or when completed) */}
+          {canDownloadReview && onDownloadReview && (
+            <button
+              onClick={onDownloadReview}
+              disabled={isDownloadingReview}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-space font-semibold bg-[#046241] text-[#ffffff] hover:bg-[#046241]/85 active:scale-95 transition-all shadow-xs border border-[#10B981]/50 ml-2 animate-in fade-in disabled:opacity-60"
+              title="Download Interview Review (PDF)"
+            >
+              <Download className="w-3.5 h-3.5 text-[#FFB347]" />
+              <span className="hidden sm:inline">
+                {isDownloadingReview ? 'Generating PDF…' : 'Download Interview Review'}
+              </span>
+              <span className="sm:hidden">
+                {isDownloadingReview ? 'PDF…' : 'Download Review'}
+              </span>
+            </button>
+          )}
+
+          {/* When completed, also show review modal button */}
+          {isCompleted && onOpenReview && (
+            <button
+              onClick={onOpenReview}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-space font-semibold bg-[#133020] text-[#f5eedb] hover:bg-[#046241]/40 border border-[#046241]/40 transition-all ml-1.5"
+              title="Open Completion Summary Modal"
+            >
+              <span>Review Summary</span>
             </button>
           )}
         </div>

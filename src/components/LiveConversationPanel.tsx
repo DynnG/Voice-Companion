@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { X, Sparkles, User, Bot, FileText, AlertCircle } from 'lucide-react';
+import { X, Sparkles, User, Bot, FileText, AlertCircle, Download } from 'lucide-react';
 import { Conversation } from '../types/conversation';
 
 interface LiveConversationPanelProps {
@@ -7,6 +7,9 @@ interface LiveConversationPanelProps {
   isOpen: boolean;
   onClose: () => void;
   isThinking?: boolean;
+  canDownloadReview?: boolean;
+  onDownloadReview?: () => void;
+  isDownloadingReview?: boolean;
 }
 
 export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
@@ -14,6 +17,9 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
   isOpen,
   onClose,
   isThinking = false,
+  canDownloadReview = false,
+  onDownloadReview,
+  isDownloadingReview = false,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -197,7 +203,19 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
         {/* Panel Footer */}
         <div className="p-3 bg-[#ffffff] border-t border-[#046241]/15 text-[11px] text-[#133020]/60 text-center font-inter flex items-center justify-between px-4">
           <span>{conversation?.messages.length || 0} messages recorded</span>
-          <span className="text-[#046241] font-semibold font-space">Pal Interviewer</span>
+          {canDownloadReview && onDownloadReview ? (
+            <button
+              onClick={onDownloadReview}
+              disabled={isDownloadingReview}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-space font-semibold bg-[#046241] hover:bg-[#046241]/85 text-white transition-all active:scale-95 disabled:opacity-60"
+              title="Download Interview Review (PDF)"
+            >
+              <Download className="w-3 h-3 text-[#FFB347]" />
+              <span>{isDownloadingReview ? 'Generating…' : 'Download Review'}</span>
+            </button>
+          ) : (
+            <span className="text-[#046241] font-semibold font-space">Pal Interviewer</span>
+          )}
         </div>
       </aside>
     </>

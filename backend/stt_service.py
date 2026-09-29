@@ -31,6 +31,17 @@ except ImportError:
         CONDITION_ON_PREVIOUS_TEXT
     )
 
+try:
+    from .hesitation_formatter import (
+        format_hesitation_transcript,
+        extract_hesitation_evidence,
+    )
+except ImportError:
+    from hesitation_formatter import (
+        format_hesitation_transcript,
+        extract_hesitation_evidence,
+    )
+
 logger = logging.getLogger(__name__)
 
 def decode_audio_bytes(
@@ -177,25 +188,66 @@ class STTService:
             language=eff_lang,
             temperature=0.0,
             condition_on_previous_text=self.condition_on_previous_text,
-            vad_filter=self.vad_filter
+            vad_filter=self.vad_filter,
+            word_timestamps=True,
+            initial_prompt="Um, uh, well... let me think. I... I worked on that."
         )
 
         segment_list = []
         text_parts = []
+        all_words = []
 
         for segment in segments:
             clean_text = segment.text.strip()
+            seg_words = []
+            if hasattr(segment, "words") and segment.words:
+                for w in segment.words:
+                    w_dict = {
+                        "word": w.word,
+                        "start": round(w.start, 2),
+                        "end": round(w.end, 2),
+                        "probability": round(w.probability, 3)
+                    }
+                    seg_words.append(w_dict)
+                    all_words.append(w_dict)
+
             if clean_text:
                 text_parts.append(clean_text)
                 segment_list.append({
                     "id": segment.id,
                     "start": round(segment.start, 2),
                     "end": round(segment.end, 2),
-                    "text": clean_text
+                    "text": clean_text,
+                    "words": seg_words
                 })
 
         inference_time_ms = round((time.perf_counter() - start_inference) * 1000, 2)
-        full_text = " ".join(text_parts).strip()
+        raw_full_text = " ".join(text_parts).strip()
+
+        # Format transcript with hesitation pauses ('...'), filler preservation, and repeated starts
+        formatted_full_text = format_hesitation_transcript(
+            raw_full_text,
+            segments=segment_list,
+            words=all_words,
+            audio_duration=duration
+        )
+
+        # Also format individual segments with hesitation pauses
+        for seg in segment_list:
+            seg_w = seg.get("words", [])
+            seg["text"] = format_hesitation_transcript(
+                seg["text"],
+                words=seg_w,
+                audio_duration=seg["end"]
+            )
+
+        hesitation_evidence = extract_hesitation_evidence(
+            formatted_full_text,
+            segments=segment_list,
+            words=all_words,
+            audio_duration=duration
+        )
+
         total_processing_ms = round(upload_write_ms + audio_decode_ms + inference_time_ms, 2)
 
         timings = {
@@ -206,14 +258,16 @@ class STTService:
         }
 
         logger.info(
-            f"Transcription finished: text=\"{full_text}\" | "
+            f"Transcription finished: text=\"{formatted_full_text}\" | "
             f"Duration={duration:.2f}s | "
             f"Timings: decode={audio_decode_ms}ms, inference={inference_time_ms}ms, total={total_processing_ms}ms | "
             f"[model={self.model_size}, beam={eff_beam}, lang={info.language}]"
         )
 
         return {
-            "text": full_text,
+            "text": formatted_full_text,
+            "transcription": formatted_full_text,
+            "raw_text": raw_full_text,
             "language": info.language,
             "language_probability": round(info.language_probability, 4) if info.language_probability is not None else 1.0,
             "duration": round(duration, 2),
@@ -221,7 +275,9 @@ class STTService:
             "inference_time_ms": inference_time_ms,
             "timings": timings,
             "model": self.model_size,
-            "segments": segment_list
+            "segments": segment_list,
+            "words": all_words,
+            "hesitation_evidence": hesitation_evidence
         }
 
     # Backward compatible helper

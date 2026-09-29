@@ -17,7 +17,6 @@ let activeAudio: HTMLAudioElement | null = null;
 let activeAbortController: AbortController | null = null;
 let activeObjectUrl: string | null = null;
 let speakingTimeout: ReturnType<typeof setTimeout> | null = null;
-let chromeHeartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let isAudioPlaying = false;
 let cachedVoices: SpeechSynthesisVoice[] = [];
 
@@ -130,18 +129,16 @@ export function unlockAudio(): void {
  * Prevents overlapping audio streams and frees resources.
  */
 export function stopSpeaking(): void {
-  // 1. Cancel browser-native speech synthesis
+  // 1. Cancel browser-native speech synthesis if currently active or pending
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     try {
-      window.speechSynthesis.cancel();
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        window.speechSynthesis.cancel();
+      }
     } catch {}
   }
 
-  // 2. Clear keep-alive intervals and timeouts
-  if (chromeHeartbeatInterval) {
-    clearInterval(chromeHeartbeatInterval);
-    chromeHeartbeatInterval = null;
-  }
+  // 2. Clear keep-alive timeouts
   if (speakingTimeout) {
     clearTimeout(speakingTimeout);
     speakingTimeout = null;
@@ -184,10 +181,12 @@ export function stopSpeaking(): void {
  * Check whether speech audio is currently playing.
  */
 export function isSpeaking(): boolean {
-  if (typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis.speaking) {
-    return true;
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      return true;
+    }
   }
-  return isAudioPlaying;
+  return isAudioPlaying || activeAbortController !== null;
 }
 
 /**
@@ -223,10 +222,6 @@ function speakWithSpeechSynthesis(
     const finalize = () => {
       if (hasEnded) return;
       hasEnded = true;
-      if (chromeHeartbeatInterval) {
-        clearInterval(chromeHeartbeatInterval);
-        chromeHeartbeatInterval = null;
-      }
       if (speakingTimeout) {
         clearTimeout(speakingTimeout);
         speakingTimeout = null;
@@ -241,15 +236,6 @@ function speakWithSpeechSynthesis(
     utterance.onstart = () => {
       isAudioPlaying = true;
       options?.onStart?.();
-
-      // Chromium safeguard: keep speech synthesis alive during longer answers (>15s)
-      if (chromeHeartbeatInterval) clearInterval(chromeHeartbeatInterval);
-      chromeHeartbeatInterval = setInterval(() => {
-        if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking) {
-          window.speechSynthesis.pause();
-          window.speechSynthesis.resume();
-        }
-      }, 10000);
     };
 
     utterance.onend = () => {
@@ -402,8 +388,10 @@ export async function speakText(
   text: string,
   options?: SpeakOptions
 ): Promise<void> {
-  // Always stop previous speech first to prevent overlapping speech
-  stopSpeaking();
+  // Stop previous speech only if speech is currently active to avoid unnecessary cancels
+  if (isSpeaking()) {
+    stopSpeaking();
+  }
 
   if (!text || !text.trim()) {
     options?.onEnd?.();

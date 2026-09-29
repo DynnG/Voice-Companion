@@ -5,8 +5,17 @@ export interface TranscribeResult {
   language: string;
   language_probability: number;
   duration: number;
-  segments?: Array<{ id: number; start: number; end: number; text: string }>;
+  segments?: Array<{ id: number; start: number; end: number; text: string; words?: any[] }>;
   interview_error?: string;
+  hesitation_evidence?: {
+    has_hesitations: boolean;
+    filler_words: string[];
+    hesitation_pauses: string[];
+    repeated_starts: string[];
+    pause_count: number;
+    total_pause_duration: number;
+    hesitation_summary: string;
+  };
 }
 
 export interface ConversationHistoryItem {
@@ -216,6 +225,22 @@ export function extractConversationalText(rawText: string): string {
   return text;
 }
 
+export function isQuotaExceededText(text?: string | null): boolean {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  // Preserve genuine connection and AI service errors
+  if (lower.includes('connection error') || lower.includes('ai service error')) {
+    return false;
+  }
+  return (
+    lower.includes('usage limit') ||
+    lower.includes('quota_exceeded') ||
+    lower.includes('quota_exhausted') ||
+    lower.includes('gemini_quota_exceeded') ||
+    lower.includes('temporarily unavailable')
+  );
+}
+
 export async function fetchInitialInterviewQuestion(
   jobRole: string,
   attachedDocuments?: AttachedDocumentPayload[],
@@ -347,6 +372,7 @@ export async function fetchAnswerAiNotes(params: {
   jobRole?: string;
   attachedDocuments?: AttachedDocumentPayload[];
   durationSeconds?: number;
+  hesitationEvidence?: any;
 }): Promise<AnswerAiNotesResult> {
   const baseUrl = getApiBaseUrl();
   const apiUrl = `${baseUrl}/interview/replay/notes`;
@@ -361,7 +387,8 @@ export async function fetchAnswerAiNotes(params: {
         user_answer: params.userAnswer,
         job_role: params.jobRole || 'Software Developer',
         attached_documents: params.attachedDocuments || [],
-        duration_seconds: params.durationSeconds
+        duration_seconds: params.durationSeconds,
+        hesitation_evidence: params.hesitationEvidence
       })
     });
 

@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { VoiceState, AttachedDocument, Message, AnswerAttempt, ReplayState } from '../types/conversation';
+import { VoiceState, AttachedDocument, Message, AnswerAttempt, ReplayState, InterviewExchangeRecord } from '../types/conversation';
 import { Header } from './Header';
 import { VoiceCreature } from './VoiceCreature';
 import { StateLabel } from './StateLabel';
 import { ResponseCaption } from './ResponseCaption';
 import { VoiceControls } from './VoiceControls';
 import { AnswerReplayCard } from './AnswerReplayCard';
-import { transcribeAudio, fetchFollowupInterviewQuestion, fetchAnswerAiNotes, fetchAnswerComparison } from '../services/sttService';
+import { transcribeAudio, fetchFollowupInterviewQuestion, fetchAnswerAiNotes, fetchAnswerComparison, isQuotaExceededText } from '../services/sttService';
 import { speakText, stopSpeaking, unlockAudio } from '../services/ttsService';
 
 interface VoiceExperienceProps {
@@ -16,6 +16,8 @@ interface VoiceExperienceProps {
   onThinkingChange?: (thinking: boolean) => void;
   onInterviewCompleted?: (reason?: string) => void;
   interviewStatus?: 'setup' | 'active' | 'ending' | 'completed';
+  turnsUsed?: number;
+  maxTurns?: number;
   isLivePanelOpen: boolean;
   onToggleLivePanel: () => void;
   unreadCount?: number;
@@ -23,6 +25,13 @@ interface VoiceExperienceProps {
   attachedDocuments?: AttachedDocument[];
   conversationHistory?: Message[];
   initialQuestionToSpeak?: string;
+  onExchangeRecorded?: (record: InterviewExchangeRecord) => void;
+  onExchangeAiNotesUpdated?: (exchangeId: string, notes: string[]) => void;
+  onOpenCompletionReview?: () => void;
+  canDownloadReview?: boolean;
+  onDownloadReview?: () => void;
+  isDownloadingReview?: boolean;
+  downloadReviewError?: string | null;
 }
 
 // Silence Detection Configuration
@@ -31,6 +40,10 @@ const SILENCE_DURATION_MS = 1600;           // 1.6s of continuous silence after 
 const MIN_SPEECH_DURATION_MS = 800;         // Minimum speech duration (800ms) before silence detector can trigger
 const MAX_RECORDING_DURATION_MS = 60000;    // 60s hard ceiling safeguard
 
+// Hard interview ending limit to conserve Gemini free-tier quota (maximum 8 candidate turns)
+export const MAX_INTERVIEW_TURNS = 8;
+export const INTERVIEW_ENDING_MESSAGE = "That brings us to the end of our interview. Thank you for taking the time to practice with me. You did a great job working through the questions. You can now review your answers and feedback.";
+
 export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   interviewId,
   onUserTranscribed,
@@ -38,15 +51,36 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   onThinkingChange,
   onInterviewCompleted,
   interviewStatus = 'active',
+  turnsUsed: turnsUsedProp,
+  maxTurns = MAX_INTERVIEW_TURNS,
   isLivePanelOpen,
   onToggleLivePanel,
   unreadCount = 0,
   jobRole,
   attachedDocuments = [],
   conversationHistory = [],
-  initialQuestionToSpeak
+  initialQuestionToSpeak,
+  onExchangeRecorded,
+  onExchangeAiNotesUpdated,
+  onOpenCompletionReview,
+  canDownloadReview = false,
+  onDownloadReview,
+  isDownloadingReview = false,
+  downloadReviewError = null
 }) => {
-  const isCompleted = interviewStatus === 'completed';
+  // Session completed flag derived from props and local lifecycle
+  const [isLocallyCompleted, setIsLocallyCompleted] = useState<boolean>(
+    interviewStatus === 'completed'
+  );
+
+  useEffect(() => {
+    if (interviewStatus === 'completed') {
+      setIsLocallyCompleted(true);
+    }
+  }, [interviewStatus]);
+
+  const isCompleted = interviewStatus === 'completed' || isLocallyCompleted;
+
   const [state, setState] = useState<VoiceState>('idle');
   const [customLabel, setCustomLabel] = useState<string | undefined>(
     isCompleted ? 'Interview Complete' : undefined
@@ -59,7 +93,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
   // Session-Only Answer Replay State
   const [replayState, setReplayState] = useState<ReplayState>({
-    questionText: initialQuestionToSpeak || '',
+    questionText: (initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak)) ? initialQuestionToSpeak : '',
     attempt1: null,
     attempt2: null,
     comparison: null,
@@ -73,10 +107,12 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   const [playbackProgress, setPlaybackProgress] = useState<number>(0);
   const objectUrlsRef = useRef<string[]>([]);
   const recordingStartTimeRef = useRef<number>(0);
-  const currentQuestionBeingAnsweredRef = useRef<string>(initialQuestionToSpeak || '');
+  const currentQuestionBeingAnsweredRef = useRef<string>(
+    (initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak)) ? initialQuestionToSpeak : ''
+  );
 
   useEffect(() => {
-    if (initialQuestionToSpeak) {
+    if (initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak)) {
       currentQuestionBeingAnsweredRef.current = initialQuestionToSpeak;
     }
   }, [initialQuestionToSpeak]);
@@ -104,10 +140,43 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   const silenceStartTimeRef = useRef<number | null>(null);
   const maxRecordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const micAudioLevelRef = useRef<number>(0);
+  const candidateTurnCountRef = useRef<number>(0);
+  const currentExchangeIdRef = useRef<string | null>(null);
+  const hasSpokenInitialRef = useRef<string | null>(null);
 
-  // Play initial interviewer question with Kokoro TTS on mount if provided
   useEffect(() => {
-    if (initialQuestionToSpeak) {
+    candidateTurnCountRef.current = 0;
+    currentExchangeIdRef.current = null;
+    hasSpokenInitialRef.current = null;
+  }, [interviewId]);
+
+  // Active turn tracking & session availability
+  const effectiveMaxTurns = maxTurns || MAX_INTERVIEW_TURNS;
+  const currentTurnsUsed = Math.max(
+    turnsUsedProp || 0,
+    candidateTurnCountRef.current,
+    conversationHistory.filter(
+      (m) => m.sender === 'You' && !m.text.startsWith('(Attempt 2)')
+    ).length
+  );
+
+  const hasRemainingTurns = !isCompleted && currentTurnsUsed < effectiveMaxTurns;
+  const isMicEnabled = hasRemainingTurns && !isCompleted;
+
+  // Play initial interviewer question with TTS on mount if provided (guarded against duplicate speech / re-renders)
+  useEffect(() => {
+    if (initialQuestionToSpeak && hasSpokenInitialRef.current !== initialQuestionToSpeak) {
+      hasSpokenInitialRef.current = initialQuestionToSpeak;
+
+      // Defensive guard: never show or speak quota-error text as an initial question
+      if (isQuotaExceededText(initialQuestionToSpeak)) {
+        console.warn('[VoiceExperience] Quota error detected in initialQuestionToSpeak. Suppressing caption and TTS speech.');
+        setState('idle');
+        setCustomLabel(undefined);
+        hideCaption();
+        return;
+      }
+
       showCaption(initialQuestionToSpeak);
       setCustomLabel('Pal (Interviewer)');
 
@@ -120,21 +189,18 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
           setCustomLabel(undefined);
         },
         onError: (err) => {
-          console.warn('[VoiceExperience] Kokoro TTS initial question error:', err);
+          console.warn('[VoiceExperience] TTS initial question error:', err);
           setState('idle');
           setCustomLabel(undefined);
         }
       });
-
-      return () => {
-        stopSpeaking();
-      };
     }
   }, [initialQuestionToSpeak]);
 
   // Clean up all audio resources on unmount
   useEffect(() => {
     return () => {
+      stopSpeaking();
       cleanupAudioResources();
       stopReplayPlayback();
       objectUrlsRef.current.forEach((url) => {
@@ -201,6 +267,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   };
 
   const handleTryAgain = () => {
+    if (!isMicEnabled || isCompleted) return;
     stopSpeaking();
     stopReplayPlayback();
     setReplayState((prev) => ({
@@ -222,6 +289,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   };
 
   const handleResumeInterview = () => {
+    if (!isMicEnabled || isCompleted) return;
     stopReplayPlayback();
     setReplayState((prev) => ({
       ...prev,
@@ -375,7 +443,8 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
    * Auto-detection handles the stop.
    */
   const startRecording = async () => {
-    if (isCompleted || isProcessingRef.current) return;
+    if (!isMicEnabled || isCompleted || isProcessingRef.current) return;
+    stopSpeaking();
     cleanupAudioResources();
     hideCaption();
     setStatusHint(undefined);
@@ -488,6 +557,14 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
    * 7. Reset mic state so it is ready for the next response.
    */
   const processAudioTranscriptionAndInterview = async (audioBlob: Blob) => {
+    if (!isMicEnabled || isCompleted) {
+      console.warn('[Live Interview] Session has ended or turn limit reached. Ignoring audio transcription.');
+      setState('idle');
+      setCustomLabel('Interview Complete');
+      isProcessingRef.current = false;
+      return;
+    }
+
     isProcessingRef.current = true;
     // Keep voice sphere indicator internal during Whisper transcription; do NOT show chat thinking bubble yet
     setState('thinking');
@@ -540,12 +617,33 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             onUserTranscribed(`(Attempt 2) ${userText}`);
           }
 
+          const questionToCompare = (replayState.questionText && !isQuotaExceededText(replayState.questionText))
+            ? replayState.questionText
+            : (currentQuestionBeingAnsweredRef.current && !isQuotaExceededText(currentQuestionBeingAnsweredRef.current))
+            ? currentQuestionBeingAnsweredRef.current
+            : 'Interview Question';
+
+          // Update exchange record with revised Attempt 2 transcript
+          if (currentExchangeIdRef.current) {
+            onExchangeRecorded?.({
+              id: currentExchangeIdRef.current,
+              order: candidateTurnCountRef.current || 1,
+              question: questionToCompare,
+              userAnswer: userText,
+              attempt1Answer: replayState.attempt1?.transcript || '',
+              attempt2Answer: userText,
+              durationSeconds,
+              aiNotes: replayState.attempt1?.aiNotes || [],
+              aiNotesStatus: 'loading',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            });
+          }
+
           setState('idle');
           setCustomLabel('Attempt 2 complete');
           setStatusHint('Compare your answers above · Click Resume Interview to continue');
           isProcessingRef.current = false;
 
-          const questionToCompare = replayState.questionText || currentQuestionBeingAnsweredRef.current || 'Interview Question';
           fetchAnswerComparison({
             interviewId,
             question: questionToCompare,
@@ -562,6 +660,9 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
               extracted_text: d.content || d.extractedText
             }))
           }).then((compRes) => {
+            if (currentExchangeIdRef.current && compRes.attempt2_notes && compRes.attempt2_notes.length > 0) {
+              onExchangeAiNotesUpdated?.(currentExchangeIdRef.current, compRes.attempt2_notes);
+            }
             setReplayState((prev) => {
               if (!prev.attempt2) return prev;
               return {
@@ -598,7 +699,11 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         const audioUrl1 = URL.createObjectURL(audioBlob);
         objectUrlsRef.current.push(audioUrl1);
 
-        const questionAnswered = currentQuestionBeingAnsweredRef.current || initialQuestionToSpeak || 'Interview Question';
+        const questionAnswered = (currentQuestionBeingAnsweredRef.current && !isQuotaExceededText(currentQuestionBeingAnsweredRef.current))
+          ? currentQuestionBeingAnsweredRef.current
+          : (initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak))
+          ? initialQuestionToSpeak
+          : 'Interview Question';
 
         const attempt1Data: AnswerAttempt = {
           attemptNumber: 1,
@@ -620,6 +725,30 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
           isMinimized: false
         });
 
+        // Calculate candidate turn count (excluding Attempt 2 retries)
+        const previousCandidateTurns = conversationHistory.filter(
+          (m) => m.sender === 'You' && !m.text.startsWith('(Attempt 2)')
+        ).length;
+        const currentTurn = Math.max(previousCandidateTurns + 1, candidateTurnCountRef.current + 1);
+        candidateTurnCountRef.current = currentTurn;
+
+        const exchangeId = `exchange-${interviewId || 'session'}-${currentTurn}`;
+        currentExchangeIdRef.current = exchangeId;
+
+        // Record complete current-session interview exchange in memory
+        const newExchange: InterviewExchangeRecord = {
+          id: exchangeId,
+          order: currentTurn,
+          question: questionAnswered,
+          userAnswer: userText,
+          attempt1Answer: userText,
+          durationSeconds,
+          aiNotes: [],
+          aiNotesStatus: 'loading',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        onExchangeRecorded?.(newExchange);
+
         // Fire AI notes generation asynchronously (does NOT delay interview turn)
         fetchAnswerAiNotes({
           interviewId,
@@ -633,8 +762,12 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             content: d.content || d.extractedText,
             extracted_text: d.content || d.extractedText
           })),
-          durationSeconds
+          durationSeconds,
+          hesitationEvidence: result.hesitation_evidence
         }).then((notesRes) => {
+          if (notesRes.status === 'success' && notesRes.notes && notesRes.notes.length > 0) {
+            onExchangeAiNotesUpdated?.(exchangeId, notesRes.notes);
+          }
           setReplayState((prev) => {
             if (!prev.attempt1 || prev.attempt1.audioUrl !== audioUrl1) return prev;
             return {
@@ -656,6 +789,61 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
         // Show user transcription on caption bubble
         showCaption(`"${userText}"`);
+
+        console.log(`[Live Interview] Candidate turn ${currentTurn} of ${MAX_INTERVIEW_TURNS}`);
+
+        // CHECK HARD TURN LIMIT: On the 8th turn, naturally conclude without calling Gemini follow-up
+        if (currentTurn >= MAX_INTERVIEW_TURNS) {
+          console.log(
+            `[Live Interview] Final allowed turn (${currentTurn}/${MAX_INTERVIEW_TURNS}) reached. ` +
+            'Naturally ending interview with concluding statement (bypassing Gemini follow-up API call).'
+          );
+          setIsLocallyCompleted(true);
+
+          // Turn off thinking indicator
+          onThinkingChange?.(false);
+
+          // Append PAL ending message to conversation transcript
+          if (onPalResponse) {
+            onPalResponse(INTERVIEW_ENDING_MESSAGE);
+            currentQuestionBeingAnsweredRef.current = INTERVIEW_ENDING_MESSAGE;
+          }
+
+          // Display ending message caption
+          showCaption(INTERVIEW_ENDING_MESSAGE);
+          setCustomLabel('Interview Complete');
+          setStatusHint('Interview Complete · Well done!');
+
+          // Mark interview COMPLETED
+          onInterviewCompleted?.('turn_limit_reached');
+
+          // Speak ending message with TTS
+          speakText(INTERVIEW_ENDING_MESSAGE, {
+            onStart: () => {
+              setState('speaking');
+            },
+            onEnd: () => {
+              setState('idle');
+              setCustomLabel('Interview Complete');
+              setStatusHint('Interview Complete · Review the full transcript in the side panel');
+              isProcessingRef.current = false;
+            },
+            onError: (err) => {
+              console.warn('[VoiceExperience] TTS ending message error:', err);
+              setState('idle');
+              setCustomLabel('Interview Complete');
+              setStatusHint('Interview Complete · Review the full transcript in the side panel');
+              isProcessingRef.current = false;
+            }
+          });
+          return;
+        }
+
+        // Cost protection: strictly check turn availability before calling Gemini
+        if (!hasRemainingTurns || isCompleted) {
+          console.log('[Live Interview] Session completed or turn limit reached. Aborting Gemini follow-up.');
+          return;
+        }
 
         // Step 3: Wait for user message render to settle in conversation UI before showing thinking
         await new Promise((resolve) => setTimeout(resolve, 250));
@@ -699,48 +887,56 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         // Turn off chat thinking bubble before rendering Pal follow-up
         onThinkingChange?.(false);
 
+        const isErrorState = followupResult.status === 'error' || Boolean(followupResult.error_type);
+        const isQuota = isErrorState && (
+          followupResult.error_type === 'quota_exceeded' ||
+          followupResult.error_type === 'quota_exhausted' ||
+          followupResult.reason === 'gemini_quota_exceeded' ||
+          (Boolean(aiResponse) && (aiResponse.includes('usage limit') || aiResponse.includes('quota')))
+        );
+
+        if (isQuota) {
+          console.warn('[Live Interview] Gemini quota reached. Silently keeping session intact and awaiting next user turn.');
+          setState('idle');
+          setCustomLabel(undefined);
+          hideCaption();
+          isProcessingRef.current = false;
+          return;
+        }
+
+        // For non-quota errors, preserve genuine error handling
+        if (isErrorState) {
+          const isConnection = followupResult.error_type === 'connection_error' || (Boolean(aiResponse) && aiResponse.includes('connection error'));
+          const errorMsg = isConnection
+            ? 'Connection error · Tap the mic to try speaking again'
+            : 'AI service error · Tap the mic to try speaking again';
+
+          setCustomLabel(isConnection ? 'connection error' : 'service error');
+          setStatusHint(errorMsg);
+          showCaption(aiResponse || errorMsg);
+
+          // Reset creature to idle ready for retry, keeping interview active
+          setTimeout(() => {
+            setState('idle');
+            setCustomLabel(undefined);
+            setStatusHint(errorMsg);
+            isProcessingRef.current = false;
+          }, 3500);
+          return;
+        }
+
         // Step 6: Append Gemini response as separate "Pal (Interviewer)" state update
         if (onPalResponse && aiResponse) {
           onPalResponse(aiResponse);
           currentQuestionBeingAnsweredRef.current = aiResponse;
         }
 
-        // Step 7: Display interviewer follow-up, closing statement, or unavailable notice
+        // Step 7: Display interviewer follow-up, closing statement, or wrap-up
         if (aiResponse) {
           showCaption(aiResponse);
 
-          const isErrorState = followupResult.status === 'error' || Boolean(followupResult.error_type);
-
-          if (isErrorState) {
-            const isQuota = followupResult.error_type === 'quota_exceeded' || followupResult.error_type === 'quota_exhausted' || aiResponse.includes('usage limit');
-            const isConnection = followupResult.error_type === 'connection_error' || aiResponse.includes('connection error');
-            setCustomLabel('Interviewer unavailable');
-            setStatusHint(
-              isQuota
-                ? 'Gemini usage limit reached · You can retry once service is available'
-                : isConnection
-                ? 'Connection error · Tap the mic to try speaking again'
-                : 'AI service error · Tap the mic to try speaking again'
-            );
-            setState('speaking');
-
-            // Reset creature to idle ready for retry, keeping interview active
-            setTimeout(() => {
-              setState('idle');
-              setCustomLabel('Interviewer unavailable');
-              setStatusHint(
-                isQuota
-                  ? 'Gemini usage limit reached · Tap the mic to retry when available'
-                  : isConnection
-                  ? 'Connection error · Tap the mic to try speaking again'
-                  : 'AI service error · Tap the mic to try speaking again'
-              );
-              isProcessingRef.current = false;
-            }, 3500);
-            return;
-          }
-
           if (shouldEnd) {
+            setIsLocallyCompleted(true);
             setCustomLabel('Interview Complete');
             setStatusHint('Interview Complete · Well done!');
             onInterviewCompleted?.(endReason);
@@ -830,7 +1026,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
    */
   const handleToggleFlow = () => {
     unlockAudio();
-    if (isCompleted) return;
+    if (!isMicEnabled || isCompleted) return;
 
     // Barge-in: if Pal is currently speaking, tapping mic immediately stops speech and starts recording
     if (state === 'speaking') {
@@ -865,7 +1061,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         }`}>
           <VoiceCreature
             state={state}
-            onTap={isCompleted ? undefined : handleToggleFlow}
+            onTap={!isMicEnabled || isCompleted ? undefined : handleToggleFlow}
             audioLevelRef={micAudioLevelRef}
             compact={isCompactVisual}
           />
@@ -899,6 +1095,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
               onResumeInterview={handleResumeInterview}
               onToggleMinimize={() => setReplayState((prev) => ({ ...prev, isMinimized: !prev.isMinimized }))}
               onClose={() => setReplayState((prev) => ({ ...prev, isVisible: false }))}
+              isCompleted={!isMicEnabled || isCompleted}
             />
           </div>
         )}
@@ -912,8 +1109,13 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
           isPanelOpen={isLivePanelOpen}
           onTogglePanel={onToggleLivePanel}
           unreadCount={unreadCount}
-          statusHint={statusHint || (isCompleted ? 'Interview Complete · Review the full transcript in the side panel' : 'Tap microphone once to speak · Auto-detects when you finish')}
-          isCompleted={isCompleted}
+          statusHint={statusHint || (!isMicEnabled || isCompleted ? 'Interview Complete · Review the full transcript in the side panel' : 'Tap microphone once to speak · Auto-detects when you finish')}
+          isCompleted={!isMicEnabled || isCompleted}
+          onOpenReview={onOpenCompletionReview}
+          canDownloadReview={canDownloadReview}
+          onDownloadReview={onDownloadReview}
+          isDownloadingReview={isDownloadingReview}
+          downloadReviewError={downloadReviewError}
         />
       </div>
     </div>

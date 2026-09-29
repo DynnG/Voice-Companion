@@ -5,7 +5,7 @@ import { extractDocumentText } from '../services/sttService';
 interface DocumentAttachmentScreenProps {
   initialJobRole?: string;
   initialDocuments?: AttachedDocument[];
-  onStartInterview: (jobRole: string, docs: AttachedDocument[]) => void;
+  onStartInterview: (jobRole: string, docs: AttachedDocument[]) => void | Promise<void>;
 }
 
 interface UploadedFileItem {
@@ -162,6 +162,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
   });
 
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
+  const [isStarting, setIsStarting] = useState<boolean>(false);
 
   const heroRef = useRef<HTMLElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -594,7 +595,9 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
     });
   }, []);
 
-  const handleStartInterview = () => {
+  const handleStartInterview = async () => {
+    if (isStarting) return;
+    setIsStarting(true);
     const cleanRole = jobRole.trim() || 'Software Developer';
     const readyDocs: AttachedDocument[] = files
       .filter((f) => f.status === 'done')
@@ -608,7 +611,12 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
         extractedText: f.extractedText || f.content || '',
       }));
 
-    onStartInterview(cleanRole, readyDocs);
+    try {
+      await onStartInterview(cleanRole, readyDocs);
+    } catch (err) {
+      console.error('[DocumentAttachmentScreen] Failed to start interview:', err);
+      setIsStarting(false);
+    }
   };
 
   return (
@@ -640,11 +648,12 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
 
           <button
             type="button"
-            className="btn-saffron-sm"
+            className={`btn-saffron-sm ${isStarting ? 'opacity-60 cursor-not-allowed pointer-events-none' : ''}`}
             onClick={handleStartInterview}
+            disabled={isStarting}
             id="startBtn"
           >
-            Start interview
+            {isStarting ? 'Starting interview…' : 'Start interview'}
           </button>
         </section>
 

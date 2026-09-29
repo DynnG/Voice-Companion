@@ -21,7 +21,8 @@ try:
     from .gemini_service import (
         GeminiInterviewService, extract_conversational_text,
         classify_gemini_error, get_user_friendly_error_message,
-        sanitize_error_message
+        sanitize_error_message, HARD_INTERVIEW_TURN_LIMIT,
+        HARD_LIMIT_ENDING_MESSAGE
     )
     from .tts_service import TTSService
     from .document_service import extract_document_text
@@ -42,7 +43,8 @@ except ImportError:
     from gemini_service import (
         GeminiInterviewService, extract_conversational_text,
         classify_gemini_error, get_user_friendly_error_message,
-        sanitize_error_message
+        sanitize_error_message, HARD_INTERVIEW_TURN_LIMIT,
+        HARD_LIMIT_ENDING_MESSAGE
     )
     from tts_service import TTSService
     from document_service import extract_document_text
@@ -129,6 +131,7 @@ class SegmentInfo(BaseModel):
     start: float
     end: float
     text: str
+    words: Optional[List[Dict[str, Any]]] = None
 
 class StageTimings(BaseModel):
     upload_write_ms: float
@@ -150,6 +153,8 @@ class TranscribeResponse(BaseModel):
     timings: Optional[StageTimings] = None
     model: str
     segments: Optional[List[SegmentInfo]] = None
+    words: Optional[List[Dict[str, Any]]] = None
+    hesitation_evidence: Optional[Dict[str, Any]] = None
     interview_error: Optional[str] = None
 
 class InitialQuestionRequest(BaseModel):
@@ -201,6 +206,7 @@ class AnswerNotesRequest(BaseModel):
     job_role: Optional[str] = "Software Developer"
     attached_documents: Optional[List[Dict[str, Any]]] = None
     duration_seconds: Optional[float] = None
+    hesitation_evidence: Optional[Dict[str, Any]] = None
 
 class AnswerNotesResponse(BaseModel):
     status: str = "success"
@@ -225,7 +231,8 @@ class AnswerComparisonResponse(BaseModel):
     attempt2_notes: List[str] = []
     error_type: Optional[str] = None
     error_message: Optional[str] = None
-
+# Session-only in-memory interview session tracking (Zero DB persistence)
+ACTIVE_INTERVIEW_SESSIONS: Dict[str, Dict[str, Any]] = {}
 
 
 def get_effective_interview_documents(
@@ -304,12 +311,50 @@ def get_effective_interview_documents(
     return effective_docs
 
 
+@app.get("/health", tags=["Health"])
+@app.get("/", tags=["Health"])
+def health_check():
+    """
+    Service health check reporting faster-whisper, Gemini, and Kokoro TTS status.
+    """
+    stt = STTService.get_instance()
+    gemini = GeminiInterviewService.get_instance()
+    tts = TTSService.get_instance()
+    return {
+        "status": "healthy",
+        "service": "faster-whisper-stt",
+        "model": MODEL_SIZE,
+        "device": DEVICE,
+        "compute_type": COMPUTE_TYPE,
+        "language": DEFAULT_LANGUAGE,
+        "beam_size": BEAM_SIZE,
+        "vad_filter": stt.vad_filter,
+        "gemini": {
+            "configured": bool(gemini.get_api_key()),
+            "model": GEMINI_MODEL
+        },
+        "tts": {
+            "enabled": tts.is_enabled(),
+            "loaded": tts.is_loaded()
+        }
+    }
+
+
 @app.post("/interview/initial-question", tags=["Interview Brain"])
 async def initial_question(req: InitialQuestionRequest, db: Session = Depends(get_db)):
     """
     Generate an opening interview question tailored to the job role and attached candidate documents.
     """
     effective_docs = get_effective_interview_documents(req.interview_id, req.attached_documents, db)
+
+    # Initialize in-memory session availability tracking (Zero DB persistence)
+    if req.interview_id:
+        ACTIVE_INTERVIEW_SESSIONS[req.interview_id] = {
+            "status": "active",
+            "turns_used": 0,
+            "max_turns": HARD_INTERVIEW_TURN_LIMIT,
+            "created_at": time.time()
+        }
 
     role = req.job_role
     if req.interview_id and db is not None:
@@ -350,7 +395,51 @@ async def initial_question(req: InitialQuestionRequest, db: Session = Depends(ge
 async def generate_followup(req: FollowupRequest, db: Session = Depends(get_db)):
     """
     Generate the next follow-up question or concluding statement given a user answer and conversation history.
+    Strictly enforces session availability and maximum turn limit without calling Gemini if completed.
     """
+    session_id = req.interview_id
+    session_data = ACTIVE_INTERVIEW_SESSIONS.get(session_id) if session_id else None
+
+    # Check 1: In-memory session completed guard - reject without calling Gemini
+    if session_data and session_data.get("status") == "completed":
+        logger.info(f"[/interview/followup] Rejected Gemini call: session {session_id} is already completed.")
+        return FollowupResponse(
+            transcription=req.user_answer,
+            ai_response=HARD_LIMIT_ENDING_MESSAGE,
+            should_end=True,
+            reason="session_limit_reached",
+            status="completed",
+            error_type="session_limit_reached",
+            error_message="Interview session limit reached. No further Gemini requests allowed."
+        )
+
+    # Check 2: Calculate candidate turn count from history (excluding Attempt 2 retries)
+    candidate_turns = 0
+    if req.conversation_history:
+        candidate_turns = sum(
+            1 for m in req.conversation_history
+            if m.get("sender", "").lower() in ("you", "user")
+            and not str(m.get("text", "")).startswith("(Attempt 2)")
+        )
+
+    # If already at or beyond maximum turn limit (8 candidate turns)
+    if candidate_turns >= HARD_INTERVIEW_TURN_LIMIT or (session_data and session_data.get("turns_used", 0) >= HARD_INTERVIEW_TURN_LIMIT):
+        if session_id:
+            if session_id not in ACTIVE_INTERVIEW_SESSIONS:
+                ACTIVE_INTERVIEW_SESSIONS[session_id] = {}
+            ACTIVE_INTERVIEW_SESSIONS[session_id]["status"] = "completed"
+            ACTIVE_INTERVIEW_SESSIONS[session_id]["turns_used"] = HARD_INTERVIEW_TURN_LIMIT
+        logger.info(f"[/interview/followup] Session limit reached ({candidate_turns}/{HARD_INTERVIEW_TURN_LIMIT}). Returning final message without Gemini call.")
+        return FollowupResponse(
+            transcription=req.user_answer,
+            ai_response=HARD_LIMIT_ENDING_MESSAGE,
+            should_end=True,
+            reason="turn_limit_reached",
+            status="completed",
+            error_type="session_limit_reached",
+            error_message="Interview session limit reached. No further Gemini requests allowed."
+        )
+
     effective_docs = get_effective_interview_documents(req.interview_id, req.attached_documents, db)
 
     role = req.job_role
@@ -371,10 +460,29 @@ async def generate_followup(req: FollowupRequest, db: Session = Depends(get_db))
         interview_id=req.interview_id
     )
     clean_response = extract_conversational_text(result["response"])
+    should_end = result.get("should_end", False)
+
+    # Update in-memory session availability
+    if session_id:
+        if session_id not in ACTIVE_INTERVIEW_SESSIONS:
+            ACTIVE_INTERVIEW_SESSIONS[session_id] = {
+                "status": "active",
+                "turns_used": candidate_turns + 1,
+                "max_turns": HARD_INTERVIEW_TURN_LIMIT
+            }
+        else:
+            ACTIVE_INTERVIEW_SESSIONS[session_id]["turns_used"] = max(
+                ACTIVE_INTERVIEW_SESSIONS[session_id].get("turns_used", 0),
+                candidate_turns + 1
+            )
+
+        if should_end or ACTIVE_INTERVIEW_SESSIONS[session_id]["turns_used"] >= HARD_INTERVIEW_TURN_LIMIT:
+            ACTIVE_INTERVIEW_SESSIONS[session_id]["status"] = "completed"
+
     return {
         "transcription": req.user_answer,
         "ai_response": clean_response,
-        "should_end": result.get("should_end", False),
+        "should_end": should_end,
         "reason": result.get("reason"),
         "status": result.get("status", "success"),
         "error_type": result.get("error_type"),
@@ -395,7 +503,8 @@ async def get_answer_notes(req: AnswerNotesRequest, db: Session = Depends(get_db
         job_role=req.job_role,
         attached_docs=effective_docs,
         interview_id=req.interview_id,
-        duration_seconds=req.duration_seconds
+        duration_seconds=req.duration_seconds,
+        hesitation_evidence=req.hesitation_evidence
     )
     return AnswerNotesResponse(
         status=res.get("status", "success"),
@@ -600,33 +709,70 @@ async def transcribe_audio(
 
             effective_docs = get_effective_interview_documents(interview_id, parsed_docs, db)
 
-            try:
-                gemini = GeminiInterviewService.get_instance()
-                followup_dict = await gemini.generate_interview_followup(
-                    user_answer=transcribed_text,
-                    conversation_history=parsed_history,
-                    job_role=job_role,
-                    attached_docs=effective_docs,
-                    interview_id=interview_id
+            session_data = ACTIVE_INTERVIEW_SESSIONS.get(interview_id) if interview_id else None
+            candidate_turns = 0
+            if parsed_history:
+                candidate_turns = sum(
+                    1 for m in parsed_history
+                    if m.get("sender", "").lower() in ("you", "user")
+                    and not str(m.get("text", "")).startswith("(Attempt 2)")
                 )
-                ai_response_text = extract_conversational_text(followup_dict["response"])
-                should_end = followup_dict["should_end"]
-                completion_reason = followup_dict["reason"]
-                followup_status = followup_dict.get("status", "success")
-                followup_error_type = followup_dict.get("error_type")
-                if followup_status == "error":
-                    interview_error = followup_dict.get("error_message") or ai_response_text
-                logger.info(f"Gemini generated interview follow-up (status={followup_status}, should_end={should_end}): \"{ai_response_text}\"")
-            except Exception as gemini_err:
-                err_type = classify_gemini_error(gemini_err)
-                ai_response_text = get_user_friendly_error_message(err_type)
-                should_end = False
-                completion_reason = f"gemini_{err_type}"
-                followup_status = "error"
-                followup_error_type = err_type
-                sanitized_err = sanitize_error_message(str(gemini_err))
-                logger.error(f"Gemini processing error [{err_type}]: {sanitized_err}")
-                interview_error = sanitized_err
+
+            if (session_data and session_data.get("status") == "completed") or candidate_turns >= HARD_INTERVIEW_TURN_LIMIT:
+                logger.info(f"[/transcribe] Session limit reached ({candidate_turns}/{HARD_INTERVIEW_TURN_LIMIT}). Returning final message without Gemini call.")
+                if interview_id:
+                    if interview_id not in ACTIVE_INTERVIEW_SESSIONS:
+                        ACTIVE_INTERVIEW_SESSIONS[interview_id] = {}
+                    ACTIVE_INTERVIEW_SESSIONS[interview_id]["status"] = "completed"
+                    ACTIVE_INTERVIEW_SESSIONS[interview_id]["turns_used"] = HARD_INTERVIEW_TURN_LIMIT
+                ai_response_text = HARD_LIMIT_ENDING_MESSAGE
+                should_end = True
+                completion_reason = "turn_limit_reached"
+                followup_status = "completed"
+            else:
+                try:
+                    gemini = GeminiInterviewService.get_instance()
+                    followup_dict = await gemini.generate_interview_followup(
+                        user_answer=transcribed_text,
+                        conversation_history=parsed_history,
+                        job_role=job_role,
+                        attached_docs=effective_docs,
+                        interview_id=interview_id
+                    )
+                    ai_response_text = extract_conversational_text(followup_dict["response"])
+                    should_end = followup_dict["should_end"]
+                    completion_reason = followup_dict["reason"]
+                    followup_status = followup_dict.get("status", "success")
+                    followup_error_type = followup_dict.get("error_type")
+
+                    if interview_id:
+                        if interview_id not in ACTIVE_INTERVIEW_SESSIONS:
+                            ACTIVE_INTERVIEW_SESSIONS[interview_id] = {
+                                "status": "active",
+                                "turns_used": candidate_turns + 1,
+                                "max_turns": HARD_INTERVIEW_TURN_LIMIT
+                            }
+                        else:
+                            ACTIVE_INTERVIEW_SESSIONS[interview_id]["turns_used"] = max(
+                                ACTIVE_INTERVIEW_SESSIONS[interview_id].get("turns_used", 0),
+                                candidate_turns + 1
+                            )
+                        if should_end or ACTIVE_INTERVIEW_SESSIONS[interview_id]["turns_used"] >= HARD_INTERVIEW_TURN_LIMIT:
+                            ACTIVE_INTERVIEW_SESSIONS[interview_id]["status"] = "completed"
+
+                    if followup_status == "error":
+                        interview_error = followup_dict.get("error_message") or ai_response_text
+                    logger.info(f"Gemini generated interview follow-up (status={followup_status}, should_end={should_end}): \"{ai_response_text}\"")
+                except Exception as gemini_err:
+                    err_type = classify_gemini_error(gemini_err)
+                    ai_response_text = get_user_friendly_error_message(err_type)
+                    should_end = False
+                    completion_reason = f"gemini_{err_type}"
+                    followup_status = "error"
+                    followup_error_type = err_type
+                    sanitized_err = sanitize_error_message(str(gemini_err))
+                    logger.error(f"Gemini processing error [{err_type}]: {sanitized_err}")
+                    interview_error = sanitized_err
 
         result["ai_response"] = ai_response_text
         result["should_end"] = should_end

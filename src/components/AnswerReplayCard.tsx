@@ -14,6 +14,7 @@ interface AnswerReplayCardProps {
   onResumeInterview: () => void;
   onToggleMinimize: () => void;
   onClose: () => void;
+  isCompleted?: boolean;
 }
 
 function formatDuration(seconds: number): string {
@@ -44,6 +45,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
   onResumeInterview,
   onToggleMinimize,
   onClose,
+  isCompleted = false,
 }) => {
   const { attempt1, attempt2, comparison, isRetryMode, isMinimized, isVisible } = replayState;
 
@@ -306,23 +308,30 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
         )}
 
         {/* Bottom Actions */}
-        <div className="flex items-center justify-between pt-2 border-t border-[#046241]/20 gap-2 shrink-0">
-          <button
-            onClick={onTryAgain}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#046241] text-[#f5eedb]/80 hover:text-[#ffffff] hover:bg-[#046241]/30 text-xs font-space transition-colors active:scale-95"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Try Again</span>
-          </button>
+        {!isCompleted ? (
+          <div className="flex items-center justify-between pt-2 border-t border-[#046241]/20 gap-2 shrink-0">
+            <button
+              onClick={onTryAgain}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#046241] text-[#f5eedb]/80 hover:text-[#ffffff] hover:bg-[#046241]/30 text-xs font-space transition-colors active:scale-95"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Try Again</span>
+            </button>
 
-          <button
-            onClick={onResumeInterview}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#046241] hover:bg-[#046241]/85 text-[#ffffff] font-space font-semibold text-xs transition-all shadow-md active:scale-95 ml-auto"
-          >
-            <span>Resume Interview</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
+            <button
+              onClick={onResumeInterview}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#046241] hover:bg-[#046241]/85 text-[#ffffff] font-space font-semibold text-xs transition-all shadow-md active:scale-95 ml-auto"
+            >
+              <span>Resume Interview</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <div className="pt-2 border-t border-[#046241]/20 flex justify-between items-center shrink-0 text-xs text-[#5eead4]">
+            <span className="font-space font-medium">Interview Complete</span>
+            <span className="text-[#f5eedb]/60">All answers recorded</span>
+          </div>
+        )}
       </div>
     );
   }
@@ -484,15 +493,22 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
       </div>
 
       {/* Try Answer Again Action */}
-      <div className="pt-1 flex justify-end shrink-0">
-        <button
-          onClick={onTryAgain}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#046241] hover:bg-[#046241]/85 text-[#ffffff] font-space font-semibold text-xs transition-all shadow-md active:scale-95"
-        >
-          <RotateCcw className="w-3.5 h-3.5 text-[#FFB347]" />
-          <span>Try Answer Again</span>
-        </button>
-      </div>
+      {!isCompleted ? (
+        <div className="pt-1 flex justify-end shrink-0">
+          <button
+            onClick={onTryAgain}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#046241] hover:bg-[#046241]/85 text-[#ffffff] font-space font-semibold text-xs transition-all shadow-md active:scale-95"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-[#FFB347]" />
+            <span>Try Answer Again</span>
+          </button>
+        </div>
+      ) : (
+        <div className="pt-1 flex justify-between items-center shrink-0 text-xs text-[#5eead4]">
+          <span className="font-space font-medium">Interview Complete</span>
+          <span className="text-[#f5eedb]/60">All answers recorded</span>
+        </div>
+      )}
     </div>
   );
 };

@@ -11,6 +11,17 @@ try:
 except ImportError:
     from config import GEMINI_API_KEY, GEMINI_MODEL
 
+try:
+    from .hesitation_formatter import (
+        extract_hesitation_evidence,
+        build_hesitation_coaching_prompt_section
+    )
+except ImportError:
+    from hesitation_formatter import (
+        extract_hesitation_evidence,
+        build_hesitation_coaching_prompt_section
+    )
+
 logger = logging.getLogger("voice-companion-gemini")
 
 
@@ -109,6 +120,7 @@ Guidelines:
    - Clarity
    - Whether claims have supporting details
    - Whether the answer gives a concrete result/example
+   - Speech delivery & fluency: Analyze BOTH detected filler words (e.g., 'um', 'uh', 'so') AND noticeable hesitation pauses/repeated starts represented by '...' or timing evidence. When hesitation moments or repeated fillers occur, provide a constructive, actionable coaching note addressing those specific delivery moments (e.g., "Your answer had several hesitation moments, such as 'um...' and 'I... I think'. Try replacing repeated fillers with a short, intentional pause before continuing."). If speech is crisp and fluent without hesitations, acknowledge the clear, direct delivery.
 3. Strict Prohibitions:
    - Do NOT generate vague praise (e.g. "Great answer", "Good job", "Nice work").
    - Do NOT use "confidence" as a metric.
@@ -130,7 +142,7 @@ Your role is to compare two consecutive attempts (Attempt 1 vs Attempt 2) made b
 
 Guidelines:
 1. Base the comparison strictly on the actual observable differences between Attempt 1 and Attempt 2.
-2. Identify 1 to 3 concrete observable improvements in Attempt 2 compared to Attempt 1 (e.g. "More specific result", "Shorter answer", "Clearer explanation").
+2. Identify 1 to 3 concrete observable improvements in Attempt 2 compared to Attempt 1 (e.g. "More specific result", "Reduced filler words and hesitation pauses", "Clearer explanation", "Better structure").
 3. Identify 1 to 2 areas that could still be improved (e.g. "Explain the technical trade-off more clearly").
 4. Provide 2 to 3 concise coaching notes specifically for Attempt 2.
 5. Strict Prohibitions:
@@ -158,6 +170,15 @@ Guidelines:
 # Gemini is the sole source of dynamically generated interview questions.
 # Quota, rate limits, and network errors return structured error states instead of generic fake questions.
 FALLBACK_FOLLOWUP_QUESTIONS: List[str] = []
+
+# Hard ceiling interview ending limit to conserve Gemini free-tier quota (maximum 8 candidate answers)
+HARD_INTERVIEW_TURN_LIMIT: int = 8
+HARD_LIMIT_ENDING_MESSAGE: str = (
+    "That brings us to the end of our interview. "
+    "Thank you for taking the time to practice with me. "
+    "You did a great job working through the questions. "
+    "You can now review your answers and feedback."
+)
 
 
 def sanitize_error_message(msg: str) -> str:
@@ -864,6 +885,22 @@ class GeminiInterviewService:
             f"(wants_end={user_wants_to_end}, was_wrapup={was_wrapup_question}, clarification={is_clarification}): \"{clean_answer[:60]}\""
         )
 
+        # Enforce hard interview turn limit (maximum 8 candidate turns)
+        # Prevents infinite Gemini calls, preserves free-tier API quota, and completes naturally
+        if user_turn_count >= HARD_INTERVIEW_TURN_LIMIT:
+            logger.info(
+                f"[Whisper->Gemini] Candidate turn {user_turn_count} reached maximum allowed limit ({HARD_INTERVIEW_TURN_LIMIT}). "
+                "Ending interview immediately without calling Gemini API."
+            )
+            return {
+                "response": HARD_LIMIT_ENDING_MESSAGE,
+                "should_end": True,
+                "reason": "turn_limit_reached",
+                "status": "success",
+                "error_type": None,
+                "error_message": None
+            }
+
         if not api_key:
             logger.warning("[Whisper->Gemini] GEMINI_API_KEY not configured in backend environment.")
             if user_wants_to_end:
@@ -1200,11 +1237,13 @@ class GeminiInterviewService:
         job_role: Optional[str] = None,
         attached_docs: Optional[List[Dict[str, Any]]] = None,
         interview_id: Optional[str] = None,
-        duration_seconds: Optional[float] = None
+        duration_seconds: Optional[float] = None,
+        hesitation_evidence: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Use Gemini to analyze the candidate's latest answer and generate SHORT, actionable coaching notes.
-        Analyzes the actual latest answer, previous PAL question, and available document context.
+        Analyzes the actual latest answer, previous PAL question, available document context,
+        and speech delivery evidence (both filler words and hesitation pauses).
         """
         clean_answer = (user_answer or "").strip()
         clean_question = (question or "").strip()
@@ -1229,6 +1268,12 @@ class GeminiInterviewService:
         role = (job_role or "Software Developer").strip()
         dur_str = f"{int(round(duration_seconds))} seconds" if duration_seconds else "not specified"
 
+        # Resolve hesitation evidence from parameter or extract directly from answer
+        if hesitation_evidence is None and clean_answer:
+            hesitation_evidence = extract_hesitation_evidence(clean_answer, audio_duration=duration_seconds)
+
+        delivery_guidance = build_hesitation_coaching_prompt_section(hesitation_evidence or {})
+
         prompt = (
             f"[Interview Coaching Setup]\n{context_header}\n\n"
             f"You are an expert interview coach analyzing a candidate's answer for the role of {role}.\n\n"
@@ -1246,13 +1291,15 @@ class GeminiInterviewService:
             f"- clarity\n"
             f"- whether claims have supporting details\n"
             f"- whether the answer gives a concrete result/example\n\n"
+            f"{delivery_guidance}\n\n"
             f"STRICT RULES:\n"
-            f"1. Do NOT generate vague praise (e.g., 'Great answer', 'Good job', 'Nice work').\n"
-            f"2. Do NOT use 'confidence' as a metric.\n"
-            f"3. Do NOT invent information.\n"
-            f"4. Do NOT criticize pronunciation unless the speech transcript contains clear evidence.\n"
-            f"5. Limit AI Notes to approximately 2 to 4 concise bullet points.\n"
-            f"6. Each bullet point should be a concise phrase (5-12 words max), actionable or descriptive of strength/gap.\n"
+            f"1. Ground delivery notes in BOTH detected filler words ('um', 'uh', 'so') AND noticeable hesitation pauses ('...') or timing evidence.\n"
+            f"2. Do NOT generate vague praise (e.g., 'Great answer', 'Good job', 'Nice work').\n"
+            f"3. Do NOT use 'confidence' as a metric or numeric score.\n"
+            f"4. Do NOT invent information.\n"
+            f"5. Do NOT criticize pronunciation unless the speech transcript contains clear evidence.\n"
+            f"6. Limit AI Notes to approximately 2 to 4 concise bullet points.\n"
+            f"7. Each bullet point should be a concise phrase (5-14 words max), actionable or descriptive of strength/gap.\n"
             f"Return a valid JSON object matching this schema:\n"
             f'{{\n  "notes": ["<bullet 1>", "<bullet 2>", "<bullet 3>"]\n}}'
         )

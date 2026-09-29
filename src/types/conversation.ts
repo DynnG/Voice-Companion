@@ -61,3 +61,17 @@ export interface ReplayState {
   isMinimized: boolean;
 }
 
+export interface InterviewExchangeRecord {
+  id: string;
+  order: number;
+  question: string;
+  userAnswer: string;
+  attempt1Answer?: string;
+  attempt2Answer?: string;
+  durationSeconds?: number;
+  aiNotes: string[];
+  aiNotesStatus: 'idle' | 'loading' | 'success' | 'error';
+  errorMessage?: string;
+  timestamp: string;
+}
+
