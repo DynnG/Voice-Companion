@@ -46,6 +46,7 @@ export const VoiceCompanion: React.FC = () => {
   const [isCompletionModalOpen, setIsCompletionModalOpen] = useState<boolean>(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
   const [downloadPdfError, setDownloadPdfError] = useState<string | null>(null);
+  const [submitAnswerFn, setSubmitAnswerFn] = useState<((text: string) => Promise<void>) | null>(null);
   const isStartingInterviewRef = useRef<boolean>(false);
 
   // Start a new interview workflow: clears all previous documents, messages, and context
@@ -59,6 +60,7 @@ export const VoiceCompanion: React.FC = () => {
     setIsCompletionModalOpen(false);
     setIsDownloadingPdf(false);
     setDownloadPdfError(null);
+    setSubmitAnswerFn(null);
   };
 
   // Transition from Document Attachment Screen to Live Voice Interview
@@ -302,7 +304,7 @@ export const VoiceCompanion: React.FC = () => {
       isDownloadingReview={isDownloadingPdf}
     >
       {/* CENTRAL WORKSPACE: Setup Screen (Upload Documents) OR Live Voice Interview */}
-      <main className="flex-1 h-full w-full relative overflow-hidden bg-[#050810] flex flex-col">
+      <main className="flex-1 h-full w-full relative overflow-hidden bg-transparent flex flex-col z-10">
         {session.status === 'setup' ? (
           <DocumentAttachmentScreen
             initialJobRole={session.jobRole}
@@ -332,6 +334,7 @@ export const VoiceCompanion: React.FC = () => {
             onDownloadReview={handleDownloadReviewPdf}
             isDownloadingReview={isDownloadingPdf}
             downloadReviewError={downloadPdfError}
+            onRegisterSubmitAnswer={setSubmitAnswerFn}
           />
         )}
       </main>
@@ -345,6 +348,7 @@ export const VoiceCompanion: React.FC = () => {
         canDownloadReview={canDownloadReview}
         onDownloadReview={handleDownloadReviewPdf}
         isDownloadingReview={isDownloadingPdf}
+        onSendAnswer={submitAnswerFn || undefined}
       />
 
       {/* Post-Interview Completion Modal & Download Review */}
