@@ -1,12 +1,12 @@
 import React from 'react';
-import { MessageSquare, Download } from 'lucide-react';
+import { Mic, Video, VideoOff } from 'lucide-react';
 import { VoiceState } from '../types/conversation';
 
 interface VoiceControlsProps {
   state: VoiceState;
   onStartFlow: () => void;
-  isPanelOpen: boolean;
-  onTogglePanel: () => void;
+  isPanelOpen?: boolean;
+  onTogglePanel?: () => void;
   unreadCount?: number;
   statusHint?: string;
   isCompleted?: boolean;
@@ -15,14 +15,13 @@ interface VoiceControlsProps {
   onDownloadReview?: () => void;
   isDownloadingReview?: boolean;
   downloadReviewError?: string | null;
+  onToggleCamera?: () => void;
+  isCameraActive?: boolean;
 }
 
 export const VoiceControls: React.FC<VoiceControlsProps> = ({
   state,
   onStartFlow,
-  isPanelOpen,
-  onTogglePanel,
-  unreadCount = 0,
   statusHint,
   isCompleted = false,
   onOpenReview,
@@ -30,63 +29,71 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
   onDownloadReview,
   isDownloadingReview = false,
   downloadReviewError = null,
+  onToggleCamera,
+  isCameraActive = false,
 }) => {
+  void canDownloadReview;
+  void onDownloadReview;
+  void isDownloadingReview;
   return (
     <footer className="voice-footer">
-      <div className="mic-row">
-        {/* Existing Microphone Button - Design Locked */}
-        <button
-          className={`mic-btn ${state === 'listening' ? 'live' : ''} ${isCompleted ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`}
-          id="micBtn"
-          aria-label={isCompleted ? 'Interview concluded' : state === 'listening' ? 'Listening to your answer...' : 'Start talking'}
-          onClick={isCompleted ? undefined : onStartFlow}
-          disabled={isCompleted}
-          title={isCompleted ? 'Interview session limit reached. Start a new interview from sidebar to practice again.' : state === 'listening' ? 'Listening... auto-stops when you finish speaking' : 'Tap to start speaking'}
-        >
-          <svg viewBox="0 0 24 24" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z" />
-            <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
-            <line x1="12" y1="18" x2="12" y2="22" />
-          </svg>
-        </button>
+      <div className="flex items-center justify-center gap-7 sm:gap-8">
+        {/* Speak Control: Primary large amber/gold circular button */}
+        <div className="flex flex-col items-center gap-2">
+          <button
+            className={`w-[68px] h-[68px] sm:w-[72px] sm:h-[72px] rounded-full flex items-center justify-center transition-all duration-300 active:scale-95 ${
+              state === 'listening'
+                ? 'bg-gradient-to-br from-[#ffd48a] via-[#FFB347] to-[#e8952a] text-[#133020] shadow-[0_0_0_8px_rgba(255,179,71,0.2),0_0_36px_rgba(255,179,71,0.55)] scale-105'
+                : 'bg-gradient-to-br from-[#ffd48a] via-[#FFB347] to-[#e8952a] text-[#133020] shadow-[0_0_24px_rgba(255,179,71,0.35)] hover:shadow-[0_0_32px_rgba(255,179,71,0.5)] hover:scale-105'
+            } ${isCompleted ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`}
+            id="micBtn"
+            aria-label={isCompleted ? 'Interview concluded' : state === 'listening' ? 'Listening to your answer...' : 'Speak'}
+            onClick={isCompleted ? undefined : onStartFlow}
+            disabled={isCompleted}
+            title={isCompleted ? 'Interview concluded' : state === 'listening' ? 'Listening... click to finish' : 'Click to speak'}
+          >
+            <Mic className="w-7 h-7 sm:w-8 sm:h-8" />
+          </button>
+          <span className="text-xs font-manrope font-semibold text-[#8EB69B]">
+            {state === 'listening' ? 'Listening...' : 'Speak'}
+          </span>
+        </div>
 
-        {/* Feature 1: Live Conversation Button - 60px circular button */}
-        <button
-          className={`chat-btn ${isPanelOpen ? 'active-panel' : ''}`}
-          id="liveChatBtn"
-          aria-label="Toggle live conversation panel"
-          onClick={onTogglePanel}
-          title="Live Conversation Transcript"
-        >
-          <MessageSquare className="w-[22px] h-[22px] transition-transform duration-200 hover:scale-105" />
-          {unreadCount > 0 && !isPanelOpen && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#FFB347] text-[#133020] font-bold text-[10px] rounded-full flex items-center justify-center border-2 border-[#0a0e18]">
-              {unreadCount}
-            </span>
-          )}
-        </button>
+        {/* Camera Control: Smaller dark glass circular button */}
+        <div className="flex flex-col items-center gap-2">
+          <button
+            className={`w-12 h-12 sm:w-[50px] sm:h-[50px] rounded-full flex items-center justify-center transition-all duration-200 active:scale-95 border backdrop-blur-md ${
+              isCameraActive
+                ? 'bg-[rgba(4,98,65,0.40)] border border-[#2FE0A8]/50 border-t-[#2FE0A8] text-[#2FE0A8] shadow-[inset_0_1px_1px_rgba(255,255,255,0.2),0_0_16px_rgba(47,224,168,0.3)]'
+                : 'bg-[rgba(9,32,23,0.60)] hover:bg-[rgba(9,32,23,0.80)] border border-[rgba(218,241,222,0.12)] border-t-[rgba(245,238,219,0.25)] text-[#8EB69B] hover:text-[#F5EEDB] shadow-[inset_0_1px_1px_rgba(245,238,219,0.16),0_4px_16px_rgba(0,0,0,0.3)]'
+            }`}
+            id="camBtn"
+            aria-label={isCameraActive ? 'Turn camera off' : 'Turn camera on'}
+            onClick={onToggleCamera}
+            title={isCameraActive ? 'Turn camera off' : 'Turn camera on'}
+          >
+            {isCameraActive ? (
+              <Video className="w-5 h-5 text-[#2FE0A8]" />
+            ) : (
+              <VideoOff className="w-5 h-5 text-[#8EB69B]" />
+            )}
+          </button>
+          <span className="text-xs font-manrope font-semibold text-[#8EB69B]">
+            {isCameraActive ? 'Camera On' : 'Camera'}
+          </span>
+        </div>
       </div>
 
-      <div className="hint text-center max-w-sm flex flex-col items-center gap-1.5">
+      <div className="hint text-center max-w-sm flex flex-col items-center gap-1.5 font-manrope mt-2">
         <span>{statusHint || 'Tap microphone to speak · faster-whisper STT backend connected'}</span>
         {downloadReviewError && (
-          <span className="text-[11px] text-amber-300 font-inter">{downloadReviewError}</span>
+          <span className="text-[11px] text-[#FFC370] font-manrope">{downloadReviewError}</span>
         )}
-        {canDownloadReview && onDownloadReview && (
-          <button
-            onClick={onDownloadReview}
-            disabled={isDownloadingReview}
-            className="flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-space font-semibold bg-[#046241] hover:bg-[#046241]/85 text-white border border-[#10B981]/50 shadow-xs transition-all active:scale-95 mt-0.5 disabled:opacity-60"
-            title="Download Interview Review (PDF)"
-          >
-            <Download className="w-3.5 h-3.5 text-[#FFB347]" />
-            <span>{isDownloadingReview ? 'Generating PDF…' : 'Download Interview Review'}</span>
-          </button>
-        )}
+        {/* Note: Exactly one download action per specification: Download Interview Review button moved exclusively to transcript panel (canDownloadReview && onDownloadReview) */}
         {isCompleted && onOpenReview && (
           <button
             onClick={onOpenReview}
-            className="flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-space font-medium bg-[#FFB347]/15 hover:bg-[#FFB347]/25 text-[#FFB347] border border-[#FFB347]/30 transition-all active:scale-95"
+            className="flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-manrope font-semibold bg-[rgba(255,179,71,0.12)] hover:bg-[rgba(255,179,71,0.22)] text-[#FFC370] border border-[rgba(255,179,71,0.4)] transition-all active:scale-95"
             title="Open Completion Review"
           >
             <span>View Completion Review</span>

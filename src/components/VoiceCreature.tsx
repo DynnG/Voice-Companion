@@ -259,7 +259,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       ctx.clearRect(0, 0, W, H);
 
       // Controlled base radius and maximum safe distance to canvas edge
-      const baseR = Math.min(W, H) * 0.18;
+      const baseR = Math.min(W, H) * 0.25;
       const maxSafeRadius = Math.min(cx, cy); // Distance from center to closest canvas boundary
       let dynBaseR = baseR;
       let dynAmp = cur.amp;
@@ -363,28 +363,50 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       }
       ctx.shadowBlur = 0;
 
-      // Layered echoes
-      function layer(scaleMult: number, alphaMult: number, phaseOffset: number, lobeOffset: number) {
+      // Thin orbital ring details around the orb (free-standing orbital trajectory)
+      for (let j = 0; j < 2; j++) {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(t * cur.speed * (j ? 0.45 : -0.32) + j * 1.4);
+        ctx.strokeStyle = j === 0 ? 'rgba(255,179,71,0.28)' : 'rgba(142,182,155,0.22)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, dynBaseR * (1.52 + j * 0.16), dynBaseR * (1.18 + j * 0.18), 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Layered echoes - multiple overlapping translucent organic layers
+      function layer(scaleMult: number, alphaMult: number, phaseOffset: number, lobeOffset: number, tint?: string) {
         const phase = dynPhase - phaseOffset;
         const pts = blobPoints(dynBaseR * scaleMult, dynAmp, dynLobes + lobeOffset, phase, 64);
         smoothPath(pts);
         if (!ctx) return;
         const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, dynBaseR * 1.15 * scaleMult);
-        g.addColorStop(0,   `rgba(${col},${0.85 * alphaMult})`);
-        g.addColorStop(0.6, `rgba(${secCol},${0.45 * alphaMult})`);
-        g.addColorStop(1,   `rgba(${col},${0.10 * alphaMult})`);
+        const baseColor = tint || col;
+        g.addColorStop(0,   `rgba(${baseColor},${0.85 * alphaMult})`);
+        g.addColorStop(0.55, `rgba(${secCol},${0.45 * alphaMult})`);
+        g.addColorStop(1,   `rgba(${baseColor},${0.08 * alphaMult})`);
         ctx.fillStyle = g;
         ctx.fill();
+        ctx.strokeStyle = `rgba(${baseColor},${0.35 * alphaMult})`;
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
       }
+      // Outer translucent botanical/forest layer
+      layer(1.42, 0.22, 0.75, 2, '4,98,65');
       layer(1.36, 0.28, 0.55, 1);
       layer(1.18, 0.45, 0.28, 0);
+      // Warm amber / cream translucent accent layer
+      layer(1.08, 0.38, -0.42, 1, '255,195,112');
 
       // Core blob
       const pts = blobPoints(dynBaseR, dynAmp, dynLobes, dynPhase, 64);
       smoothPath(pts);
       const fill = ctx.createRadialGradient(cx, cy, 0, cx, cy, dynBaseR * 1.15);
       fill.addColorStop(0,   `rgba(${col},0.92)`);
-      fill.addColorStop(0.6, `rgba(${secCol},0.55)`);
+      fill.addColorStop(0.35, `rgba(245,238,219,0.45)`);
+      fill.addColorStop(0.70, `rgba(${secCol},0.55)`);
       fill.addColorStop(1,   `rgba(${col},0.16)`);
       ctx.fillStyle = fill;
       ctx.shadowColor = `rgba(${col},0.45)`;

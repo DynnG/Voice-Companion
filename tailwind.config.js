@@ -7,6 +7,16 @@ export default {
   theme: {
     extend: {
       colors: {
+        savi: {
+          bg: '#04170F',
+          cream: '#F5EEDB',
+          serpent: '#133020',
+          castleton: '#046241',
+          amber: '#FFB347',
+          gold: '#FFC370',
+          muted: '#8EB69B',
+          pale: '#DAF1DE',
+        },
         shell: {
           dark: '#133020',
           emerald: '#046241',
@@ -17,6 +27,7 @@ export default {
         }
       },
       fontFamily: {
+        fraunces: ['Fraunces', 'Georgia', 'serif'],
         manrope: ['Manrope', 'system-ui', 'sans-serif'],
         space: ['"Space Grotesk"', 'sans-serif'],
         inter: ['Inter', 'sans-serif'],
