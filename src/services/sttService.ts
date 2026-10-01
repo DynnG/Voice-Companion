@@ -39,12 +39,15 @@ export interface TranscribeContext {
 }
 
 export function getApiBaseUrl(): string {
+  let url = 'http://localhost:8000';
   try {
     if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) {
-      return import.meta.env.VITE_API_BASE_URL;
+      url = import.meta.env.VITE_API_BASE_URL;
+    } else if (typeof window !== 'undefined' && import.meta.env.PROD) {
+      url = '/api';
     }
   } catch {}
-  return 'http://localhost:8000';
+  return url.endsWith('/') ? url.slice(0, -1) : url;
 }
 
 export async function extractDocumentText(file: File): Promise<{

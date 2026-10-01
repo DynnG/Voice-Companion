@@ -321,6 +321,8 @@ def get_effective_interview_documents(
 
 
 @app.get("/health", tags=["Health"])
+@app.get("/api/health", tags=["Health"])
+@app.get("/api", tags=["Health"])
 @app.get("/", tags=["Health"])
 def health_check():
     """
@@ -350,6 +352,7 @@ def health_check():
 
 
 @app.post("/interview/initial-question", tags=["Interview Brain"])
+@app.post("/api/interview/initial-question", tags=["Interview Brain"])
 async def initial_question(req: InitialQuestionRequest, db: Session = Depends(get_db)):
     """
     Generate an opening interview question tailored to the job role and attached candidate documents.
@@ -401,6 +404,7 @@ async def initial_question(req: InitialQuestionRequest, db: Session = Depends(ge
 
 
 @app.post("/interview/followup", response_model=FollowupResponse, tags=["Interview Brain"])
+@app.post("/api/interview/followup", response_model=FollowupResponse, tags=["Interview Brain"])
 async def generate_followup(req: FollowupRequest, db: Session = Depends(get_db)):
     """
     Generate the next follow-up question or concluding statement given a user answer and conversation history.
@@ -500,6 +504,7 @@ async def generate_followup(req: FollowupRequest, db: Session = Depends(get_db))
 
 
 @app.post("/interview/replay/notes", response_model=AnswerNotesResponse, tags=["Answer Replay"])
+@app.post("/api/interview/replay/notes", response_model=AnswerNotesResponse, tags=["Answer Replay"])
 async def get_answer_notes(req: AnswerNotesRequest, db: Session = Depends(get_db)):
     """
     Generate short, actionable coaching notes for a candidate's answer (Session-only, no DB writes).
@@ -524,6 +529,7 @@ async def get_answer_notes(req: AnswerNotesRequest, db: Session = Depends(get_db
 
 
 @app.post("/interview/replay/compare", response_model=AnswerComparisonResponse, tags=["Answer Replay"])
+@app.post("/api/interview/replay/compare", response_model=AnswerComparisonResponse, tags=["Answer Replay"])
 async def compare_answers(req: AnswerComparisonRequest, db: Session = Depends(get_db)):
     """
     Compare Attempt 1 and Attempt 2 for the same interview question (Session-only, no DB writes).
@@ -551,6 +557,7 @@ async def compare_answers(req: AnswerComparisonRequest, db: Session = Depends(ge
 
 
 @app.post("/tts", tags=["Text-to-Speech"])
+@app.post("/api/tts", tags=["Text-to-Speech"])
 async def text_to_speech(req: TTSRequest):
     """
     Synthesize speech from text using Kokoro-82M ONNX on CPU.
@@ -598,6 +605,7 @@ async def text_to_speech(req: TTSRequest):
 
 
 @app.get("/tts/status", tags=["Text-to-Speech"])
+@app.get("/api/tts/status", tags=["Text-to-Speech"])
 def get_tts_status():
     """
     Check Kokoro TTS engine status, default voice, and available voices.
@@ -614,6 +622,7 @@ def get_tts_status():
 
 
 @app.post("/documents/extract", tags=["Document Processing"])
+@app.post("/api/documents/extract", tags=["Document Processing"])
 async def extract_document(
     file: UploadFile = File(..., description="Document file to extract text from (.pdf, .docx, .txt, .md)")
 ):
@@ -639,6 +648,7 @@ async def extract_document(
     return result
 
 @app.post("/transcribe", response_model=TranscribeResponse, tags=["Speech-to-Text & Interview Brain"])
+@app.post("/api/transcribe", response_model=TranscribeResponse, tags=["Speech-to-Text & Interview Brain"])
 async def transcribe_audio(
     file: UploadFile = File(..., description="Audio file to transcribe (e.g. wav, mp3, webm, m4a, ogg)"),
     language: Optional[str] = Form(None, description="Optional language code (default: 'en')"),
@@ -815,6 +825,7 @@ async def transcribe_audio(
         )
 
 @app.post("/interview/chat", response_model=InterviewChatResponse, tags=["AI Interviewer"])
+@app.post("/api/interview/chat", response_model=InterviewChatResponse, tags=["AI Interviewer"])
 async def interview_chat(payload: InterviewChatRequest):
     """
     Generate an AI interviewer response via Gemini using conversational history and role context.
