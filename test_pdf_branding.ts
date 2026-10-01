@@ -21,8 +21,8 @@ jsPDF.API.events.push(['initialized',function(this:jsPDF){
     const role=rendered.find(row=>row.text==='Target Role: Software Developer')!;
     const date=rendered.find(row=>row.text==='October 1, 2026')!;
     assert(title&&role&&date);
-    assert(title.x===40&&role.x===40&&date.x===40,'Header metadata must remain left-aligned');
-    assert(title.y<role.y&&role.y<date.y,'Header must stack title, role and date');
+    assert(title.x===40&&role.x>300&&date.x===role.x,'Header metadata must occupy the right-hand space');
+    assert(role.y<date.y&&date.y<title.y,'Role and date must stack beside the left-hand branding');
     assert(title.font==='Fraunces'&&role.font==='Manrope');
     assert(rendered.some(row=>row.text.includes('Describe an API you built.')));
     assert(rendered.some(row=>row.text.includes('I implemented the endpoint and tested its failure modes.')));
@@ -33,5 +33,5 @@ jsPDF.API.events.push(['initialized',function(this:jsPDF){
 }]);
 await generateInterviewReviewPdf({jobRole:'Software Developer',completedAt:'Oct 1, 2026, 10:00 AM',status:'Completed',exchanges:[{id:'branding-test',order:1,question:'Describe an API you built.',userAnswer:'I implemented the endpoint and tested its failure modes.',durationSeconds:42,aiNotes:['Include a measured outcome.'],aiNotesStatus:'success',timestamp:'10:00 AM'}]});
 assert(saved,'Browser download must still be triggered');
-console.log('PDF branding functional checks passed: wordmark without logo image, UI fonts, left-aligned header, unchanged transcript/duration/notes, and download.');
+console.log('PDF branding functional checks passed: wordmark without logo image, UI fonts, right-aligned metadata, unchanged transcript/duration/notes, and download.');
 

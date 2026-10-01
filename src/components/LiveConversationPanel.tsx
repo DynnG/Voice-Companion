@@ -58,7 +58,7 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
     return parts.map((part, idx) => {
       if (/^(basically|like|really|um|uh)$/i.test(part)) {
         return (
-          <span key={idx} className="text-[#FFC370] font-semibold">
+          <span key={idx} className="bg-[#FFC370]/65 text-[#133020] rounded-[3px] px-0.5 py-px [box-decoration-break:clone]">
             {part}
           </span>
         );

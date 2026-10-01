@@ -993,3 +993,34 @@
   .setup-card.setup-job-card, .setup-card.setup-doc-card { padding-block: 16px; }
   .setup-start-action { margin-top: 10px; }
 }
+
+/* Keep laptop setup controls in view; narrow screens retain their stacked flow. */
+@media (min-width: 961px) and (min-height: 650px) {
+  #setup { flex: 1 0 auto; }
+}
+
+@media (min-width: 961px) and (min-height: 650px) and (max-height: 900px) {
+  #setup > .setup-hero { padding: 4px 20px; }
+  .hero-orb { width: min(100%, clamp(170px, 24vh, 216px)); }
+  .setup-tag { padding: 4px 10px; margin-bottom: 8px; }
+  .setup-hero h1 { font-size: clamp(30px, 2.8vw, 40px); margin-bottom: 10px; }
+  .setup-hero p { font-size: 14px; line-height: 1.45; }
+  .setup-card.setup-job-card, .setup-card.setup-doc-card { padding: 14px 18px; }
+  .setup-job-heading { gap: 12px; margin-bottom: 10px; }
+  .setup-job-icon { width: 40px; height: 40px; flex-shrink: 0; }
+  .setup-job-card .setup-jlbl { margin: 10px 0 8px; }
+  .setup-job-card .setup-chip { min-height: 34px; padding: 6px 10px; }
+  .setup-doc-card .setup-drop { min-height: 140px; padding: 10px 12px; }
+  .setup-doc-card .setup-uf { margin-top: 10px; }
+  .setup-doc-card .setup-flist { max-height: 80px; overflow-y: auto; }
+  .setup-start-action { margin-top: 10px; }
+}
+
+@media (min-width: 961px) and (min-height: 650px) and (max-height: 750px) {
+  #setup { gap: 10px; }
+  .setup-hero h1 { font-size: 32px; margin-bottom: 8px; }
+  .setup-hero p { font-size: 13px; }
+  .setup-job-heading .setup-usub { font-size: 12px; line-height: 1.4; }
+  .setup-card.setup-job-card, .setup-card.setup-doc-card { padding-block: 12px; }
+  .setup-start-action { padding-block: 8px; margin-top: 8px; }
+}

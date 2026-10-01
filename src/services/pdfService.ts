@@ -73,18 +73,20 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
   currentY += 64;
 
   doc.setFont('Fraunces', 'normal');
-  doc.setFontSize(22);
+  doc.setFontSize(18);
   doc.setTextColor(19, 48, 32);
   doc.text('Interview Review', margin, currentY);
-  currentY += 26;
+  const titleY = currentY;
 
   doc.setFont('Manrope', 'normal');
   doc.setFontSize(10);
   doc.setTextColor(71, 85, 105);
   const roleText = `Target Role: ${data.jobRole || 'Software Developer'}`;
-  const roleLines = doc.splitTextToSize(roleText, contentWidth);
-  doc.text(roleLines, margin, currentY);
-  currentY += roleLines.length * 14;
+  const metadataWidth = contentWidth * 0.48;
+  const metadataX = pageWidth - margin;
+  const metadataY = topMargin + 27;
+  const roleLines = doc.splitTextToSize(roleText, metadataWidth);
+  doc.text(roleLines, metadataX, metadataY, { align: 'right', lineHeightFactor: 1.4 });
 
   const reviewDate = data.completedAt ? new Date(data.completedAt) : new Date();
   const dateFormatted = Number.isNaN(reviewDate.getTime())
@@ -92,8 +94,9 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     : reviewDate.toLocaleDateString('en-US', {
       month: 'long', day: 'numeric', year: 'numeric'
     });
-  doc.text(dateFormatted, margin, currentY);
-  currentY += 20;
+  const dateY = metadataY + roleLines.length * 14;
+  doc.text(dateFormatted, metadataX, dateY, { align: 'right' });
+  currentY = Math.max(titleY, dateY) + 20;
 
   doc.setDrawColor(213, 226, 218);
   doc.setLineWidth(0.6);

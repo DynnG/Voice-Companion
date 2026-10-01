@@ -1186,7 +1186,14 @@ class GeminiInterviewService:
 
             for attempt in range(2):
                 try:
-                    async with httpx.AsyncClient(timeout=15.0) as client:
+                    async with httpx.AsyncClient(
+                        timeout=httpx.Timeout(
+                            connect=10.0,
+                            read=30.0,
+                            write=10.0,
+                            pool=10.0
+                        )
+                    ) as client:
                         response = await client.post(
                             url,
                             json=payload,
@@ -1230,16 +1237,32 @@ class GeminiInterviewService:
                 except (GeminiQuotaExceededError, GeminiServiceError):
                     raise
                 except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout, httpx.WriteTimeout, httpx.NetworkError) as net_err:
-                    sanitized_ex = sanitize_error_message(str(net_err))
-                    logger.warning(f"Network error calling Gemini model {model_name}: {sanitized_ex}")
+                    err_type = type(net_err).__name__
+                    err_msg = str(net_err).strip()
+                    cause = getattr(net_err, "__cause__", None)
+                    cause_info = f" [cause: {type(cause).__name__}: {cause}]" if cause else ""
+                    detail = f"{err_type}: {err_msg or repr(net_err)}{cause_info}"
+                    sanitized_ex = sanitize_error_message(detail)
+                    logger.warning(
+                        f"Network error calling Gemini model {model_name} (attempt {attempt + 1}/2): {sanitized_ex}",
+                        exc_info=True
+                    )
                     last_exception = GeminiConnectionError(f"Connection error to Gemini: {sanitized_ex}")
                     if attempt == 0:
                         await asyncio.sleep(0.5)
                         continue
                     break
                 except Exception as ex:
-                    sanitized_ex = sanitize_error_message(str(ex))
-                    logger.warning(f"Failed calling Gemini model {model_name}: {sanitized_ex}")
+                    err_type = type(ex).__name__
+                    err_msg = str(ex).strip()
+                    cause = getattr(ex, "__cause__", None)
+                    cause_info = f" [cause: {type(cause).__name__}: {cause}]" if cause else ""
+                    detail = f"{err_type}: {err_msg or repr(ex)}{cause_info}"
+                    sanitized_ex = sanitize_error_message(detail)
+                    logger.warning(
+                        f"Failed calling Gemini model {model_name} (attempt {attempt + 1}/2): {sanitized_ex}",
+                        exc_info=True
+                    )
                     if any(q in sanitized_ex.lower() for q in ("429", "quota", "resource_exhausted")):
                         raise GeminiQuotaExceededError(sanitized_ex)
                     last_exception = GeminiServiceError(sanitized_ex)
