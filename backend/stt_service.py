@@ -5,9 +5,11 @@ except ImportError:
     from runtime_storage import TRANSCRIPTION_STORAGE
 
 import io
+import os
 import gc
 import time
 import logging
+import tempfile
 from typing import Dict, Any, Optional, Tuple, Union, List
 import av
 import av.audio.resampler
@@ -23,7 +25,8 @@ try:
         CPU_THREADS,
         DEFAULT_LANGUAGE,
         VAD_FILTER,
-        CONDITION_ON_PREVIOUS_TEXT
+        CONDITION_ON_PREVIOUS_TEXT,
+        WHISPER_CACHE_DIR
     )
 except ImportError:
     from config import (
@@ -34,7 +37,8 @@ except ImportError:
         CPU_THREADS,
         DEFAULT_LANGUAGE,
         VAD_FILTER,
-        CONDITION_ON_PREVIOUS_TEXT
+        CONDITION_ON_PREVIOUS_TEXT,
+        WHISPER_CACHE_DIR
     )
 
 try:
@@ -70,26 +74,33 @@ def decode_audio_bytes(
     if len(file_bytes) < 32:
         raise ValueError("Audio payload is too small to contain valid audio stream headers.")
 
+    tmp_path = None
+    container = None
     try:
-        container = av.open(io.BytesIO(file_bytes), mode="r", metadata_errors="ignore")
-    except Exception as e:
-        raise ValueError(f"Could not open audio container: {str(e)}") from e
+        try:
+            container = av.open(io.BytesIO(file_bytes), mode="r", metadata_errors="ignore")
+        except Exception as mem_err:
+            logger.info(f"In-memory audio decode failed ({mem_err}), trying safe temp file in writable directory...")
+            fd, tmp_path = tempfile.mkstemp(dir=tempfile.gettempdir(), prefix="savi_audio_", suffix=".tmp")
+            with os.fdopen(fd, "wb") as f:
+                f.write(file_bytes)
+            container = av.open(tmp_path, mode="r", metadata_errors="ignore")
 
-    if not container.streams.audio:
-        container.close()
-        raise ValueError("Audio container contains no valid audio stream tracks.")
+        if not container.streams.audio:
+            container.close()
+            container = None
+            raise ValueError("Audio container contains no valid audio stream tracks.")
 
-    resampler = av.audio.resampler.AudioResampler(
-        format="s16",
-        layout="mono",
-        rate=sampling_rate,
-    )
+        resampler = av.audio.resampler.AudioResampler(
+            format="s16",
+            layout="mono",
+            rate=sampling_rate,
+        )
 
-    raw_buffer = io.BytesIO()
-    dtype = None
-    frame_count = 0
+        raw_buffer = io.BytesIO()
+        dtype = None
+        frame_count = 0
 
-    try:
         for frame in container.decode(audio=0):
             frame.pts = None
             resampled_frames = resampler.resample(frame)
@@ -103,12 +114,24 @@ def decode_audio_bytes(
                     frame_count += 1
     except (av.error.InvalidDataError, av.error.FFmpegError, Exception) as err:
         if frame_count == 0:
-            container.close()
+            if container is not None:
+                container.close()
+                container = None
             raise ValueError(f"Corrupted or invalid audio stream data: {str(err)}") from err
         logger.warning(f"PyAV warning encountered during stream decode (recovered {frame_count} frames): {err}")
     finally:
-        container.close()
-        del resampler
+        if container is not None:
+            try:
+                container.close()
+            except Exception:
+                pass
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+        if 'resampler' in locals():
+            del resampler
         gc.collect()
 
     if frame_count == 0 or raw_buffer.tell() == 0:

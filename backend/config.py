@@ -1,7 +1,26 @@
 import os
+import tempfile
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
+
+# Ensure writable directories in serverless environments (e.g. AWS Lambda / Vercel)
+TMP_DIR = tempfile.gettempdir()
+WHISPER_CACHE_DIR = os.getenv("WHISPER_CACHE_DIR", os.path.join(TMP_DIR, "whisper_models"))
+HF_HOME = os.getenv("HF_HOME", os.path.join(TMP_DIR, "huggingface"))
+
+# Ensure Hugging Face and transcription libraries write ONLY to writable temporary storage
+os.environ.setdefault("HF_HOME", HF_HOME)
+os.environ.setdefault("HUGGINGFACE_HUB_CACHE", os.path.join(HF_HOME, "hub"))
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+os.environ.setdefault("TMPDIR", TMP_DIR)
+
+try:
+    os.makedirs(WHISPER_CACHE_DIR, exist_ok=True)
+    os.makedirs(HF_HOME, exist_ok=True)
+except Exception:
+    pass
 
 # Search and load .env from backend directory or project root
 backend_env = Path(__file__).resolve().parent / ".env"
@@ -44,8 +63,9 @@ _load_env_file()
 
 # Whisper Model Configuration
 # Model size options: "tiny", "base", "small", "medium", "large-v3"
-# "small" is the recommended model for interview vocabulary accuracy and high reliability on CPU
-MODEL_SIZE: str = os.getenv("WHISPER_MODEL_SIZE", "small")
+# "small" is default for local CPU, "base" is serverless default to fit within ephemeral storage and cold-start limits
+default_whisper_model = "base" if os.environ.get("VERCEL") else "small"
+MODEL_SIZE: str = os.getenv("WHISPER_MODEL_SIZE", default_whisper_model)
 
 # Device: "cpu" or "cuda"
 DEVICE: str = os.getenv("WHISPER_DEVICE", "cpu")
