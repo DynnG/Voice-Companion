@@ -1,4 +1,4 @@
-export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking';
+export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'gesture_no';
 
 export type DocumentCategory = 'resume' | 'job_description' | 'portfolio' | 'other';
 

@@ -261,6 +261,53 @@ export function isValidInterviewQuestion(text?: string | null): boolean {
   return true;
 }
 
+/**
+ * Detects whether a candidate utterance is a question seeking clarification, repetition,
+ * or asking about a project/company.
+ * Clarification questions must NEVER trigger the "NO / STAY ON TOPIC" gesture.
+ */
+export function isClarificationQuery(text?: string | null): boolean {
+  if (!text) return false;
+  const lower = text.toLowerCase().trim();
+  return (
+    lower.includes('repeat') ||
+    lower.includes('clarif') ||
+    lower.includes('what did you') ||
+    lower.includes('what do you mean') ||
+    lower.includes('which project') ||
+    lower.includes('which company') ||
+    lower.includes('pardon') ||
+    lower.includes('could you say that again') ||
+    lower.includes('can you explain') ||
+    lower.includes('could you explain') ||
+    lower.includes('can you repeat') ||
+    lower.includes('could you repeat')
+  );
+}
+
+/**
+ * Detects whether an interviewer response is a boundary redirection for off-topic candidate turns.
+ */
+export function isOffTopicRedirect(aiResponse?: string | null, reason?: string | null): boolean {
+  if (reason === 'off_topic_redirect' || reason === 'off_topic') return true;
+  if (!aiResponse) return false;
+  const lower = aiResponse.toLowerCase();
+  const redirectPatterns = [
+    /let'?s (keep|stay|focus|bring|steer|return|redirect|get back)/i,
+    /stay on topic/i,
+    /focus on the interview/i,
+    /back to the interview/i,
+    /return to (our|the|your) interview/i,
+    /focus on your (experience|background|qualifications|role)/i,
+    /steer us back/i,
+    /bring us back/i,
+    /as your interviewer/i,
+    /keep our (focus|conversation) on/i,
+    /outside (the|our) scope of this interview/i,
+  ];
+  return redirectPatterns.some((pattern) => pattern.test(lower));
+}
+
 export async function fetchInitialInterviewQuestion(
   jobRole: string,
   attachedDocuments?: AttachedDocumentPayload[],

@@ -60,6 +60,15 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 )
+try:
+    from .gemini_service import configure_sensitive_data_logging
+    configure_sensitive_data_logging()
+except ImportError:
+    try:
+        from gemini_service import configure_sensitive_data_logging
+        configure_sensitive_data_logging()
+    except Exception:
+        pass
 logger = logging.getLogger("voice-companion-backend")
 
 @asynccontextmanager
