@@ -135,12 +135,15 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
               const isUser = msg.sender === 'You';
               return (
                 <div key={msg.id} className="flex gap-2.5 items-start text-xs sm:text-[13px]">
-                  {/* Avatar Icon */}
-                  {isUser ? (
-                    <div className="w-7 h-7 rounded-full bg-[#b8b3a6] text-white flex items-center justify-center shrink-0 mt-0.5">
-                      <User className="w-3.5 h-3.5" />
-                    </div>
-                  ) : (
+{isUser ? (
+  <div className="w-7 h-9 rounded-full overflow-hidden shrink-0 mt-0.5">
+    <img
+      src="/user.png"
+      alt="You"
+      className="w-full h-full object-cover"
+    />
+  </div>
+) : (
 <div className="w-7 h-7 rounded-full bg-[#133020] flex items-center justify-center shrink-0 mt-0.5 overflow-hidden">
   <img
     src="/favicon-16x16.png"
