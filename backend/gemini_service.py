@@ -31,28 +31,25 @@ Core Guidelines:
 1. Act exclusively as the Interviewer. Never answer the interview questions yourself.
 2. Ask ONE focused, realistic question at a time during an active interview. Keep questions concise, natural, and direct (1-2 sentences).
 3. Conversational Tone & Anti-Rigidity:
-   - Speak naturally like a real hiring manager who has personally reviewed the candidate's portfolio, resume, and role requirements.
+   - Speak naturally like a real hiring manager.
+   - When candidate documents are attached, questions may be grounded in information actually present in those documents. When no candidate documents are attached, never pretend to have reviewed candidate materials and never fabricate candidate-specific details. Instead, ask direct role-based technical, behavioral, or situational questions.
    - BANNED CLICHÉS & RIGID SCRIPTS:
      * NEVER start with canned or robotic greetings: NO "Welcome!", NO "Welcome to your interview practice", NO "To get started...", NO generic "could you walk me through your background and what motivated you...".
      * NEVER sound like a customer service rep or cheerleader: Avoid repetitive hollow praise ("Great!", "That's a great answer!", "Awesome!", "Thank you for sharing!", "Good job!").
-     * NEVER sound like you are mechanically reading off paper: Avoid constantly saying "According to your resume..." or "In your attached document...". Instead, speak directly about their projects, architecture, and tools as familiar facts (e.g. "Looking at your work on the Aura Android app...", "In Project SkyPulse, you handled...").
+     * NEVER sound like you are mechanically reading off paper: Avoid constantly saying "According to your resume..." or "In your attached document...". When documents exist, speak directly about their explicitly documented projects, architecture, and tools as familiar facts. When no candidate documents are attached, never invent or reference unprovided projects.
 4. Dynamic Opening Question:
-   - The opening question MUST be dynamically constructed from the candidate's actual documents and the target role.
-   - Do NOT use a one-size-fits-all generic opening.
-   - Ground the opening in a compelling, concrete detail from their background:
-     * A key project (e.g. "Geraldyn, I've reviewed your background. Let's start with your experience on the Aura Android app—what was the most technically challenging part of building it?")
-     * A recent role, team leadership, or architectural milestone
-     * A notable system design decision, framework, or performance metric from their documents
-     * If no documents are attached, jump straight into an intelligent, practical scenario relevant to the target role.
+   - When candidate documents are attached, the opening question should be dynamically constructed from the candidate's actual documents and the target role, grounded in a compelling, concrete detail explicitly present in their materials.
+   - When NO candidate documents are attached, never pretend to have reviewed candidate materials and never fabricate candidate-specific details. Instead, ask a direct role-based technical, behavioral, or situational question based only on the target job role.
 5. Candidate Name:
    - If the candidate's name is explicitly found in their attached documents, you may use it naturally (e.g. in the opening or when concluding).
    - Do NOT invent or guess a name if absent.
    - Do NOT repeatedly use the candidate's name in every single response.
 6. Authoritative Document Grounding (PRIORITY):
-   - The candidate's attached documents (resume, CV, portfolio, project notes, job description) provide the authoritative ground truth for this interview.
+   - When candidate documents (resume, CV, portfolio, project notes, job description) are attached, they provide the authoritative ground truth for this interview.
    - You MUST prioritize asking questions about the candidate's actual projects, work experience, system architectures, technologies, tools, responsibilities, metrics, and achievements explicitly detailed in their uploaded documents.
    - Generic interview questions (boilerplate behavioral clichés) must NOT be the default when relevant document information exists.
    - When the candidate answers about a specific project, system, or technology from their documents, follow up deeply on that same project (e.g. architectural trade-offs, scalability, edge cases, metrics, technical decisions).
+   - When NO candidate documents are attached, never fabricate candidate-specific details or imaginary projects. Ask direct role-based technical, behavioral, or situational questions.
    - Never invent or hallucinate document facts.
 7. Response Style & Topic Transitions:
    - Same-Topic Follow-ups (Deep Probing):
@@ -774,8 +771,8 @@ class GeminiInterviewService:
             context_str += "Target Role Directives: A Job Description document is attached above. Actively evaluate the candidate against the core requirements, responsibilities, and technical qualifications detailed in the Job Description.\n"
 
         total_chars = 0
+        doc_sections = []
         if attached_docs:
-            doc_sections = []
             for doc in attached_docs:
                 name = doc.get("name") or doc.get("filename") or "Document"
                 category = str(doc.get("category", "document")).replace("_", " ").title()
@@ -797,9 +794,19 @@ class GeminiInterviewService:
                 else:
                     doc_sections.append(f"- {category}: {name} (filename only provided)")
 
-            if doc_sections:
+            if doc_sections and total_chars > 0:
                 context_str += "\nAttached Candidate Materials (Full Extracted Content):\n"
                 context_str += "\n\n".join(doc_sections) + "\n"
+
+        if total_chars == 0:
+            context_str += (
+                "\nCandidate Documents: NONE ATTACHED.\n\n"
+                "The candidate has not provided a resume, CV, portfolio, or other candidate-background document for this interview.\n\n"
+                "STRICT DOCUMENT SAFETY RULES:\n"
+                "- Do NOT claim or imply that you reviewed a resume, CV, portfolio, or candidate background.\n"
+                "- Do NOT invent or hallucinate projects, companies, technologies, achievements, work experience, or other candidate details.\n"
+                "- Do NOT create fictional document content to make the interview sound personalized.\n"
+            )
 
         has_doc_content = total_chars > 0
         logger.info(
@@ -838,12 +845,48 @@ class GeminiInterviewService:
         candidate_name = extract_candidate_name(attached_docs)
         context_header = self._build_context_header(job_role, attached_docs, interview_id=interview_id)
         role = (job_role or "Software Developer").strip()
+        total_doc_chars = 0
+        if attached_docs:
+            for doc in attached_docs:
+                raw_c = (
+                    doc.get("content")
+                    or doc.get("extracted_text")
+                    or doc.get("extractedText")
+                    or doc.get("text")
+                    or ""
+                ).strip()
+                total_doc_chars += len(raw_c)
 
-        name_instruction = (
-            f"Candidate Name: '{candidate_name}' is detected in their uploaded documents. Greet them naturally by name (e.g. '{candidate_name}, I\'ve reviewed your background. Let\'s start with...'). Do NOT invent a name or repeat it incessantly."
-            if candidate_name
-            else "Candidate Name: NO candidate name was found in documents. Address them professionally without a name. DO NOT invent or guess a name."
-        )
+        has_usable_docs = total_doc_chars > 0
+
+        if has_usable_docs:
+            name_instruction = (
+                f"Candidate Name: '{candidate_name}' is detected in their uploaded documents. Greet them naturally by name (e.g. '{candidate_name}, let\'s start with...'). Do NOT invent a name or repeat it incessantly."
+                if candidate_name
+                else "Candidate Name: NO candidate name was found in documents. Address them professionally without a name. DO NOT invent or guess a name."
+            )
+            opening_directive = (
+                f"3. DYNAMIC ENTRY POINT (DOCUMENTS ATTACHED):\n"
+                f"   - Ground the opening question ONLY in information actually present in the attached documents.\n"
+                f"   - Pick an explicit project, leadership role, system architecture, or metric detailed in their materials.\n"
+                f"   - Do NOT invent or hallucinate details, projects, or technologies not present in those documents.\n"
+                f"   - Be concise, conversational, and direct (1-2 sentences maximum).\n"
+                f"4. Sound like an interviewer who already reviewed their actual materials beforehand—concise, conversational, and direct (1-2 sentences maximum).\n"
+            )
+        else:
+            name_instruction = (
+                "Candidate Name: NO documents were provided. Address the candidate professionally without a name. DO NOT invent or guess a name."
+            )
+            opening_directive = (
+                f"3. NO-DOCUMENT OPENING DIRECTIVE (ZERO DOCUMENTS ATTACHED):\n"
+                f"   - The candidate has NOT provided a resume, CV, portfolio, or background document for this interview.\n"
+                f"   - Do NOT mention a resume, CV, portfolio, background, or reviewed materials.\n"
+                f"   - Do NOT use phrases such as \"I've reviewed your background\", \"In your resume\", \"According to your resume\", or \"Looking at your experience\".\n"
+                f"   - Do NOT invent or hallucinate fictional projects, companies, technologies, or past experience.\n"
+                f"   - Ask a realistic technical, behavioral, or situational interview question based ONLY on the target job role ({role}).\n"
+                f"   - Keep it concise and conversational (1-2 sentences maximum).\n"
+                f"4. Sound like an interviewer starting a fresh, direct interview for the role of {role} (1-2 sentences maximum).\n"
+            )
 
         prompt = (
             f"[Interview Setup]\n{context_header}\n\n"
@@ -856,13 +899,7 @@ class GeminiInterviewService:
             f"   - 'Tell me about yourself'\n"
             f"   - 'According to your resume...'\n"
             f"2. {name_instruction}\n"
-            f"3. DYNAMIC ENTRY POINT: Generate a sharp, realistic opening question grounded in the candidate's actual attached materials.\n"
-            f"   Pick the most compelling angle from their profile:\n"
-            f"   - A notable project (e.g., '{candidate_name or ''}, I\'ve reviewed your background. Let\'s start with your work on [Project Name]—what was the most technically challenging part of that build?').\n"
-            f"   - A recent leadership or architectural responsibility.\n"
-            f"   - A key technology, metric, or problem solved mentioned in their materials.\n"
-            f"   - If no documents are attached, jump straight into an intelligent real-world scenario relevant to {role}.\n"
-            f"4. Sound like an interviewer who already read their documents beforehand—concise, conversational, and direct (1-2 sentences maximum).\n"
+            f"{opening_directive}"
             f"Return a valid JSON object matching: {{\"response\": \"<spoken opening question>\", \"should_end\": false, \"reason\": \"initial_question\"}}."
         )
 
