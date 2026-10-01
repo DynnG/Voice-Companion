@@ -29,6 +29,7 @@ export interface VoiceCreatureProps {
   config?: VoiceReactiveConfig;
   className?: string;
   compact?: boolean;
+  respectReducedMotion?: boolean;
 }
 
 const STATE_CONFIG: Record<VoiceState, { colorVar: string; amp: number; speed: number; lobes: number; ring: number }> = {
@@ -97,7 +98,8 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
   audioLevel,
   config,
   className,
-  compact
+  compact,
+  respectReducedMotion = false
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -130,7 +132,9 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let animId: number;
+    let animId = 0;
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const isMotionReduced = () => respectReducedMotion && motionQuery.matches;
     let dpr = Math.min(window.devicePixelRatio || 1, 2);
     let W = 0;
     let H = 0;
@@ -151,7 +155,10 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       cy = H / 2;
     }
 
-    const resizeObserver = new ResizeObserver(() => resize());
+    const resizeObserver = new ResizeObserver(() => {
+      resize();
+      if (isMotionReduced()) draw();
+    });
     resizeObserver.observe(wrap);
     resize();
 
@@ -247,9 +254,10 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       // Color transition
       const targetHex = hex(target.colorVar);
       const tc = hexToRgb(targetHex);
-      colorMix.r += (tc.r - colorMix.r) * 0.05;
-      colorMix.g += (tc.g - colorMix.g) * 0.05;
-      colorMix.b += (tc.b - colorMix.b) * 0.05;
+      const colorEase = isMotionReduced() ? 1 : 0.05;
+      colorMix.r += (tc.r - colorMix.r) * colorEase;
+      colorMix.g += (tc.g - colorMix.g) * colorEase;
+      colorMix.b += (tc.b - colorMix.b) * colorEase;
 
       const col = `${Math.round(colorMix.r)},${Math.round(colorMix.g)},${Math.round(colorMix.b)}`;
       const sec = hueShift(colorMix, 38);
@@ -422,16 +430,22 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      animId = requestAnimationFrame(draw);
+      if (!isMotionReduced()) animId = requestAnimationFrame(draw);
     }
 
+    const handleMotionChange = () => {
+      cancelAnimationFrame(animId);
+      draw();
+    };
+    if (respectReducedMotion) motionQuery.addEventListener('change', handleMotionChange);
     animId = requestAnimationFrame(draw);
 
     return () => {
       cancelAnimationFrame(animId);
       resizeObserver.disconnect();
+      if (respectReducedMotion) motionQuery.removeEventListener('change', handleMotionChange);
     };
-  }, []);
+  }, [respectReducedMotion]);
 
   return (
     <div
