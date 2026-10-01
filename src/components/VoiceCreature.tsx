@@ -1,6 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 import { VoiceState } from '../types/conversation';
 
+export type SaviOrbState = 'idle' | 'speaking' | 'transcribing';
+
+const SAVI_PALETTES: Record<SaviOrbState, string> = {
+  idle: '#9DBDA4',
+  speaking: '#FFB347',
+  transcribing: '#A293C2',
+};
+
 export interface VoiceReactiveConfig {
   micSensitivity?: number;      // Multiplier for microphone amplitude response (default 1.0)
   micExpansionMax?: number;     // Maximum radius expansion ratio during loud speech (default 0.08 = +8% to +10%)
@@ -30,6 +38,9 @@ export interface VoiceCreatureProps {
   className?: string;
   compact?: boolean;
   respectReducedMotion?: boolean;
+  visualState?: SaviOrbState;
+  /** Decorative setup-page animation; never represents interview activity. */
+  ambientLoop?: boolean;
 }
 
 const STATE_CONFIG: Record<VoiceState, { colorVar: string; amp: number; speed: number; lobes: number; ring: number }> = {
@@ -99,7 +110,9 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
   config,
   className,
   compact,
-  respectReducedMotion = false
+  respectReducedMotion = false,
+  visualState,
+  ambientLoop = false
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -107,6 +120,13 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
   const audioLevelPropRef = useRef<number | undefined>(audioLevel);
   const externalAudioRef = useRef<React.MutableRefObject<number> | React.RefObject<number> | undefined>(audioLevelRef);
   const configRef = useRef<VoiceReactiveConfig | undefined>(config);
+  const visualStateRef = useRef(visualState);
+  const redrawRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    visualStateRef.current = visualState;
+    redrawRef.current?.();
+  }, [visualState]);
 
   useEffect(() => {
     currentStateRef.current = state;
@@ -168,7 +188,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       lobes: STATE_CONFIG.idle.lobes,
       ring: 0
     };
-    let colorMix = { r: 75, g: 86, b: 117 };
+    let colorMix = hexToRgb(visualStateRef.current ? SAVI_PALETTES[visualStateRef.current] : hex(STATE_CONFIG.idle.colorVar));
     let smoothedMicLevel = 0;
 
     const motes = Array.from({ length: 18 }, (_, i) => ({
@@ -181,19 +201,21 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
 
     let t = 0;
     let rot = 0;
+    let lastFrameTime = performance.now();
+    const ambientColors = ['#9DBDA4', '#A293C2', '#FFD66B'].map(hexToRgb);
 
     function hex(v: string): string {
       return getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#4b5675';
     }
 
-    function blobPoints(baseR: number, amp: number, lobes: number, phase: number, n: number) {
+    function blobPoints(baseR: number, amp: number, lobes: number, phase: number, n: number, rotation = rot) {
       const pts = [];
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2;
         const r = baseR * (1
           + amp * Math.sin(lobes * a + phase)
           + amp * 0.35 * Math.sin((lobes + 2) * a - phase * 1.4));
-        pts.push({ x: cx + Math.cos(a + rot) * r, y: cy + Math.sin(a + rot) * r });
+        pts.push({ x: cx + Math.cos(a + rotation) * r, y: cy + Math.sin(a + rotation) * r });
       }
       return pts;
     }
@@ -218,9 +240,17 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
     }
 
     function draw() {
-      t += 0.016;
+      const now = performance.now();
+      const elapsed = Math.min((now - lastFrameTime) / 1000, 0.05);
+      lastFrameTime = now;
+      t += ambientLoop ? (isMotionReduced() ? 0 : elapsed) : 0.016;
       const currentName = currentStateRef.current;
-      const target = STATE_CONFIG[currentName];
+      const visual = ambientLoop ? 'idle' : visualStateRef.current;
+      const target = ambientLoop
+        ? { ...STATE_CONFIG.idle, amp: 0.115, speed: 0.95 }
+        : visual === 'idle' && currentName === 'idle'
+        ? { ...STATE_CONFIG.idle, amp: 0.09, speed: 0.65 }
+        : STATE_CONFIG[currentName];
       const cfg = { ...DEFAULT_CONFIG, ...configRef.current };
 
       // 1. Audio amplitude input & smoothing
@@ -249,18 +279,29 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       cur.speed += (target.speed - cur.speed) * 0.05;
       cur.lobes += (target.lobes - cur.lobes) * 0.08;
       cur.ring += (target.ring - cur.ring) * 0.06;
-      rot += 0.0028 * cur.speed;
+      rot += ambientLoop ? (isMotionReduced() ? 0 : elapsed * 0.32) : 0.0028 * cur.speed;
 
       // Color transition
-      const targetHex = hex(target.colorVar);
-      const tc = hexToRgb(targetHex);
-      const colorEase = isMotionReduced() ? 1 : 0.05;
-      colorMix.r += (tc.r - colorMix.r) * colorEase;
-      colorMix.g += (tc.g - colorMix.g) * colorEase;
-      colorMix.b += (tc.b - colorMix.b) * colorEase;
+      const targetHex = visual ? SAVI_PALETTES[visual] : hex(target.colorVar);
+      let tc = hexToRgb(targetHex);
+      if (ambientLoop) {
+        // Hold each palette, then smoothly blend into the next without restarting the shape.
+        const cycle = isMotionReduced() ? 0 : (t % 12) / 4;
+        const index = Math.floor(cycle);
+        const blend = Math.max(0, ((cycle % 1) - 0.75) * 4);
+        const ease = blend * blend * (3 - 2 * blend);
+        const from = ambientColors[index];
+        const to = ambientColors[(index + 1) % ambientColors.length];
+        tc = { r: from.r + (to.r - from.r) * ease, g: from.g + (to.g - from.g) * ease, b: from.b + (to.b - from.b) * ease };
+      }
+      const colorEase = isMotionReduced() ? 1 : visual ? 0.065 : 0.05;
+      const paletteEase = ambientLoop ? 1 : colorEase;
+      colorMix.r += (tc.r - colorMix.r) * paletteEase;
+      colorMix.g += (tc.g - colorMix.g) * paletteEase;
+      colorMix.b += (tc.b - colorMix.b) * paletteEase;
 
       const col = `${Math.round(colorMix.r)},${Math.round(colorMix.g)},${Math.round(colorMix.b)}`;
-      const sec = hueShift(colorMix, 38);
+      const sec = hueShift(colorMix, ambientLoop ? 0 : visual ? 10 : 38);
       const secCol = `${sec.r},${sec.g},${sec.b}`;
 
       if (!ctx) return;
@@ -353,7 +394,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       // MUST guarantee that halo radius is safely smaller than maxSafeRadius (canvas edge),
       // and that the radial gradient smoothly fades to 100% transparent before reaching maxSafeRadius.
       const haloBoost = currentName === 'listening' ? smoothedMicLevel * 0.12 : currentName === 'speaking' ? 0.06 : 0;
-      const haloAlpha = 0.26 + haloBoost;
+      const haloAlpha = 0.26 + haloBoost + (visual ? Math.sin(t * 0.7) * 0.025 : 0);
       // Cap haloR at maxSafeRadius * 0.88 so it NEVER touches or exceeds the canvas boundary
       const haloR = Math.min(maxSafeRadius * 0.88, dynBaseR * (2.1 + (currentName === 'listening' ? smoothedMicLevel * 0.15 : 0)));
       
@@ -389,8 +430,11 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
 
       // Layered echoes - multiple overlapping translucent organic layers
       function layer(scaleMult: number, alphaMult: number, phaseOffset: number, lobeOffset: number, tint?: string) {
-        const phase = dynPhase - phaseOffset;
-        const pts = blobPoints(dynBaseR * scaleMult, dynAmp, dynLobes + lobeOffset, phase, 64);
+        const phase = visual ? t * cur.speed * (1.2 + lobeOffset * 0.14) - phaseOffset : dynPhase - phaseOffset;
+        const rotation = ambientLoop
+          ? rot * (1 + lobeOffset * 0.18) + Math.sin(t * 0.45 + phaseOffset) * 0.22
+          : visual ? rot + Math.sin(t * 0.22 + phaseOffset) * 0.16 : rot;
+        const pts = blobPoints(dynBaseR * scaleMult, dynAmp, dynLobes + lobeOffset, phase, 64, rotation);
         smoothPath(pts);
         if (!ctx) return;
         const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, dynBaseR * 1.15 * scaleMult);
@@ -405,16 +449,18 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
         ctx.stroke();
       }
       // Outer translucent botanical/forest layer
-      layer(1.42, 0.22, 0.75, 2, '4,98,65');
+      layer(1.42, 0.22, 0.75, 2, visual ? col : '4,98,65');
       layer(1.36, 0.28, 0.55, 1);
       layer(1.18, 0.45, 0.28, 0);
       // Warm amber / cream translucent accent layer
-      layer(1.08, 0.38, -0.42, 1, '255,195,112');
+      layer(1.08, visual ? 0.20 : 0.38, -0.42, 1, visual ? col : '255,195,112');
 
       // Core blob
       const pts = blobPoints(dynBaseR, dynAmp, dynLobes, dynPhase, 64);
       smoothPath(pts);
-      const fill = ctx.createRadialGradient(cx, cy, 0, cx, cy, dynBaseR * 1.15);
+      const centerX = cx + (visual ? Math.sin(t * 0.35) * dynBaseR * 0.08 : 0);
+      const centerY = cy + (visual ? Math.cos(t * 0.28) * dynBaseR * 0.06 : 0);
+      const fill = ctx.createRadialGradient(centerX, centerY, 0, cx, cy, dynBaseR * 1.15);
       fill.addColorStop(0,   `rgba(${col},0.92)`);
       fill.addColorStop(0.35, `rgba(245,238,219,0.45)`);
       fill.addColorStop(0.70, `rgba(${secCol},0.55)`);
@@ -437,15 +483,17 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       cancelAnimationFrame(animId);
       draw();
     };
+    redrawRef.current = () => { if (isMotionReduced()) draw(); };
     if (respectReducedMotion) motionQuery.addEventListener('change', handleMotionChange);
     animId = requestAnimationFrame(draw);
 
     return () => {
       cancelAnimationFrame(animId);
       resizeObserver.disconnect();
+      redrawRef.current = null;
       if (respectReducedMotion) motionQuery.removeEventListener('change', handleMotionChange);
     };
-  }, [respectReducedMotion]);
+  }, [respectReducedMotion, ambientLoop]);
 
   return (
     <div

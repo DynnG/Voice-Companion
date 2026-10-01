@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { AttachedDocument, DocumentCategory } from '../types/conversation';
 import { extractDocumentText } from '../services/sttService';
 import { VoiceCreature } from './VoiceCreature';
-import { ArrowRight, BriefcaseBusiness, FileText, Lightbulb, Mic, Paperclip, UploadCloud } from 'lucide-react';
+import { ArrowRight, BriefcaseBusiness, FileText, Lightbulb, Mic, UploadCloud } from 'lucide-react';
 
 interface DocumentAttachmentScreenProps {
   initialJobRole?: string;
@@ -144,7 +144,7 @@ function inferCategory(filename: string): DocumentCategory {
 }
 
 export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> = ({
-  initialJobRole = 'Software Developer',
+  initialJobRole = '',
   initialDocuments = [],
   onStartInterview,
 }) => {
@@ -395,12 +395,11 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
             <span className="setup-tag">Voice interview setup</span>
             <h1 id="setup-heading">Practice the interview<br /><span>before it counts.</span></h1>
             <p>
-              Talk it through with Pal, your AI interviewer. Add your CV, job description or
-              portfolio, and the questions adapt to your target role.
+              Step into a realistic AI interview with Savi. Practice answering role-specific questions and sharpen your responses before the real conversation.
             </p>
           </div>
           <div className="hero-orb" aria-hidden="true">
-            <VoiceCreature state="idle" respectReducedMotion className="setup-idle-orb" />
+            <VoiceCreature state="idle" visualState="idle" ambientLoop respectReducedMotion className="setup-idle-orb" />
           </div>
         </section>
 
@@ -438,7 +437,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
               autoComplete="off"
               aria-label="Target job title"
               aria-describedby="target-job-description"
-              placeholder="e.g. Software Engineer"
+              placeholder="Enter your Target Job Title"
               value={jobRole}
               onChange={(e) => setJobRole(e.target.value)}
               className="setup-job-input"
@@ -531,7 +530,6 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
 
           <div className="setup-uf">
             <div className="setup-fhead">
-              <span className="setup-files-label"><Paperclip size={20} aria-hidden="true" />Attached files</span>
                 <span aria-live="polite">
                   {files.length} {files.length === 1 ? 'file' : 'files'}
                 </span>

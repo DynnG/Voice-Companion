@@ -26,7 +26,7 @@ const MAX_TURNS = 8;
 
 const createInitialSession = (): InterviewSession => ({
   id: `session-${Date.now()}`,
-  jobRole: 'Software Developer',
+  jobRole: '',
   status: 'setup',
   attachedDocuments: [],
   messages: [],
