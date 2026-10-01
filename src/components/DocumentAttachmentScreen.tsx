@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { AttachedDocument, DocumentCategory } from '../types/conversation';
 import { extractDocumentText } from '../services/sttService';
+import { VoiceCreature } from './VoiceCreature';
+import { ArrowRight, BriefcaseBusiness, FileText, Lightbulb, Mic, Paperclip, UploadCloud } from 'lucide-react';
 
 interface DocumentAttachmentScreenProps {
   initialJobRole?: string;
@@ -164,248 +166,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const [isStarting, setIsStarting] = useState<boolean>(false);
 
-  const heroRef = useRef<HTMLElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const heroOrbRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Initialize Hero Orb Canvas animation with unified state and ambient hero lighting
-  useEffect(() => {
-    const wrap = heroOrbRef.current;
-    const canvas = canvasRef.current;
-    if (!wrap || !canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    let W = 0;
-    let H = 0;
-    let cx = 0;
-    let cy = 0;
-
-    function resize() {
-      if (!wrap || !canvas || !ctx) return false;
-      const r = wrap.getBoundingClientRect();
-      if (!r.width) return false;
-      W = r.width;
-      H = r.height;
-      canvas.width = W * dpr;
-      canvas.height = H * dpr;
-      canvas.style.width = W + 'px';
-      canvas.style.height = H + 'px';
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      cx = W / 2;
-      cy = H / 2;
-      return true;
-    }
-
-    resize();
-    window.addEventListener('resize', resize);
-
-    // Single source of truth for orb colors & physical parameters
-    const STATES: Record<string, { c: [number, number, number]; amp: number; speed: number; lobes: number; ring: number }> = {
-      idle:      { c: [95, 150, 125],  amp: 0.06, speed: 0.25, lobes: 3, ring: 0 }, // Emerald green
-      listening: { c: [255, 179, 71],  amp: 0.10, speed: 0.45, lobes: 5, ring: 0 }, // Saffron / warm amber
-      thinking:  { c: [135, 155, 230], amp: 0.09, speed: 1.30, lobes: 7, ring: 0 }, // Celestial soft blue/violet
-      speaking:  { c: [218, 241, 222], amp: 0.20, speed: 0.90, lobes: 4, ring: 1 }, // Luminous mint
-      error:     { c: [110, 120, 115], amp: 0.03, speed: 0.12, lobes: 3, ring: 0 }
-    };
-
-    const cur = { amp: 0.06, speed: 0.25, lobes: 3, ring: 0 };
-    const mix = { r: 95, g: 150, b: 125 };
-    let t = 0;
-    let rot = 0;
-
-    function hueShift({ r, g, b }: { r: number; g: number; b: number }, deg: number) {
-      r /= 255; g /= 255; b /= 255;
-      const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
-      let h = 0, s = 0, l = (mx + mn) / 2;
-      if (mx !== mn) {
-        const d = mx - mn;
-        s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
-        if (mx === r) h = (g - b) / d + (g < b ? 6 : 0);
-        else if (mx === g) h = (b - r) / d + 2;
-        else h = (r - g) / d + 4;
-        h /= 6;
-      }
-      h = ((h + deg / 360) % 1 + 1) % 1;
-      const f = (p: number, q: number, tt: number) => {
-        if (tt < 0) tt += 1;
-        if (tt > 1) tt -= 1;
-        if (tt < 1 / 6) return p + (q - p) * 6 * tt;
-        if (tt < 1 / 2) return q;
-        if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
-        return p;
-      };
-      let a: number, b2: number, c: number;
-      if (s === 0) {
-        a = b2 = c = l;
-      } else {
-        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-        const p = 2 * l - q;
-        a = f(p, q, h + 1 / 3);
-        b2 = f(p, q, h);
-        c = f(p, q, h - 1 / 3);
-      }
-      return { r: Math.round(a * 255), g: Math.round(b2 * 255), b: Math.round(c * 255) };
-    }
-
-    const motes = Array.from({ length: 18 }, () => ({
-      rf: 1.15 + Math.random() * 0.75,
-      sp: 0.2 + Math.random() * 0.4,
-      dir: Math.random() > 0.5 ? -1 : 1,
-      ph: Math.random() * 6.28,
-      sz: 1 + Math.random() * 1.5
-    }));
-
-    function blob(R: number, amp: number, lobes: number, phase: number, n: number) {
-      const p = [];
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * 6.2832;
-        const r = R * (1 + amp * Math.sin(lobes * a + phase) + amp * 0.35 * Math.sin((lobes + 2) * a - phase * 1.4));
-        p.push({ x: cx + Math.cos(a + rot) * r, y: cy + Math.sin(a + rot) * r });
-      }
-      return p;
-    }
-
-    function smooth(p: { x: number; y: number }[]) {
-      if (!ctx) return;
-      ctx.beginPath();
-      const n = p.length;
-      const m = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-      const m0 = m(p[n - 1], p[0]);
-      ctx.moveTo(m0.x, m0.y);
-      for (let i = 0; i < n; i++) {
-        const q = m(p[i], p[(i + 1) % n]);
-        ctx.quadraticCurveTo(p[i].x, p[i].y, q.x, q.y);
-      }
-      ctx.closePath();
-    }
-
-    const CYCLE = ['idle', 'listening', 'thinking', 'speaking'];
-    let heroState = 'idle';
-    let hi = 0;
-    const cycleInterval = setInterval(() => {
-      hi = (hi + 1) % CYCLE.length;
-      heroState = CYCLE[hi];
-    }, 3200);
-
-    let animId = 0;
-
-    function draw() {
-      animId = requestAnimationFrame(draw);
-      if (!wrap || !canvas || !ctx) return;
-      if (!wrap.offsetWidth) return;
-      if (Math.abs(wrap.offsetWidth - W) > 1) resize();
-
-      const st = STATES[heroState] || STATES.idle;
-      t += 0.016;
-      cur.amp += (st.amp - cur.amp) * 0.05;
-      cur.speed += (st.speed - cur.speed) * 0.05;
-      cur.lobes += (st.lobes - cur.lobes) * 0.08;
-      cur.ring += (st.ring - cur.ring) * 0.06;
-      rot += 0.0028 * cur.speed;
-
-      // Smooth frame-by-frame color interpolation (exponential ease ~400-600ms)
-      mix.r += (st.c[0] - mix.r) * 0.05;
-      mix.g += (st.c[1] - mix.g) * 0.05;
-      mix.b += (st.c[2] - mix.b) * 0.05;
-
-      const r = Math.round(mix.r);
-      const g = Math.round(mix.g);
-      const b = Math.round(mix.b);
-      const col = `${r},${g},${b}`;
-      const sc = hueShift(mix, 38);
-      const sec = `${sc.r},${sc.g},${sc.b}`;
-
-      // CRITICAL ORB / HERO BACKGROUND FIX:
-      // Expose the EXACT live orb color to the hero element and root container
-      // as CSS custom properties so the hero background ambient glow follows the orb in lockstep.
-      if (heroRef.current) {
-        heroRef.current.style.setProperty('--orb-rgb', col);
-        heroRef.current.style.setProperty('--orb-color', `rgb(${col})`);
-      }
-      if (containerRef.current) {
-        containerRef.current.style.setProperty('--orb', col);
-        containerRef.current.style.setProperty('--orb2', sec);
-      }
-
-      ctx.clearRect(0, 0, W, H);
-      const R = Math.min(W, H) * 0.2;
-      const br = 1 + Math.sin(t * cur.speed * 0.9) * 0.03;
-      const lobes = Math.round(cur.lobes);
-
-      if (cur.ring > 0.03) {
-        for (let p = 0; p < 2; p++) {
-          const ph = (t * 0.55 + p / 2) % 1;
-          ctx.strokeStyle = `rgba(${col},${(1 - ph) * 0.22 * cur.ring})`;
-          ctx.lineWidth = 1.2;
-          ctx.beginPath();
-          ctx.arc(cx, cy, R * 1.05 + ph * R * 1.3, 0, 6.2832);
-          ctx.stroke();
-        }
-      }
-
-      const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 2.7);
-      halo.addColorStop(0, `rgba(${col},.28)`);
-      halo.addColorStop(1, `rgba(${col},0)`);
-      ctx.fillStyle = halo;
-      ctx.beginPath();
-      ctx.arc(cx, cy, R * 2.7, 0, 6.2832);
-      ctx.fill();
-
-      for (const m of motes) {
-        const a = m.ph + t * m.sp * m.dir;
-        const radius = R * m.rf * (1 + cur.amp * 0.6);
-        const tw = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * 1.6 + m.ph));
-        ctx.beginPath();
-        ctx.arc(cx + Math.cos(a) * radius, cy + Math.sin(a * 1.15) * radius * 0.9, m.sz, 0, 6.2832);
-        ctx.fillStyle = `rgba(${sec},${0.55 * tw})`;
-        ctx.shadowColor = `rgba(${sec},.9)`;
-        ctx.shadowBlur = 6;
-        ctx.fill();
-      }
-      ctx.shadowBlur = 0;
-
-      const layer = (sm: number, am: number, po: number, lo: number) => {
-        smooth(blob(R * br * sm, cur.amp, lobes + lo, t * cur.speed * 1.2 - po, 64));
-        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.15 * sm);
-        grad.addColorStop(0, `rgba(${col},${0.85 * am})`);
-        grad.addColorStop(0.6, `rgba(${sec},${0.45 * am})`);
-        grad.addColorStop(1, `rgba(${col},${0.1 * am})`);
-        ctx.fillStyle = grad;
-        ctx.fill();
-      };
-
-      layer(1.42, 0.28, 0.55, 1);
-      layer(1.2, 0.45, 0.28, 0);
-
-      smooth(blob(R * br, cur.amp, lobes, t * cur.speed * 1.2, 64));
-      const f = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.15);
-      f.addColorStop(0, `rgba(${col},.92)`);
-      f.addColorStop(0.6, `rgba(${sec},.55)`);
-      f.addColorStop(1, `rgba(${col},.16)`);
-      ctx.fillStyle = f;
-      ctx.shadowColor = `rgba(${col},.55)`;
-      ctx.shadowBlur = 22;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-
-      ctx.strokeStyle = `rgba(${col},.65)`;
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
-
-    draw();
-
-    return () => {
-      cancelAnimationFrame(animId);
-      clearInterval(cycleInterval);
-      window.removeEventListener('resize', resize);
-    };
-  }, []);
 
   // Upload and text extraction
   const addFiles = useCallback(async (incoming: FileList | File[]) => {
@@ -595,6 +356,9 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
     });
   }, []);
 
+  // Retain the sample-loading implementation without exposing it on the setup page.
+  void handleLoadSamples;
+
   const handleStartInterview = async () => {
     if (isStarting) return;
     setIsStarting(true);
@@ -621,48 +385,36 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
 
   return (
     <div
-      ref={containerRef}
       className="setup-container relative w-full h-full overflow-y-auto flex flex-col justify-start"
     >
-      <div className="setup-bg" />
-      <div className="setup-noise" />
-
       {/* Bento Grid Layout matching desktop single-viewport design */}
       <main id="setup" className="setup-grid">
-        {/* 1. Hero Setup Card (Full width top) */}
-        <section
-          ref={heroRef}
-          className="setup-card setup-hero"
-          style={{ '--orb-rgb': '95, 150, 125', '--orb-color': 'rgb(95, 150, 125)' } as React.CSSProperties}
-        >
-          <div className="hero-orb" ref={heroOrbRef} aria-hidden="true">
-            <canvas ref={canvasRef} id="hc" />
+        {/* Hero rests directly on the page background. */}
+        <section className="setup-hero" aria-labelledby="setup-heading">
+          <div className="setup-hero-copy">
+            <span className="setup-tag">Voice interview setup</span>
+            <h1 id="setup-heading">Practice the interview<br /><span>before it counts.</span></h1>
+            <p>
+              Talk it through with Pal, your AI interviewer. Add your CV, job description or
+              portfolio, and the questions adapt to your target role.
+            </p>
           </div>
-
-          <span className="setup-tag">Voice interview setup</span>
-          <h1>Practice the interview before it counts</h1>
-          <p>
-            Talk it through with Pal, your voice interviewer. Add your CV, job description or
-            portfolio and the questions adapt to your target role.
-          </p>
-
-          <button
-            type="button"
-            className={`btn-saffron-sm ${isStarting ? 'opacity-60 cursor-not-allowed pointer-events-none' : ''}`}
-            onClick={handleStartInterview}
-            disabled={isStarting}
-            id="startBtn"
-          >
-            {isStarting ? 'Starting interview…' : 'Start interview'}
-          </button>
+          <div className="hero-orb" aria-hidden="true">
+            <VoiceCreature state="idle" respectReducedMotion className="setup-idle-orb" />
+          </div>
         </section>
 
         {/* 2. Target Job Title Card */}
-        <section className="setup-card">
-          <h2>Target job title</h2>
-          <p className="setup-usub">
+        <section className="setup-card setup-job-card" aria-labelledby="target-job-heading">
+          <div className="setup-job-heading">
+            <span className="setup-job-icon" aria-hidden="true"><BriefcaseBusiness size={24} /></span>
+            <div>
+              <h2 id="target-job-heading"><label htmlFor="job">Target job title</label></h2>
+              <p className="setup-usub" id="target-job-description">
             Tell us the role you're targeting. This helps us tailor your request and find the most relevant opportunities.
-          </p>
+              </p>
+            </div>
+          </div>
 
           <div className="setup-jin">
             <svg
@@ -685,7 +437,8 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
               maxLength={80}
               autoComplete="off"
               aria-label="Target job title"
-              placeholder="e.g. Marketing Manager, Registered Nurse, Sales Associate..."
+              aria-describedby="target-job-description"
+              placeholder="e.g. Software Engineer"
               value={jobRole}
               onChange={(e) => setJobRole(e.target.value)}
               className="setup-job-input"
@@ -710,37 +463,24 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
             })}
           </div>
 
-          <p className="setup-jhelp">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z" />
-            </svg>
-            <span>
-              <b>No exact match?</b> You can type any job title or role above. We'll use it to find the most relevant matches.
-            </span>
-          </p>
+
         </section>
 
         {/* 3. Attach Documents Card */}
-        <section className="setup-card">
-          <div className="setup-uh">
-            <h2>Attach documents</h2>
-            <span className="setup-optl">Optional</span>
+        <section className="setup-card setup-doc-card" aria-labelledby="attach-documents-heading">
+          <div className="setup-job-heading">
+            <span className="setup-job-icon" aria-hidden="true"><FileText size={24} /></span>
+            <div>
+              <div className="setup-doc-title">
+                <h2 id="attach-documents-heading">Attach documents</h2>
+                <span className="setup-optl">(Optional)</span>
+              </div>
+              <p className="setup-usub">Upload files you want to include with your request. Add your CV, job description, portfolio, or any relevant materials.</p>
+            </div>
           </div>
-          <p className="setup-usub">Upload files you want to include with your request.</p>
 
-          <label
+          <div
             className={`setup-drop ${isDragOver ? 'over' : ''}`}
-            htmlFor="fileIn"
             onDragEnter={(e) => {
               e.preventDefault();
               setIsDragOver(true);
@@ -766,8 +506,10 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
               id="fileIn"
               ref={fileInputRef}
               className="setup-sr"
+              tabIndex={-1}
               multiple
               aria-label="Upload files"
+              aria-describedby="supported-file-formats"
               accept=".pdf,.doc,.docx,.txt,.md,.png,.jpg,.jpeg,.ppt,.pptx"
               onChange={(e) => {
                 if (e.target.files) {
@@ -776,50 +518,31 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
                 }
               }}
             />
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M12 16V4M6.5 9.5 12 4l5.5 5.5" />
-              <path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
-            </svg>
+            <UploadCloud size={34} aria-hidden="true" />
             <strong>
               {isDragOver ? 'Drop to add your files' : 'Drag & drop your files here'}
             </strong>
             <span className="setup-or">or</span>
-            <span className="setup-bbtn">Browse files</span>
-            <small className="setup-sup">
-              Supported: PDF, DOC, DOCX, TXT, MD, PPT, PPTX, PNG, JPG
+            <button type="button" className="setup-bbtn" onClick={() => fileInputRef.current?.click()} aria-describedby="supported-file-formats">Browse files</button>
+            <small className="setup-sup" id="supported-file-formats">
+              Supported: PDF, DOC, DOCX, TXT, MD, PPT, PPTX, PNG, JPG · Maximum 10 MB per file
             </small>
-          </label>
+          </div>
 
           <div className="setup-uf">
             <div className="setup-fhead">
-              <span>Attached files</span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleLoadSamples}
-                  className="text-[11px] text-[#FFC370] hover:underline cursor-pointer font-medium"
-                  title="Load realistic sample CV & Job Description"
-                >
-                  + Add sample
-                </button>
-                <span>
+              <span className="setup-files-label"><Paperclip size={20} aria-hidden="true" />Attached files</span>
+                <span aria-live="polite">
                   {files.length} {files.length === 1 ? 'file' : 'files'}
                 </span>
-              </div>
             </div>
 
             {files.length === 0 ? (
-              <p className="setup-empty">No files attached yet</p>
+              <div className="setup-empty">
+                <FileText size={32} aria-hidden="true" />
+                <p>No files attached yet</p>
+                <p className="setup-empty-description">Upload your resume, job description, or portfolio to get more relevant questions.</p>
+              </div>
             ) : (
               <ul className="setup-flist" aria-live="polite">
                 {files.map((file) => {
@@ -846,6 +569,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
                           <div
                             className="setup-bar"
                             role="progressbar"
+                            aria-label={`Uploading ${file.name}`}
                             aria-valuemin={0}
                             aria-valuemax={100}
                             aria-valuenow={file.pct}
@@ -882,6 +606,23 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
           </div>
         </section>
       </main>
+      <div className="setup-start-action">
+        <p className="setup-bottom-guidance">
+          <Lightbulb size={24} aria-hidden="true" />
+          <span><strong>No exact match?</strong> You can type any job title or role above. We'll use it to find the most relevant matches.</span>
+        </p>
+          <button
+            type="button"
+            className="btn-saffron-sm setup-start-button"
+            onClick={handleStartInterview}
+            disabled={isStarting}
+            id="startBtn"
+          >
+            <Mic size={20} aria-hidden="true" />
+            <span>{isStarting ? 'Starting interview…' : 'Start interview'}</span>
+            <ArrowRight size={20} aria-hidden="true" />
+          </button>
+      </div>
     </div>
   );
 };

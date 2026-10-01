@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, MessageSquare, Download } from 'lucide-react';
+import { Plus, MessageSquare, Download, CircleHelp } from 'lucide-react';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -14,6 +14,7 @@ interface AppShellProps {
   onDownloadReview?: () => void;
   isDownloadingReview?: boolean;
   isInterviewActive?: boolean;
+  isSetupPage?: boolean;
 }
 
 export const AppShell: React.FC<AppShellProps> = (props) => {
@@ -25,6 +26,7 @@ export const AppShell: React.FC<AppShellProps> = (props) => {
     activeRole,
     showNewInterviewButton = false,
     isInterviewActive = false,
+    isSetupPage = false,
     canDownloadReview = false,
     onDownloadReview,
     isDownloadingReview = false,
@@ -35,6 +37,7 @@ export const AppShell: React.FC<AppShellProps> = (props) => {
       {/* 0. ATMOSPHERIC DEEP FOREST BACKGROUND (MATCHING REFERENCE SPECIFICATION) */}
       {/* 80-85% Dark Serpent (#133020) & deep emerald, 15-20% visible Saffron (#FFB347) */}
       {/* ========================================================================= */}
+      {isSetupPage ? <div className="setup-atmosphere" aria-hidden="true" /> : (
       <div className="fixed inset-0 pointer-events-none overflow-hidden select-none z-0" aria-hidden="true">
         {/* Layer 1: Base depth gradient: Dark Serpent (#133020) blending into near-black emerald (#030d08) */}
         <div
@@ -188,9 +191,33 @@ export const AppShell: React.FC<AppShellProps> = (props) => {
           <circle cx="620" cy="790" r="1.2" fill="#FFB347" opacity="0.45" />
         </svg>
       </div>
+      )}
 
       {/* Top Application Shell Navbar - Seamlessly blended into atmospheric background (hidden during active interview) */}
-      {!isInterviewActive && (
+      {isSetupPage ? (
+        <header className="setup-header relative z-30 flex shrink-0 items-center justify-between" aria-label="Savi">
+          <div className="flex items-center gap-2.5">
+            <img
+              src="/favicon-192x192.png"
+              alt=""
+              className="h-7 w-7 shrink-0 object-contain sm:h-8 sm:w-8"
+            />
+            <span className="font-fraunces text-2xl font-normal leading-none tracking-tight text-[#F5EEDB]">
+              Savi
+            </span>
+          </div>
+          <details className="setup-help">
+            <summary aria-label="Interview setup help" title="Interview setup help">
+              <CircleHelp size={24} aria-hidden="true" />
+            </summary>
+            <div className="setup-help-content">
+              <strong>Prepare your practice interview</strong>
+              <p>Choose a role or type your own. Optionally attach your CV, job description, or portfolio, then select Start interview.</p>
+              <p>Supported files: PDF, DOC, DOCX, TXT, MD, PPT, PPTX, PNG, JPG, and JPEG. Maximum 10 MB per file.</p>
+            </div>
+          </details>
+        </header>
+      ) : !isInterviewActive && (
         <header className="h-14 bg-transparent px-4 sm:px-6 flex items-center justify-between z-30 shrink-0 relative">
           {/* Left Section: Brand, Metadata & Action */}
           <div className="flex items-center gap-3 sm:gap-3.5 min-w-0">

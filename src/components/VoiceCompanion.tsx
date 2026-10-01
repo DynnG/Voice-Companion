@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Conversation, Message, AttachedDocument, InterviewExchangeRecord } from '../types/conversation';
 import { AppShell } from './AppShell';
 import { VoiceExperience } from './VoiceExperience';
@@ -49,6 +49,9 @@ export const VoiceCompanion: React.FC = () => {
   const [startInterviewError, setStartInterviewError] = useState<string | null>(null);
   const [submitAnswerFn, setSubmitAnswerFn] = useState<((text: string) => Promise<void>) | null>(null);
   const isStartingInterviewRef = useRef<boolean>(false);
+  const handleRegisterSubmitAnswer = useCallback((handler: (text: string) => Promise<void>) => {
+    setSubmitAnswerFn(() => handler);
+  }, []);
 
   // Start a new interview workflow: clears all previous documents, messages, and context
   const handleNewInterview = () => {
@@ -304,6 +307,7 @@ export const VoiceCompanion: React.FC = () => {
 
   return (
     <AppShell
+      isSetupPage={session.status === 'setup'}
       isInterviewActive={session.status !== 'setup'}
       onNewInterview={handleNewInterview}
       isLivePanelOpen={isLivePanelOpen}
@@ -351,7 +355,7 @@ export const VoiceCompanion: React.FC = () => {
               onDownloadReview={handleDownloadReviewPdf}
               isDownloadingReview={isDownloadingPdf}
               downloadReviewError={downloadPdfError}
-              onRegisterSubmitAnswer={setSubmitAnswerFn}
+              onRegisterSubmitAnswer={handleRegisterSubmitAnswer}
               startInterviewError={startInterviewError}
               onRetryStartInterview={() => handleStartInterview(session.jobRole, session.attachedDocuments)}
               onNewInterview={handleNewInterview}
