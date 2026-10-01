@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { VoiceState, AttachedDocument, Message, AnswerAttempt, ReplayState, InterviewExchangeRecord } from '../types/conversation';
-import { Sparkles, MessageSquare, User, Plus, AlertCircle } from 'lucide-react';
+import { Sparkles, MessageSquare, User, Plus, AlertCircle, X } from 'lucide-react';
 import { VoiceCreature } from './VoiceCreature';
 import { StateLabel } from './StateLabel';
 import { ResponseCaption } from './ResponseCaption';
@@ -76,9 +76,13 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   downloadReviewError = null,
   onRegisterSubmitAnswer,
   startInterviewError = null,
-  onRetryStartInterview,
   onNewInterview
 }) => {
+  const [isErrorDismissed, setIsErrorDismissed] = useState(false);
+  useEffect(() => {
+    setIsErrorDismissed(false);
+  }, [startInterviewError, interviewId]);
+
   // Candidate camera state and toggle reference
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const cameraToggleFnRef = useRef<(() => void) | null>(null);
@@ -1244,22 +1248,21 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
       </header>
 
-      {/* Connection/Service Error Banner with Retry */}
-      {startInterviewError && (
-        <div className="w-full max-w-xl mx-auto my-2 p-3 rounded-2xl bg-[rgba(220,38,38,0.15)] border border-[rgba(248,113,113,0.35)] backdrop-blur-md flex items-center justify-between gap-3 text-red-200 text-xs shadow-lg animate-in fade-in shrink-0 z-20">
+      {startInterviewError && !isErrorDismissed && (
+        <div role="alert" className="w-full max-w-xl mx-auto my-2 px-3 py-2 rounded-2xl bg-[rgba(220,38,38,0.15)] border border-[rgba(248,113,113,0.35)] backdrop-blur-md flex items-center justify-between gap-3 text-red-200 text-xs shadow-lg shrink-0 z-20">
           <div className="flex items-center gap-2 min-w-0">
-            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-            <span className="truncate">{startInterviewError}</span>
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" aria-hidden="true" />
+            <span className="break-words">{startInterviewError}</span>
           </div>
-          {onRetryStartInterview && (
-            <button
-              type="button"
-              onClick={onRetryStartInterview}
-              className="px-3 py-1 rounded-full text-xs font-semibold bg-red-500/20 hover:bg-red-500/30 text-white border border-red-400/40 transition-all active:scale-95 shrink-0"
-            >
-              Retry Connection
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setIsErrorDismissed(true)}
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-500/20 text-red-200 transition-colors shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-300"
+            aria-label="Dismiss connection error"
+            title="Dismiss message"
+          >
+            <X className="w-4 h-4" aria-hidden="true" />
+          </button>
         </div>
       )}
 
