@@ -1128,17 +1128,18 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       <header className="flex items-center justify-between w-full pb-2 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           {/* Savi Logo */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            <svg viewBox="0 0 40 40" aria-hidden="true" className="w-8 h-8 shrink-0">
-              <path d="M20 4c8 3 12 10 8 17-3-6-8-8-14-8 0-4 2-7 6-9z" fill="#FFB347"/>
-              <path d="M36 20c-3 8-10 12-17 8 6-3 8-8 8-14 4 0 7 2 9 6z" fill="#4fbf83"/>
-              <path d="M20 36c-8-3-12-10-8-17 3 6 8 8 14 8 0 4-2 7-6 9z" fill="#FFB347" opacity=".8"/>
-              <path d="M4 20c3-8 10-12 17-8-6 3-8 8-8 14-4 0-7-2-9-6z" fill="#2f8f5c"/>
-            </svg>
-            <span className="font-fraunces font-light text-2xl tracking-tight text-[#F5EEDB] leading-none">
-              Savi
-            </span>
-          </div>
+{/* Savi Brand Logo & Title */}
+<div className="flex items-center gap-2.5 shrink-0">
+  <img
+    src="/favicon-192x192.png"
+    alt="Savi logo"
+    className="w-7 h-7 shrink-0 object-contain"
+  />
+
+  <span className="font-fraunces font-normal text-xl tracking-tight text-[#F5EEDB] leading-none">
+    Savi
+  </span>
+</div>
 
           <span className="w-px h-6 bg-[rgba(218,241,222,0.14)] shrink-0" />
 

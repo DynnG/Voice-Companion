@@ -184,11 +184,13 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
                       <User className="w-3.5 h-3.5" />
                     </div>
                   ) : (
-                    <div className="w-7 h-7 rounded-full bg-[#133020] text-[#FFB347] flex items-center justify-center shrink-0 mt-0.5">
-                      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current">
-                        <path d="M12 3c4 1.5 6 5 4 8.5-1.5-3-4-4-7-4 0-2 1-3.5 3-4.5zM21 12c-1.5 4-5 6-8.5 4 3-1.5 4-4 4-7 2 0 3.5 1 4.5 3zM12 21c-4-1.5-6-5-4-8.5 1.5 3 4 4 7 4 0 2-1 3.5-3 4.5zM3 12c1.5-4 5-6 8.5-4-3 1.5-4 4-4 7-2 0-3.5-1-4.5-3z"/>
-                      </svg>
-                    </div>
+<div className="w-7 h-7 rounded-full bg-[#133020] flex items-center justify-center shrink-0 mt-0.5 overflow-hidden">
+  <img
+    src="/favicon-16x16.png"
+    alt="Savi"
+    className="w-full h-full object-contain p-1"
+  />
+</div>
                   )}
 
                   {/* Message Bubble matching Image 1 */}
