@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { VoiceState, AttachedDocument, Message, AnswerAttempt, ReplayState, InterviewExchangeRecord } from '../types/conversation';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, MessageSquare, User, Video } from 'lucide-react';
 import { VoiceCreature } from './VoiceCreature';
 import { CandidateCamera } from './CandidateCamera';
 import { VoiceControls } from './VoiceControls';
@@ -282,8 +282,11 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       isRetryMode: true,
       isMinimized: false
     }));
-    setCustomLabel('Attempt 2 · Tap mic to record');
-    setStatusHint('Attempt 2 · Tap microphone once to speak your revised answer');
+    setCustomLabel('Attempt 2 · Recording revised answer…');
+    setStatusHint('Attempt 2 · Speak your revised answer · Auto-detects when you finish');
+    if (state === 'idle' || state === 'speaking') {
+      startRecording();
+    }
   };
 
   const handleCancelRetry = () => {
@@ -1113,104 +1116,244 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     }
   };
 
-  const isCompactVisual = Boolean(replayState.isVisible && replayState.attempt1 && !replayState.isMinimized);
+  const isCompactVisual = Boolean(!replayState.isMinimized);
 
   // Maintain caption references for defensive state guards without displaying in workspace
   void captionText;
   void captionVisible;
 
   return (
-    <div className="stage relative w-full h-full flex flex-col items-center justify-between overflow-hidden select-none">
-      {/* 2. Responsive Central Interactive Area: Upper Stage + Lower-Middle Zone */}
-      <div className="flex-1 min-h-0 w-full flex flex-col items-center justify-between px-3 sm:px-6 py-2 overflow-y-auto">
-        {/* Upper Main Interview Composition: Candidate Camera (Left) | Savi Orb (Right) */}
+    <div className="stage relative w-full h-full flex flex-col justify-between overflow-hidden select-none px-3 sm:px-6 py-2 sm:py-3">
+      {/* 1. Header Bar: Brand Logo, Job Role, In Progress pill, Transcript toggle sitting directly on background */}
+      <header className="flex items-center justify-between w-full pb-2 shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Savi Logo */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            <svg viewBox="0 0 40 40" aria-hidden="true" className="w-8 h-8 shrink-0">
+              <path d="M20 4c8 3 12 10 8 17-3-6-8-8-14-8 0-4 2-7 6-9z" fill="#FFB347"/>
+              <path d="M36 20c-3 8-10 12-17 8 6-3 8-8 8-14 4 0 7 2 9 6z" fill="#4fbf83"/>
+              <path d="M20 36c-8-3-12-10-8-17 3 6 8 8 14 8 0 4-2 7-6 9z" fill="#FFB347" opacity=".8"/>
+              <path d="M4 20c3-8 10-12 17-8-6 3-8 8-8 14-4 0-7-2-9-6z" fill="#2f8f5c"/>
+            </svg>
+            <span className="font-fraunces font-light text-2xl tracking-tight text-[#F5EEDB] leading-none">
+              Savi
+            </span>
+          </div>
+
+          <span className="w-px h-6 bg-[rgba(218,241,222,0.14)] shrink-0" />
+
+          {/* AI Mock Interview & Job Role */}
+          <div className="flex flex-col justify-center min-w-0">
+            <span className="font-semibold text-xs sm:text-[13px] text-[#F5EEDB] leading-tight truncate">
+              AI Mock Interview
+            </span>
+            <span className="text-[11px] text-[#8EB69B] leading-tight truncate">
+              {jobRole || 'Software Developer'}
+            </span>
+          </div>
+        </div>
+
+        {/* Header Right: In Progress Badge & Transcript Button */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[rgba(255,179,71,0.4)] text-[#FFC370] text-xs font-semibold bg-[rgba(255,179,71,0.06)] shadow-sm">
+            <i className="w-1.5 h-1.5 rounded-full bg-[#FFB347] animate-pulse" />
+            {isCompleted ? 'Completed' : 'In Progress'}
+          </span>
+
+          <button
+            type="button"
+            onClick={onToggleLivePanel}
+            className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all active:scale-95 border backdrop-blur-md ${
+              isLivePanelOpen
+                ? 'bg-[rgba(255,179,71,0.16)] text-[#FFC370] border-[rgba(255,179,71,0.35)] shadow-sm'
+                : 'bg-[rgba(9,32,23,0.55)] hover:bg-[rgba(9,32,23,0.8)] text-[#F5EEDB] border-[rgba(218,241,222,0.14)]'
+            }`}
+            title="Toggle Transcript Panel"
+            aria-expanded={isLivePanelOpen}
+          >
+            <MessageSquare className="w-3.5 h-3.5 text-[#FFB347]" />
+            <span>Transcript</span>
+          </button>
+        </div>
+      </header>
+
+      {/* 3. Main Stage: Candidate Camera (Left, when active) | Savi Orb (Centered or Right) */}
+      <div
+        className={`w-full mx-auto flex-1 min-h-0 overflow-visible py-1 sm:py-2 transition-all duration-300 flex flex-col justify-center ${
+          isLivePanelOpen ? 'max-w-5xl' : 'max-w-5xl xl:max-w-6xl'
+        }`}
+      >
         <div
-          className={`w-full max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-10 items-center justify-items-center transition-all duration-300 overflow-visible ${
-            isCompactVisual ? 'shrink-0 pt-0.5' : 'flex-1 my-auto'
+          className={`w-full flex items-center justify-center transition-all duration-300 ${
+            isCameraActive
+              ? 'grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-8 items-center justify-items-center'
+              : 'flex flex-col items-center justify-center gap-2 sm:gap-3'
           }`}
         >
-          {/* Left: Candidate Camera & Candidate Info */}
-          <CandidateCamera
-            candidateName={candidateName || 'Alex Chen'}
-            candidateRole="Job Candidate"
-            compact={isCompactVisual}
-            onCameraActiveChange={setIsCameraActive}
-            registerToggle={(fn) => { cameraToggleFnRef.current = fn; }}
-          />
+          {/* Left Column on Desktop / Second in Stack: Candidate Camera (Always mounted to retain stream hooks; hidden when camera is off) */}
+          <div
+            className={
+              isCameraActive
+                ? 'flex flex-col items-center justify-center w-full max-w-[420px] lg:max-w-[460px] h-full order-2 md:order-1 shrink-0'
+                : 'hidden'
+            }
+          >
+            <CandidateCamera
+              candidateName={candidateName || 'Alex Chen'}
+              candidateRole="Job Candidate"
+              compact={isCompactVisual}
+              onCameraActiveChange={setIsCameraActive}
+              registerToggle={(fn) => { cameraToggleFnRef.current = fn; }}
+            />
+          </div>
 
-          {/* Right: Free-Standing Savi Orb & Savi Dynamic Status (No Card / No Box) */}
-          <div className="flex flex-col items-center justify-center w-full max-w-[460px] transition-all duration-300 overflow-visible">
-            {/* Free-standing orb floating directly on dark atmospheric background */}
-            <div
-              className={`w-full flex items-center justify-center overflow-visible transition-all duration-300 ${
-                isCompactVisual ? 'min-h-[160px]' : 'min-h-[300px] sm:min-h-[350px]'
-              }`}
-            >
-              {/* Procedural Canvas VoiceCreature Orb - Free-standing with internal layered depth, orbital rings, and soft glow */}
+          {/* Savi Orb Column: Top priority in vertical stack (order-1), Right on desktop (md:order-2), Centered when camera is OFF */}
+          <div
+            className={`flex flex-col items-center justify-center h-full gap-2 transition-all duration-300 shrink-0 ${
+              isCameraActive
+                ? 'w-full max-w-[420px] lg:max-w-[460px] order-1 md:order-2'
+                : 'w-full max-w-2xl'
+            }`}
+          >
+            <div className="w-full flex items-center justify-center overflow-visible">
               <VoiceCreature
                 state={state}
                 onTap={!isMicEnabled || isCompleted ? undefined : handleToggleFlow}
                 audioLevelRef={micAudioLevelRef}
                 compact={isCompactVisual}
+                className={!isCameraActive && !isCompactVisual ? 'canvas-wrap--hero' : ''}
               />
             </div>
 
-            {/* Savi Status underneath */}
-            <div className="flex items-center gap-2.5 px-3 py-1 mt-2">
-              <div className="w-8 h-8 rounded-full bg-[rgba(9,32,23,0.55)] border border-[rgba(218,241,222,0.14)] border-t-[rgba(255,195,112,0.35)] backdrop-blur-md flex items-center justify-center text-[#8EB69B] shadow-[inset_0_1px_1px_rgba(255,195,112,0.18)] shrink-0">
-                <Sparkles className="w-4 h-4 text-[#FFB347]" />
+            {/* Status & Info Container under the Orb */}
+            {isCameraActive ? (
+              /* When camera is ON: Candidate Info is on the camera; below Orb is Savi Status */
+              <div className={`flex items-center justify-center gap-2.5 rounded-full bg-[rgba(6,24,18,0.70)] border border-[rgba(218,241,222,0.14)] backdrop-blur-md shadow-sm shrink-0 transition-all duration-300 ease-out ${
+                isCompactVisual ? 'px-3 py-1' : 'px-4 py-1.5'
+              }`}>
+                <div className={`rounded-full bg-[rgba(47,224,168,0.12)] border border-[rgba(47,224,168,0.25)] flex items-center justify-center text-[#2FE0A8] shrink-0 transition-all duration-300 ${
+                  isCompactVisual ? 'w-6 h-6' : 'w-7 h-7'
+                }`}>
+                  <svg viewBox="0 0 24 24" className={`${isCompactVisual ? 'w-3 h-3' : 'w-3.5 h-3.5'} transition-all duration-300`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M4 12v0M8 9v6M12 6v12M16 9v6M20 12v0"/>
+                  </svg>
+                </div>
+                <div className="flex flex-col text-left min-w-0">
+                  <b className={`font-bold text-white leading-tight transition-all duration-300 ${
+                    isCompactVisual ? 'text-[11px]' : 'text-xs'
+                  }`}>Savi</b>
+                  <small className={`font-semibold text-[#2FE0A8] leading-tight transition-all duration-300 ${
+                    isCompactVisual ? 'text-[10px]' : 'text-[11px]'
+                  }`}>{getDynamicSaviStatus()}</small>
+                </div>
               </div>
-              <div className="flex flex-col min-w-0 text-left">
-                <span className="font-manrope font-semibold text-xs sm:text-sm text-[#F5EEDB] truncate leading-tight">
-                  Savi
-                </span>
-                <span className="font-manrope text-[11px] font-medium text-[#8EB69B] truncate leading-tight">
-                  {getDynamicSaviStatus()}
-                </span>
+            ) : (
+              /* When camera is OFF: Candidate Info sits BELOW the orb + Savi Status + Camera Prompt */
+              <div className={`flex flex-col items-center transition-all duration-300 ease-out ${
+                isCompactVisual ? 'gap-1.5' : 'gap-2'
+              }`}>
+                <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-2.5">
+                  <div className={`flex items-center rounded-2xl bg-[rgba(10,32,24,0.52)] border border-[rgba(218,241,222,0.14)] backdrop-blur-md shadow-sm transition-all duration-300 ease-out ${
+                    isCompactVisual ? 'gap-2 px-3 py-1' : 'gap-3 px-3.5 py-1.5'
+                  }`}>
+                    <div className={`rounded-full bg-[rgba(218,241,222,0.1)] flex items-center justify-center text-[#F5EEDB] shrink-0 transition-all duration-300 ${
+                      isCompactVisual ? 'w-6 h-6' : 'w-7 h-7'
+                    }`}>
+                      <User className={`${isCompactVisual ? 'w-3 h-3' : 'w-3.5 h-3.5'} transition-all duration-300`} />
+                    </div>
+                    <div className="flex flex-col text-left min-w-0">
+                      <b className={`font-semibold text-white leading-tight truncate transition-all duration-300 ${
+                        isCompactVisual ? 'text-xs' : 'text-sm'
+                      }`}>{candidateName || 'Alex Chen'}</b>
+                      <small className={`text-[#8EB69B] leading-tight truncate transition-all duration-300 ${
+                        isCompactVisual ? 'text-[10px]' : 'text-xs'
+                      }`}>Job Candidate</small>
+                    </div>
+                  </div>
+
+                  <div className={`flex items-center rounded-2xl bg-[rgba(10,32,24,0.48)] border border-[rgba(218,241,222,0.14)] backdrop-blur-md shadow-sm transition-all duration-300 ease-out ${
+                    isCompactVisual ? 'gap-2 px-3 py-1' : 'gap-2.5 px-3.5 py-1.5'
+                  }`}>
+                    <div className={`rounded-full bg-[rgba(218,241,222,0.1)] flex items-center justify-center text-[#8EB69B] shrink-0 transition-all duration-300 ${
+                      isCompactVisual ? 'w-6 h-6' : 'w-7 h-7'
+                    }`}>
+                      <Sparkles className={`${isCompactVisual ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-[#FFB347] transition-all duration-300`} />
+                    </div>
+                    <div className="flex flex-col text-left min-w-0">
+                      <b className={`font-semibold text-white leading-tight transition-all duration-300 ${
+                        isCompactVisual ? 'text-xs' : 'text-sm'
+                      }`}>Savi</b>
+                      <small className={`font-semibold text-[#6fd3a0] leading-tight transition-all duration-300 ${
+                        isCompactVisual ? 'text-[10px]' : 'text-xs'
+                      }`}>{getDynamicSaviStatus()}</small>
+                    </div>
+                  </div>
+                </div>
+
+                {!isCameraActive && (
+                  <button
+                    type="button"
+                    onClick={() => cameraToggleFnRef.current?.()}
+                    className={`inline-flex items-center gap-2 rounded-full bg-[rgba(218,241,222,0.06)] hover:bg-[rgba(218,241,222,0.12)] border border-[rgba(218,241,222,0.14)] text-[#8EB69B] hover:text-[#F5EEDB] transition-all cursor-pointer backdrop-blur-md shadow-xs active:scale-95 group ${
+                      isCompactVisual ? 'px-3 py-1 text-[11px]' : 'px-3.5 py-1.5 text-xs mt-0.5'
+                    }`}
+                    title="Turn on camera to Enable Visual Analysis"
+                  >
+                    <Video className="w-3.5 h-3.5 text-[#FFB347] group-hover:scale-110 transition-transform" />
+                    <span>Turn on camera to Enable Visual Analysis</span>
+                  </button>
+                )}
               </div>
-            </div>
+            )}
           </div>
         </div>
-
-        {/* Dedicated Lower-Middle Zone: Answer Comparison / Replay Panel */}
-        {replayState.isVisible && replayState.attempt1 && (
-          <div className="w-full flex-1 min-h-0 flex flex-col items-center justify-center my-1 sm:my-2 px-1 sm:px-2 z-10">
-            <AnswerReplayCard
-              replayState={replayState}
-              onPlayAttempt={playAttempt}
-              onStopPlayback={stopReplayPlayback}
-              playingAttempt={playingAttempt}
-              playbackCurrentTime={playbackCurrentTime}
-              playbackProgress={playbackProgress}
-              onTryAgain={handleTryAgain}
-              onCancelRetry={handleCancelRetry}
-              onResumeInterview={handleResumeInterview}
-              onToggleMinimize={() => setReplayState((prev) => ({ ...prev, isMinimized: !prev.isMinimized }))}
-              onClose={() => setReplayState((prev) => ({ ...prev, isVisible: false }))}
-              isCompleted={!isMicEnabled || isCompleted}
-            />
-          </div>
-        )}
       </div>
 
-      {/* 3. Anchored Bottom Controls: Mic button ALWAYS fixed in position */}
-      <div className="w-full shrink-0">
-        <VoiceControls
-          state={state}
-          onStartFlow={handleToggleFlow}
-          isPanelOpen={isLivePanelOpen}
-          onTogglePanel={onToggleLivePanel}
-          unreadCount={unreadCount}
-          statusHint={statusHint || (!isMicEnabled || isCompleted ? 'Interview Complete · Review the full transcript in the side panel' : 'Tap microphone once to speak · Auto-detects when you finish')}
-          isCompleted={!isMicEnabled || isCompleted}
-          onOpenReview={onOpenCompletionReview}
-          canDownloadReview={canDownloadReview}
-          onDownloadReview={onDownloadReview}
-          isDownloadingReview={isDownloadingReview}
-          downloadReviewError={downloadReviewError}
-          onToggleCamera={() => cameraToggleFnRef.current?.()}
-          isCameraActive={isCameraActive}
-        />
+      {/* 4. Dedicated Lower-Middle Zone: Answer Comparison / Replay Panel & Bottom Controls (One Cohesive Lower Section) */}
+      {/* Container class invariant: w-full flex-1 min-h-0 flex flex-col items-center justify-center */}
+      <div className="w-full shrink-0 flex flex-col items-center gap-1.5 sm:gap-2 z-10 mt-auto pb-1 transition-all duration-300 ease-out">
+        {/* Audio Playback + AI Notes */}
+        <div
+          className={`w-full mx-auto px-1 sm:px-2 z-10 shrink-0 transition-all duration-300 flex flex-col items-center ${
+            isLivePanelOpen ? 'max-w-5xl' : 'max-w-5xl xl:max-w-6xl'
+          }`}
+        >
+          <AnswerReplayCard
+            replayState={replayState}
+            onPlayAttempt={playAttempt}
+            onStopPlayback={stopReplayPlayback}
+            playingAttempt={playingAttempt}
+            playbackCurrentTime={playbackCurrentTime}
+            playbackProgress={playbackProgress}
+            onTryAgain={handleTryAgain}
+            onCancelRetry={handleCancelRetry}
+            onResumeInterview={handleResumeInterview}
+            onToggleMinimize={() => setReplayState((prev) => ({ ...prev, isMinimized: !prev.isMinimized }))}
+            onClose={() => setReplayState((prev) => ({ ...prev, isVisible: false }))}
+            isCompleted={!isMicEnabled || isCompleted}
+          />
+        </div>
+
+        {/* 5. Anchored Bottom Controls: Speak, Camera, Tip, Supporting Instruction Text */}
+        <div className="w-full shrink-0 transition-all duration-300 ease-out">
+          <VoiceControls
+            state={state}
+            onStartFlow={handleToggleFlow}
+            isPanelOpen={isLivePanelOpen}
+            onTogglePanel={onToggleLivePanel}
+            unreadCount={unreadCount}
+            statusHint={statusHint || (!isMicEnabled || isCompleted ? 'Interview Complete · Review the full transcript in the side panel' : 'Tap microphone once to speak · Auto-detects when you finish')}
+            isCompleted={!isMicEnabled || isCompleted}
+            onOpenReview={onOpenCompletionReview}
+            canDownloadReview={canDownloadReview}
+            onDownloadReview={onDownloadReview}
+            isDownloadingReview={isDownloadingReview}
+            downloadReviewError={downloadReviewError}
+            onToggleCamera={() => cameraToggleFnRef.current?.()}
+            isCameraActive={isCameraActive}
+            compact={isCompactVisual}
+          />
+        </div>
       </div>
     </div>
   );

@@ -259,7 +259,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       ctx.clearRect(0, 0, W, H);
 
       // Controlled base radius and maximum safe distance to canvas edge
-      const baseR = Math.min(W, H) * 0.25;
+      const baseR = Math.min(W, H) * 0.28;
       const maxSafeRadius = Math.min(cx, cy); // Distance from center to closest canvas boundary
       let dynBaseR = baseR;
       let dynAmp = cur.amp;
@@ -279,9 +279,11 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
         dynAmp = cur.amp + smoothedMicLevel * cfg.micLobeDistortionMax;
         dynPhase = t * (cur.speed + smoothedMicLevel * 0.8) * 1.2;
 
-        // Subtle energy ring only on louder emphasis
-        if (smoothedMicLevel > 0.45) {
-          dynRing = Math.max(dynRing, (smoothedMicLevel - 0.45) * 0.8);
+        // In listening state: subtle acoustic ripple triggers when candidate speaks
+        if (smoothedMicLevel > 0.03) {
+          dynRing = Math.max(dynRing, Math.min(1.0, smoothedMicLevel * 2.5));
+        } else {
+          dynRing = Math.max(0, dynRing * 0.90);
         }
       } else if (currentName === 'thinking') {
         // 3. THINKING:
@@ -290,6 +292,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
         dynBaseR = baseR * (1 + cognitivePulse);
         dynAmp = cur.amp + Math.sin(t * 1.8) * 0.012;
         dynPhase = t * cur.speed * 1.1;
+        dynRing = Math.max(0, dynRing * 0.85);
       } else if (currentName === 'speaking') {
         // 4. AI IS SPEAKING:
         // Expressive speech cadence simulating natural vocal prosody
@@ -302,6 +305,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
         dynBaseR = baseR * (1.02 + speechExpansion);
         dynAmp = cur.amp + speechEnvelope * 0.04;
         dynPhase = t * (cur.speed + speechEnvelope * 0.25) * 1.2;
+        dynRing = Math.max(dynRing, Math.min(1.0, 0.75 + speechEnvelope * 0.25));
       } else {
         // 1. IDLE:
         // Mostly calm, gentle organic breathing
@@ -309,20 +313,31 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
         dynBaseR = baseR * (1 + idleBreathing);
         dynAmp = cur.amp;
         dynPhase = t * cur.speed * 1.2;
+        dynRing = Math.max(0, dynRing * 0.85);
       }
 
-      // Outward pulse ring
-      if (dynRing > 0.02) {
+      // Subtle Acoustic Ripple: Only active when someone is actively speaking (User or Savi)
+      const isUserSpeaking = currentName === 'listening' && (smoothedMicLevel > 0.03 || Boolean(externalAudioRef.current?.current && externalAudioRef.current.current > 0.01));
+      const isSaviSpeaking = currentName === 'speaking';
+      const isActivelyTalking = isUserSpeaking || isSaviSpeaking;
+
+      if (isActivelyTalking && dynRing > 0.02) {
         const loops = 2;
         for (let p = 0; p < loops; p++) {
-          const ph = ((t * 0.55 + p / loops) % 1);
-          // Ring extends up to dynBaseR * 1.65, safely within canvas bounds
-          const r = dynBaseR * 1.05 + ph * dynBaseR * 0.60;
-          ctx.strokeStyle = `rgba(${col},${(1 - ph) * 0.22 * dynRing})`;
-          ctx.lineWidth = 1.2;
-          ctx.beginPath();
-          ctx.arc(cx, cy, r, 0, Math.PI * 2);
-          ctx.stroke();
+          const ph = ((t * 0.32 + p / loops) % 1);
+          // Perfectly circular geometry expanding gently outward from orb
+          const r = dynBaseR * 1.08 + ph * dynBaseR * 0.44;
+          // Extremely subtle opacity: soft bell-curve, fading to 0 at edge
+          const alpha = Math.sin(ph * Math.PI) * 0.18 * dynRing;
+          if (alpha > 0.004) {
+            ctx.strokeStyle = isSaviSpeaking
+              ? `rgba(255,179,71,${alpha})`   // Soft warm saffron for Savi
+              : `rgba(79,191,131,${alpha})`;  // Soft emerald for Candidate
+            ctx.lineWidth = 0.85;             // Very thin circular line
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.stroke();
+          }
         }
       }
 
@@ -363,18 +378,6 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       }
       ctx.shadowBlur = 0;
 
-      // Thin orbital ring details around the orb (free-standing orbital trajectory)
-      for (let j = 0; j < 2; j++) {
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(t * cur.speed * (j ? 0.45 : -0.32) + j * 1.4);
-        ctx.strokeStyle = j === 0 ? 'rgba(255,179,71,0.28)' : 'rgba(142,182,155,0.22)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, dynBaseR * (1.52 + j * 0.16), dynBaseR * (1.18 + j * 0.18), 0, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-      }
 
       // Layered echoes - multiple overlapping translucent organic layers
       function layer(scaleMult: number, alphaMult: number, phaseOffset: number, lobeOffset: number, tint?: string) {
