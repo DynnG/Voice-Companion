@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { VoiceState, AttachedDocument, Message, AnswerAttempt, ReplayState, InterviewExchangeRecord } from '../types/conversation';
-import { Sparkles, MessageSquare, User, Video, Plus, AlertCircle } from 'lucide-react';
+import { Sparkles, MessageSquare, User, Plus, AlertCircle } from 'lucide-react';
 import { VoiceCreature } from './VoiceCreature';
 import { StateLabel } from './StateLabel';
 import { ResponseCaption } from './ResponseCaption';
@@ -1161,7 +1161,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   );
 
   return (
-    <div className="stage relative w-full h-full flex flex-col justify-between overflow-hidden select-none px-3 sm:px-6 py-2 sm:py-3">
+    <div data-camera-active={isCameraActive} className="stage relative w-full h-full flex flex-col justify-between overflow-hidden select-none px-3 sm:px-6 py-2 sm:py-3">
       {/* 1. Header Bar: Brand Logo, Job Role, In Progress pill, Transcript toggle sitting directly on background */}
       <header className="flex items-center justify-between w-full pb-2 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
@@ -1221,7 +1221,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             </button>
           )}
 
-          <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[rgba(255,179,71,0.4)] text-[#FFC370] text-xs font-semibold bg-[rgba(255,179,71,0.06)] shadow-sm">
+          <span className="interview-progress inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[rgba(255,179,71,0.4)] text-[#FFC370] text-xs font-semibold bg-[rgba(255,179,71,0.06)] shadow-sm">
             <i className="w-1.5 h-1.5 rounded-full bg-[#FFB347] animate-pulse" />
             {isCompleted ? 'Completed' : 'In Progress'}
           </span>
@@ -1229,7 +1229,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
           <button
             type="button"
             onClick={onToggleLivePanel}
-            className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all active:scale-95 border backdrop-blur-md ${
+            className={`interview-transcript-toggle inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all active:scale-95 border ${
               isLivePanelOpen
                 ? 'bg-[rgba(255,179,71,0.16)] text-[#FFC370] border-[rgba(255,179,71,0.35)] shadow-sm'
                 : 'bg-[rgba(9,32,23,0.55)] hover:bg-[rgba(9,32,23,0.8)] text-[#F5EEDB] border-[rgba(218,241,222,0.14)]'
@@ -1241,6 +1241,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             <span>Transcript</span>
           </button>
         </div>
+
       </header>
 
       {/* Connection/Service Error Banner with Retry */}
@@ -1264,12 +1265,12 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
       {/* 3. Main Stage: Candidate Camera (Left, when active) | Savi Orb (Centered or Right) */}
       <div
-        className={`w-full mx-auto flex-1 min-h-0 overflow-visible py-1 sm:py-2 transition-all duration-300 flex flex-col justify-center ${
+        className={`interview-visual-stage w-full mx-auto flex-1 min-h-0 overflow-visible py-1 sm:py-2 transition-all duration-300 flex flex-col justify-center ${
           isLivePanelOpen ? 'max-w-5xl' : 'max-w-5xl xl:max-w-6xl'
         }`}
       >
         <div
-          className={`w-full flex items-center justify-center transition-all duration-300 ${
+          className={`interview-visual-pair w-full flex items-center justify-center transition-all duration-300 ${
             isCameraActive
               ? 'grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-8 items-center justify-items-center'
               : 'flex flex-col items-center justify-center gap-2 sm:gap-3'
@@ -1279,7 +1280,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
           <div
             className={
               isCameraActive
-                ? 'flex flex-col items-center justify-center w-full max-w-[420px] lg:max-w-[460px] h-full order-2 md:order-1 shrink-0'
+                ? 'interview-camera-column flex flex-col items-center justify-center w-full max-w-[520px] lg:max-w-[560px] h-full order-2 md:order-1 shrink-0'
                 : 'hidden'
             }
           >
@@ -1294,7 +1295,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
           {/* Savi Orb Column: Top priority in vertical stack (order-1), Right on desktop (md:order-2), Centered when camera is OFF */}
           <div
-            className={`flex flex-col items-center justify-center h-full gap-2 transition-all duration-300 shrink-0 ${
+            className={`interview-orb-column flex flex-col items-center justify-center h-full gap-2 transition-all duration-300 shrink-0 ${
               isCameraActive
                 ? 'w-full max-w-[420px] lg:max-w-[460px] order-1 md:order-2'
                 : 'w-full max-w-2xl'
@@ -1303,6 +1304,8 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             <div className="w-full flex items-center justify-center overflow-visible">
               <VoiceCreature
                 state={state}
+                visualState={state === 'listening' ? 'speaking' : state === 'thinking' && customLabel === 'transcribing answer…' ? 'transcribing' : 'idle'}
+                respectReducedMotion
                 gesture={creatureGesture}
                 onGestureEnd={() => setCreatureGesture(null)}
                 onTap={!isMicEnabled || isCompleted ? undefined : handleToggleFlow}
@@ -1327,28 +1330,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             ) : null}
 
             {/* Status & Info Container under the Orb */}
-            {isCameraActive ? (
-              /* When camera is ON: Candidate Info is on the camera; below Orb is Savi Status */
-              <div className={`flex items-center justify-center gap-2.5 rounded-full bg-[rgba(6,24,18,0.70)] border border-[rgba(218,241,222,0.14)] backdrop-blur-md shadow-sm shrink-0 transition-all duration-300 ease-out ${
-                isCompactVisual ? 'px-3 py-1' : 'px-4 py-1.5'
-              }`}>
-                <div className={`rounded-full bg-[rgba(47,224,168,0.12)] border border-[rgba(47,224,168,0.25)] flex items-center justify-center text-[#2FE0A8] shrink-0 transition-all duration-300 ${
-                  isCompactVisual ? 'w-6 h-6' : 'w-7 h-7'
-                }`}>
-                  <svg viewBox="0 0 24 24" className={`${isCompactVisual ? 'w-3 h-3' : 'w-3.5 h-3.5'} transition-all duration-300`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                    <path d="M4 12v0M8 9v6M12 6v12M16 9v6M20 12v0"/>
-                  </svg>
-                </div>
-                <div className="flex flex-col text-left min-w-0">
-                  <b className={`font-bold text-white leading-tight transition-all duration-300 ${
-                    isCompactVisual ? 'text-[11px]' : 'text-xs'
-                  }`}>Savi</b>
-                  <small className={`font-semibold text-[#2FE0A8] leading-tight transition-all duration-300 ${
-                    isCompactVisual ? 'text-[10px]' : 'text-[11px]'
-                  }`}>{getDynamicSaviStatus()}</small>
-                </div>
-              </div>
-            ) : (
+            {isCameraActive ? null : (
               /* When camera is OFF: Candidate Info sits BELOW the orb + Savi Status + Camera Prompt */
               <div className={`flex flex-col items-center transition-all duration-300 ease-out ${
                 isCompactVisual ? 'gap-1.5' : 'gap-2'
@@ -1391,19 +1373,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
                   </div>
                 </div>
 
-                {!isCameraActive && (
-                  <button
-                    type="button"
-                    onClick={() => cameraToggleFnRef.current?.()}
-                    className={`inline-flex items-center gap-2 rounded-full bg-[rgba(218,241,222,0.06)] hover:bg-[rgba(218,241,222,0.12)] border border-[rgba(218,241,222,0.14)] text-[#8EB69B] hover:text-[#F5EEDB] transition-all cursor-pointer backdrop-blur-md shadow-xs active:scale-95 group ${
-                      isCompactVisual ? 'px-3 py-1 text-[11px]' : 'px-3.5 py-1.5 text-xs mt-0.5'
-                    }`}
-                    title="Turn on camera to Enable Visual Analysis"
-                  >
-                    <Video className="w-3.5 h-3.5 text-[#FFB347] group-hover:scale-110 transition-transform" />
-                    <span>Turn on camera to Enable Visual Analysis</span>
-                  </button>
-                )}
+
               </div>
             )}
           </div>

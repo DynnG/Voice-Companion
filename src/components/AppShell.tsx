@@ -32,12 +32,12 @@ export const AppShell: React.FC<AppShellProps> = (props) => {
     isDownloadingReview = false,
   } = props;
   return (
-    <div className="w-screen h-screen flex flex-col bg-[#030d08] text-[#F5EEDB] overflow-hidden select-none font-manrope relative">
+    <div className={`w-screen h-screen flex flex-col bg-[#030d08] text-[#F5EEDB] overflow-hidden select-none font-manrope relative ${isInterviewActive ? 'interview-shell' : ''}`}>
       {/* ========================================================================= */}
       {/* 0. ATMOSPHERIC DEEP FOREST BACKGROUND (MATCHING REFERENCE SPECIFICATION) */}
       {/* 80-85% Dark Serpent (#133020) & deep emerald, 15-20% visible Saffron (#FFB347) */}
       {/* ========================================================================= */}
-      {isSetupPage ? <div className="setup-atmosphere" aria-hidden="true" /> : (
+      {isSetupPage || isInterviewActive ? <div className="setup-atmosphere" aria-hidden="true" /> : (
       <div className="fixed inset-0 pointer-events-none overflow-hidden select-none z-0" aria-hidden="true">
         {/* Layer 1: Base depth gradient: Dark Serpent (#133020) blending into near-black emerald (#030d08) */}
         <div
