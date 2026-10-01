@@ -46,6 +46,7 @@ export const VoiceCompanion: React.FC = () => {
   const [isCompletionModalOpen, setIsCompletionModalOpen] = useState<boolean>(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
   const [downloadPdfError, setDownloadPdfError] = useState<string | null>(null);
+  const [submitAnswerFn, setSubmitAnswerFn] = useState<((text: string) => Promise<void>) | null>(null);
   const isStartingInterviewRef = useRef<boolean>(false);
 
   // Start a new interview workflow: clears all previous documents, messages, and context
@@ -59,6 +60,7 @@ export const VoiceCompanion: React.FC = () => {
     setIsCompletionModalOpen(false);
     setIsDownloadingPdf(false);
     setDownloadPdfError(null);
+    setSubmitAnswerFn(null);
   };
 
   // Transition from Document Attachment Screen to Live Voice Interview
@@ -290,6 +292,7 @@ export const VoiceCompanion: React.FC = () => {
 
   return (
     <AppShell
+      isInterviewActive={session.status !== 'setup'}
       onNewInterview={handleNewInterview}
       isLivePanelOpen={isLivePanelOpen}
       onToggleLivePanel={() => setIsLivePanelOpen((prev) => !prev)}
@@ -302,50 +305,59 @@ export const VoiceCompanion: React.FC = () => {
       isDownloadingReview={isDownloadingPdf}
     >
       {/* CENTRAL WORKSPACE: Setup Screen (Upload Documents) OR Live Voice Interview */}
-      <main className="flex-1 h-full w-full relative overflow-hidden bg-[#050810] flex flex-col">
-        {session.status === 'setup' ? (
+      {session.status === 'setup' ? (
+        <main className="flex-1 h-full w-full relative overflow-hidden bg-transparent flex flex-col z-10">
           <DocumentAttachmentScreen
             initialJobRole={session.jobRole}
             initialDocuments={session.attachedDocuments}
             onStartInterview={handleStartInterview}
           />
-        ) : (
-          <VoiceExperience
-            interviewId={session.id}
-            onUserTranscribed={handleUserTranscribed}
-            onPalResponse={handlePalResponse}
-            onThinkingChange={setIsThinking}
-            onInterviewCompleted={handleInterviewCompleted}
-            interviewStatus={session.status}
-            turnsUsed={session.turnsUsed}
-            maxTurns={session.maxTurns}
-            isLivePanelOpen={isLivePanelOpen}
-            onToggleLivePanel={() => setIsLivePanelOpen((prev) => !prev)}
-            jobRole={session.jobRole}
-            attachedDocuments={session.attachedDocuments}
-            conversationHistory={session.messages}
-            initialQuestionToSpeak={initialQuestionToSpeak}
-            onExchangeRecorded={handleExchangeRecorded}
-            onExchangeAiNotesUpdated={handleExchangeAiNotesUpdated}
-            onOpenCompletionReview={() => setIsCompletionModalOpen(true)}
-            canDownloadReview={canDownloadReview}
-            onDownloadReview={handleDownloadReviewPdf}
-            isDownloadingReview={isDownloadingPdf}
-            downloadReviewError={downloadPdfError}
-          />
-        )}
-      </main>
+        </main>
+      ) : (
+        <div className="w-full h-full flex flex-row overflow-hidden z-10 p-3 sm:p-4 gap-3 sm:gap-4">
+          {/* Main Interview Area sits directly on the dark organic background */}
+          <section className="flex-1 h-full min-w-0 relative overflow-hidden flex flex-col bg-transparent">
+            <VoiceExperience
+              interviewId={session.id}
+              onUserTranscribed={handleUserTranscribed}
+              onPalResponse={handlePalResponse}
+              onThinkingChange={setIsThinking}
+              onInterviewCompleted={handleInterviewCompleted}
+              interviewStatus={session.status}
+              turnsUsed={session.turnsUsed}
+              maxTurns={session.maxTurns}
+              isLivePanelOpen={isLivePanelOpen}
+              onToggleLivePanel={() => setIsLivePanelOpen((prev) => !prev)}
+              jobRole={session.jobRole}
+              attachedDocuments={session.attachedDocuments}
+              conversationHistory={session.messages}
+              initialQuestionToSpeak={initialQuestionToSpeak}
+              onExchangeRecorded={handleExchangeRecorded}
+              onExchangeAiNotesUpdated={handleExchangeAiNotesUpdated}
+              onOpenCompletionReview={() => setIsCompletionModalOpen(true)}
+              canDownloadReview={canDownloadReview}
+              onDownloadReview={handleDownloadReviewPdf}
+              isDownloadingReview={isDownloadingPdf}
+              downloadReviewError={downloadPdfError}
+              onRegisterSubmitAnswer={setSubmitAnswerFn}
+            />
+          </section>
 
-      {/* Live Conversation Transcript Panel */}
-      <LiveConversationPanel
-        conversation={activeConversation}
-        isOpen={isLivePanelOpen}
-        onClose={() => setIsLivePanelOpen(false)}
-        isThinking={isThinking}
-        canDownloadReview={canDownloadReview}
-        onDownloadReview={handleDownloadReviewPdf}
-        isDownloadingReview={isDownloadingPdf}
-      />
+          {/* Live Conversation Transcript Panel: Remains its own distinct right-side glass panel */}
+          {isLivePanelOpen && (
+            <LiveConversationPanel
+              conversation={activeConversation}
+              isOpen={isLivePanelOpen}
+              onClose={() => setIsLivePanelOpen(false)}
+              isThinking={isThinking}
+              canDownloadReview={canDownloadReview}
+              onDownloadReview={handleDownloadReviewPdf}
+              isDownloadingReview={isDownloadingPdf}
+              onSendAnswer={submitAnswerFn || undefined}
+            />
+          )}
+        </div>
+      )}
 
       {/* Post-Interview Completion Modal & Download Review */}
       <PostInterviewCompletionModal

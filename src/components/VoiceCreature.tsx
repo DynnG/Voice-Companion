@@ -259,7 +259,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       ctx.clearRect(0, 0, W, H);
 
       // Controlled base radius and maximum safe distance to canvas edge
-      const baseR = Math.min(W, H) * 0.18;
+      const baseR = Math.min(W, H) * 0.28;
       const maxSafeRadius = Math.min(cx, cy); // Distance from center to closest canvas boundary
       let dynBaseR = baseR;
       let dynAmp = cur.amp;
@@ -279,9 +279,11 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
         dynAmp = cur.amp + smoothedMicLevel * cfg.micLobeDistortionMax;
         dynPhase = t * (cur.speed + smoothedMicLevel * 0.8) * 1.2;
 
-        // Subtle energy ring only on louder emphasis
-        if (smoothedMicLevel > 0.45) {
-          dynRing = Math.max(dynRing, (smoothedMicLevel - 0.45) * 0.8);
+        // In listening state: subtle acoustic ripple triggers when candidate speaks
+        if (smoothedMicLevel > 0.03) {
+          dynRing = Math.max(dynRing, Math.min(1.0, smoothedMicLevel * 2.5));
+        } else {
+          dynRing = Math.max(0, dynRing * 0.90);
         }
       } else if (currentName === 'thinking') {
         // 3. THINKING:
@@ -290,6 +292,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
         dynBaseR = baseR * (1 + cognitivePulse);
         dynAmp = cur.amp + Math.sin(t * 1.8) * 0.012;
         dynPhase = t * cur.speed * 1.1;
+        dynRing = Math.max(0, dynRing * 0.85);
       } else if (currentName === 'speaking') {
         // 4. AI IS SPEAKING:
         // Expressive speech cadence simulating natural vocal prosody
@@ -302,6 +305,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
         dynBaseR = baseR * (1.02 + speechExpansion);
         dynAmp = cur.amp + speechEnvelope * 0.04;
         dynPhase = t * (cur.speed + speechEnvelope * 0.25) * 1.2;
+        dynRing = Math.max(dynRing, Math.min(1.0, 0.75 + speechEnvelope * 0.25));
       } else {
         // 1. IDLE:
         // Mostly calm, gentle organic breathing
@@ -309,20 +313,31 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
         dynBaseR = baseR * (1 + idleBreathing);
         dynAmp = cur.amp;
         dynPhase = t * cur.speed * 1.2;
+        dynRing = Math.max(0, dynRing * 0.85);
       }
 
-      // Outward pulse ring
-      if (dynRing > 0.02) {
+      // Subtle Acoustic Ripple: Only active when someone is actively speaking (User or Savi)
+      const isUserSpeaking = currentName === 'listening' && (smoothedMicLevel > 0.03 || Boolean(externalAudioRef.current?.current && externalAudioRef.current.current > 0.01));
+      const isSaviSpeaking = currentName === 'speaking';
+      const isActivelyTalking = isUserSpeaking || isSaviSpeaking;
+
+      if (isActivelyTalking && dynRing > 0.02) {
         const loops = 2;
         for (let p = 0; p < loops; p++) {
-          const ph = ((t * 0.55 + p / loops) % 1);
-          // Ring extends up to dynBaseR * 1.65, safely within canvas bounds
-          const r = dynBaseR * 1.05 + ph * dynBaseR * 0.60;
-          ctx.strokeStyle = `rgba(${col},${(1 - ph) * 0.22 * dynRing})`;
-          ctx.lineWidth = 1.2;
-          ctx.beginPath();
-          ctx.arc(cx, cy, r, 0, Math.PI * 2);
-          ctx.stroke();
+          const ph = ((t * 0.32 + p / loops) % 1);
+          // Perfectly circular geometry expanding gently outward from orb
+          const r = dynBaseR * 1.08 + ph * dynBaseR * 0.44;
+          // Extremely subtle opacity: soft bell-curve, fading to 0 at edge
+          const alpha = Math.sin(ph * Math.PI) * 0.18 * dynRing;
+          if (alpha > 0.004) {
+            ctx.strokeStyle = isSaviSpeaking
+              ? `rgba(255,179,71,${alpha})`   // Soft warm saffron for Savi
+              : `rgba(79,191,131,${alpha})`;  // Soft emerald for Candidate
+            ctx.lineWidth = 0.85;             // Very thin circular line
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.stroke();
+          }
         }
       }
 
@@ -363,28 +378,38 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       }
       ctx.shadowBlur = 0;
 
-      // Layered echoes
-      function layer(scaleMult: number, alphaMult: number, phaseOffset: number, lobeOffset: number) {
+
+      // Layered echoes - multiple overlapping translucent organic layers
+      function layer(scaleMult: number, alphaMult: number, phaseOffset: number, lobeOffset: number, tint?: string) {
         const phase = dynPhase - phaseOffset;
         const pts = blobPoints(dynBaseR * scaleMult, dynAmp, dynLobes + lobeOffset, phase, 64);
         smoothPath(pts);
         if (!ctx) return;
         const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, dynBaseR * 1.15 * scaleMult);
-        g.addColorStop(0,   `rgba(${col},${0.85 * alphaMult})`);
-        g.addColorStop(0.6, `rgba(${secCol},${0.45 * alphaMult})`);
-        g.addColorStop(1,   `rgba(${col},${0.10 * alphaMult})`);
+        const baseColor = tint || col;
+        g.addColorStop(0,   `rgba(${baseColor},${0.85 * alphaMult})`);
+        g.addColorStop(0.55, `rgba(${secCol},${0.45 * alphaMult})`);
+        g.addColorStop(1,   `rgba(${baseColor},${0.08 * alphaMult})`);
         ctx.fillStyle = g;
         ctx.fill();
+        ctx.strokeStyle = `rgba(${baseColor},${0.35 * alphaMult})`;
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
       }
+      // Outer translucent botanical/forest layer
+      layer(1.42, 0.22, 0.75, 2, '4,98,65');
       layer(1.36, 0.28, 0.55, 1);
       layer(1.18, 0.45, 0.28, 0);
+      // Warm amber / cream translucent accent layer
+      layer(1.08, 0.38, -0.42, 1, '255,195,112');
 
       // Core blob
       const pts = blobPoints(dynBaseR, dynAmp, dynLobes, dynPhase, 64);
       smoothPath(pts);
       const fill = ctx.createRadialGradient(cx, cy, 0, cx, cy, dynBaseR * 1.15);
       fill.addColorStop(0,   `rgba(${col},0.92)`);
-      fill.addColorStop(0.6, `rgba(${secCol},0.55)`);
+      fill.addColorStop(0.35, `rgba(245,238,219,0.45)`);
+      fill.addColorStop(0.70, `rgba(${secCol},0.55)`);
       fill.addColorStop(1,   `rgba(${col},0.16)`);
       ctx.fillStyle = fill;
       ctx.shadowColor = `rgba(${col},0.45)`;

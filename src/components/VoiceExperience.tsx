@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { VoiceState, AttachedDocument, Message, AnswerAttempt, ReplayState, InterviewExchangeRecord } from '../types/conversation';
-import { Header } from './Header';
+import { Sparkles, MessageSquare, User, Video } from 'lucide-react';
 import { VoiceCreature } from './VoiceCreature';
-import { StateLabel } from './StateLabel';
-import { ResponseCaption } from './ResponseCaption';
+import { CandidateCamera } from './CandidateCamera';
 import { VoiceControls } from './VoiceControls';
 import { AnswerReplayCard } from './AnswerReplayCard';
 import { transcribeAudio, fetchFollowupInterviewQuestion, fetchAnswerAiNotes, fetchAnswerComparison, isQuotaExceededText } from '../services/sttService';
@@ -22,6 +21,7 @@ interface VoiceExperienceProps {
   onToggleLivePanel: () => void;
   unreadCount?: number;
   jobRole?: string;
+  candidateName?: string;
   attachedDocuments?: AttachedDocument[];
   conversationHistory?: Message[];
   initialQuestionToSpeak?: string;
@@ -32,6 +32,7 @@ interface VoiceExperienceProps {
   onDownloadReview?: () => void;
   isDownloadingReview?: boolean;
   downloadReviewError?: string | null;
+  onRegisterSubmitAnswer?: (handler: (text: string) => Promise<void>) => void;
 }
 
 // Silence Detection Configuration
@@ -57,6 +58,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   onToggleLivePanel,
   unreadCount = 0,
   jobRole,
+  candidateName,
   attachedDocuments = [],
   conversationHistory = [],
   initialQuestionToSpeak,
@@ -66,8 +68,13 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   canDownloadReview = false,
   onDownloadReview,
   isDownloadingReview = false,
-  downloadReviewError = null
+  downloadReviewError = null,
+  onRegisterSubmitAnswer
 }) => {
+  // Candidate camera state and toggle reference
+  const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+  const cameraToggleFnRef = useRef<(() => void) | null>(null);
+
   // Session completed flag derived from props and local lifecycle
   const [isLocallyCompleted, setIsLocallyCompleted] = useState<boolean>(
     interviewStatus === 'completed'
@@ -275,8 +282,11 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       isRetryMode: true,
       isMinimized: false
     }));
-    setCustomLabel('Attempt 2 · Tap mic to record');
-    setStatusHint('Attempt 2 · Tap microphone once to speak your revised answer');
+    setCustomLabel('Attempt 2 · Recording revised answer…');
+    setStatusHint('Attempt 2 · Speak your revised answer · Auto-detects when you finish');
+    if (state === 'idle' || state === 'speaking') {
+      startRecording();
+    }
   };
 
   const handleCancelRetry = () => {
@@ -555,6 +565,425 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
    * 5. Query Gemini API for follow-up question (passing extracted document contents).
    * 6. Hide thinking bubble, then append/render complete Gemini response as "Pal (Interviewer)" message.
    * 7. Reset mic state so it is ready for the next response.
+  /**
+   * Core interview turn pipeline
+   * Shared by both spoken audio and typed permanent transcript answers.
+   */
+  const processCandidateAnswer = async (
+    userText: string,
+    audioBlob: Blob,
+    durationSeconds: number,
+    hesitationEvidence?: any
+  ) => {
+    if (replayState.isRetryMode) {
+      console.log('[Live Interview] User Attempt 2 transcription:', userText);
+      const audioUrl2 = URL.createObjectURL(audioBlob);
+      objectUrlsRef.current.push(audioUrl2);
+
+      const attempt2Data: AnswerAttempt = {
+        attemptNumber: 2,
+        audioBlob,
+        audioUrl: audioUrl2,
+        transcript: userText,
+        durationSeconds,
+        aiNotes: [],
+        aiNotesStatus: 'loading'
+      };
+
+      setReplayState((prev) => ({
+        ...prev,
+        attempt2: attempt2Data,
+        comparison: {
+          improvements: [],
+          stillImprove: [],
+          attempt2Notes: [],
+          status: 'loading'
+        },
+        isRetryMode: false,
+        isVisible: true,
+        isMinimized: false
+      }));
+
+      showCaption(`"Attempt 2: ${userText}"`);
+      if (onUserTranscribed) {
+        onUserTranscribed(`(Attempt 2) ${userText}`);
+      }
+
+      const questionToCompare = (replayState.questionText && !isQuotaExceededText(replayState.questionText))
+        ? replayState.questionText
+        : (currentQuestionBeingAnsweredRef.current && !isQuotaExceededText(currentQuestionBeingAnsweredRef.current))
+        ? currentQuestionBeingAnsweredRef.current
+        : 'Interview Question';
+
+      // Update exchange record with revised Attempt 2 transcript
+      if (currentExchangeIdRef.current) {
+        onExchangeRecorded?.({
+          id: currentExchangeIdRef.current,
+          order: candidateTurnCountRef.current || 1,
+          question: questionToCompare,
+          userAnswer: userText,
+          attempt1Answer: replayState.attempt1?.transcript || '',
+          attempt2Answer: userText,
+          durationSeconds,
+          aiNotes: replayState.attempt1?.aiNotes || [],
+          aiNotesStatus: 'loading',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        });
+      }
+
+      fetchAnswerComparison({
+        question: questionToCompare,
+        attempt1Answer: replayState.attempt1?.transcript || '',
+        attempt1DurationSeconds: replayState.attempt1?.durationSeconds,
+        attempt2Answer: userText,
+        attempt2DurationSeconds: durationSeconds,
+        jobRole,
+        attachedDocuments: attachedDocuments.map((d) => ({
+          id: d.id,
+          name: d.name,
+          category: d.category,
+          content: d.content || d.extractedText,
+          extracted_text: d.content || d.extractedText
+        }))
+      }).then((compRes) => {
+        if (currentExchangeIdRef.current && compRes.attempt2_notes && compRes.attempt2_notes.length > 0) {
+          onExchangeAiNotesUpdated?.(currentExchangeIdRef.current, compRes.attempt2_notes);
+        }
+        setReplayState((prev) => {
+          if (!prev.attempt2) return prev;
+          return {
+            ...prev,
+            attempt2: {
+              ...prev.attempt2,
+              aiNotes: compRes.attempt2_notes || [],
+              aiNotesStatus: compRes.status === 'success' ? 'success' : 'error',
+              errorMessage: compRes.error_message
+            },
+            comparison: {
+              improvements: compRes.improvements || [],
+              stillImprove: compRes.still_improve || [],
+              attempt2Notes: compRes.attempt2_notes || [],
+              status: compRes.status === 'success' ? 'success' : 'error',
+              errorMessage: compRes.error_message
+            }
+          };
+        });
+      });
+
+      setState('idle');
+      setCustomLabel(undefined);
+      isProcessingRef.current = false;
+      return;
+    }
+
+    // --- Standard Interview Turn (Attempt 1) ---
+    console.log('[Live Interview] 1. User answer:', userText);
+
+    // Revoke previous turn object URLs to keep session memory clean
+    objectUrlsRef.current.forEach((u) => {
+      try { URL.revokeObjectURL(u); } catch {}
+    });
+    objectUrlsRef.current = [];
+
+    const audioUrl1 = URL.createObjectURL(audioBlob);
+    objectUrlsRef.current.push(audioUrl1);
+
+    const questionAnswered = (currentQuestionBeingAnsweredRef.current && !isQuotaExceededText(currentQuestionBeingAnsweredRef.current))
+      ? currentQuestionBeingAnsweredRef.current
+      : (initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak))
+      ? initialQuestionToSpeak
+      : 'Interview Question';
+
+    const attempt1Data: AnswerAttempt = {
+      attemptNumber: 1,
+      audioBlob,
+      audioUrl: audioUrl1,
+      transcript: userText,
+      durationSeconds,
+      aiNotes: [],
+      aiNotesStatus: 'loading'
+    };
+
+    setReplayState({
+      questionText: questionAnswered,
+      attempt1: attempt1Data,
+      attempt2: null,
+      comparison: null,
+      isRetryMode: false,
+      isVisible: true,
+      isMinimized: false
+    });
+
+    // Calculate candidate turn count (excluding Attempt 2 retries)
+    const previousCandidateTurns = conversationHistory.filter(
+      (m) => m.sender === 'You' && !m.text.startsWith('(Attempt 2)')
+    ).length;
+    const currentTurn = Math.max(previousCandidateTurns + 1, candidateTurnCountRef.current + 1);
+    candidateTurnCountRef.current = currentTurn;
+
+    const exchangeId = `exchange-${interviewId || 'session'}-${currentTurn}`;
+    currentExchangeIdRef.current = exchangeId;
+
+    // Record complete current-session interview exchange in memory
+    const newExchange: InterviewExchangeRecord = {
+      id: exchangeId,
+      order: currentTurn,
+      question: questionAnswered,
+      userAnswer: userText,
+      attempt1Answer: userText,
+      durationSeconds,
+      aiNotes: [],
+      aiNotesStatus: 'loading',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    onExchangeRecorded?.(newExchange);
+
+    // Fire AI notes generation asynchronously (does NOT delay interview turn)
+    fetchAnswerAiNotes({
+      interviewId,
+      question: questionAnswered,
+      userAnswer: userText,
+      jobRole,
+      attachedDocuments: attachedDocuments.map((d) => ({
+        id: d.id,
+        name: d.name,
+        category: d.category,
+        content: d.content || d.extractedText,
+        extracted_text: d.content || d.extractedText
+      })),
+      durationSeconds,
+      hesitationEvidence
+    }).then((notesRes) => {
+      if (notesRes.status === 'success' && notesRes.notes && notesRes.notes.length > 0) {
+        onExchangeAiNotesUpdated?.(exchangeId, notesRes.notes);
+      }
+      setReplayState((prev) => {
+        if (!prev.attempt1 || prev.attempt1.audioUrl !== audioUrl1) return prev;
+        return {
+          ...prev,
+          attempt1: {
+            ...prev.attempt1,
+            aiNotes: notesRes.notes || [],
+            aiNotesStatus: notesRes.status === 'success' ? 'success' : 'error',
+            errorMessage: notesRes.error_message
+          }
+        };
+      });
+    });
+
+    // Step 2: Immediately commit & render user's message as "You"
+    if (onUserTranscribed) {
+      onUserTranscribed(userText);
+    }
+
+    // Show user transcription on caption bubble
+    showCaption(`"${userText}"`);
+
+    console.log(`[Live Interview] Candidate turn ${currentTurn} of ${MAX_INTERVIEW_TURNS}`);
+
+    // CHECK HARD TURN LIMIT: On the 8th turn, naturally conclude without calling Gemini follow-up
+    if (currentTurn >= MAX_INTERVIEW_TURNS) {
+      console.log(
+        `[Live Interview] Final allowed turn (${currentTurn}/${MAX_INTERVIEW_TURNS}) reached. ` +
+        'Naturally ending interview with concluding statement (bypassing Gemini follow-up API call).'
+      );
+      setIsLocallyCompleted(true);
+
+      // Turn off thinking indicator
+      onThinkingChange?.(false);
+
+      // Append PAL ending message to conversation transcript
+      if (onPalResponse) {
+        onPalResponse(INTERVIEW_ENDING_MESSAGE);
+        currentQuestionBeingAnsweredRef.current = INTERVIEW_ENDING_MESSAGE;
+      }
+
+      // Display ending message caption
+      showCaption(INTERVIEW_ENDING_MESSAGE);
+      setCustomLabel('Interview Complete');
+      setStatusHint('Interview Complete · Well done!');
+
+      // Mark interview COMPLETED
+      onInterviewCompleted?.('turn_limit_reached');
+
+      // Speak ending message with TTS
+      speakText(INTERVIEW_ENDING_MESSAGE, {
+        onStart: () => {
+          setState('speaking');
+        },
+        onEnd: () => {
+          setState('idle');
+          setCustomLabel('Interview Complete');
+          setStatusHint('Interview Complete · Review the full transcript in the side panel');
+          isProcessingRef.current = false;
+        },
+        onError: (err) => {
+          console.warn('[VoiceExperience] TTS ending message error:', err);
+          setState('idle');
+          setCustomLabel('Interview Complete');
+          setStatusHint('Interview Complete · Review the full transcript in the side panel');
+          isProcessingRef.current = false;
+        }
+      });
+      return;
+    }
+
+    // Cost protection: strictly check turn availability before calling Gemini
+    if (!hasRemainingTurns || isCompleted) {
+      console.log('[Live Interview] Session completed or turn limit reached. Aborting Gemini follow-up.');
+      setState('idle');
+      isProcessingRef.current = false;
+      return;
+    }
+
+    // Step 3: Wait for user message render to settle in conversation UI before showing thinking
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    // Step 4: Show chat thinking bubble while Gemini generates follow-up question
+    onThinkingChange?.(true);
+    setState('thinking');
+    setCustomLabel('Interviewer is thinking…');
+
+    // Step 5: Format updated conversation history including the user's latest response
+    const updatedHistory = [
+      ...conversationHistory.map((m) => ({
+        sender: m.sender as 'You' | 'Pal',
+        text: m.text
+      })),
+      {
+        sender: 'You' as const,
+        text: userText
+      }
+    ];
+
+    const followupResult = await fetchFollowupInterviewQuestion(
+      userText,
+      jobRole,
+      updatedHistory,
+      attachedDocuments.map((d) => ({
+        id: d.id,
+        name: d.name,
+        category: d.category,
+        content: d.content || d.extractedText,
+        extracted_text: d.content || d.extractedText
+      })),
+      interviewId
+    );
+
+    const aiResponse = followupResult.response;
+    const shouldEnd = followupResult.should_end;
+    const endReason = followupResult.reason;
+
+    console.log('[Live Interview] 2. Gemini follow-up response:', aiResponse, 'should_end:', shouldEnd, 'reason:', endReason);
+    // Turn off chat thinking bubble before rendering Pal follow-up
+    onThinkingChange?.(false);
+
+    const isErrorState = followupResult.status === 'error' || Boolean(followupResult.error_type);
+    const isQuota = isErrorState && (
+      followupResult.error_type === 'quota_exceeded' ||
+      followupResult.error_type === 'quota_exhausted' ||
+      followupResult.reason === 'gemini_quota_exceeded' ||
+      (Boolean(aiResponse) && (aiResponse.includes('usage limit') || aiResponse.includes('quota')))
+    );
+
+    if (isQuota) {
+      console.warn('[Live Interview] Gemini quota reached. Silently keeping session intact and awaiting next user turn.');
+      setState('idle');
+      setCustomLabel(undefined);
+      hideCaption();
+      isProcessingRef.current = false;
+      return;
+    }
+
+    // For non-quota errors, preserve genuine error handling
+    if (isErrorState) {
+      const isConnection = followupResult.error_type === 'connection_error' || (Boolean(aiResponse) && aiResponse.includes('connection error'));
+      const errorMsg = isConnection
+        ? 'Connection error · Tap the mic to try speaking again'
+        : 'AI service error · Tap the mic to try speaking again';
+
+      setCustomLabel(isConnection ? 'connection error' : 'service error');
+      setStatusHint(errorMsg);
+      showCaption(aiResponse || errorMsg);
+
+      // Reset creature to idle ready for retry, keeping interview active
+      setTimeout(() => {
+        hideCaption();
+        setCustomLabel(undefined);
+        setState('idle');
+        isProcessingRef.current = false;
+      }, 4000);
+      return;
+    }
+
+    // Step 6: Commit AI follow-up response to conversation history
+    if (onPalResponse && aiResponse) {
+      onPalResponse(aiResponse);
+      currentQuestionBeingAnsweredRef.current = aiResponse;
+    }
+
+    // Step 7: Display interviewer follow-up, closing statement, or wrap-up
+    if (aiResponse) {
+      showCaption(aiResponse);
+
+      if (shouldEnd) {
+        setIsLocallyCompleted(true);
+        setCustomLabel('Interview Complete');
+        setStatusHint('Interview Complete · Well done!');
+        onInterviewCompleted?.(endReason);
+
+        speakText(aiResponse, {
+          onStart: () => {
+            setState('speaking');
+          },
+          onEnd: () => {
+            setState('idle');
+            setCustomLabel('Interview Complete');
+            setStatusHint('Interview Complete · Review the full transcript in the side panel');
+            isProcessingRef.current = false;
+          },
+          onError: (err) => {
+            console.warn('[VoiceExperience] Kokoro TTS closing statement error:', err);
+            setState('idle');
+            setCustomLabel('Interview Complete');
+            setStatusHint('Interview Complete · Review the full transcript in the side panel');
+            isProcessingRef.current = false;
+          }
+        });
+        return;
+      }
+
+      const currentTurnLabel = endReason === 'wrapup_question' ? 'Wrap-up question' : 'Interviewer follow-up';
+      setCustomLabel(currentTurnLabel);
+
+      speakText(aiResponse, {
+        onStart: () => {
+          setState('speaking');
+        },
+        onEnd: () => {
+          setState('idle');
+          setCustomLabel(endReason === 'wrapup_question' ? 'Wrap-up question' : undefined);
+          if (endReason === 'wrapup_question') {
+            setStatusHint('Wrap-up · Feel free to share anything not yet covered');
+          }
+          isProcessingRef.current = false;
+        },
+        onError: (err) => {
+          console.warn('[VoiceExperience] Kokoro TTS speech playback error:', err);
+          setState('idle');
+          setCustomLabel(endReason === 'wrapup_question' ? 'Wrap-up question' : undefined);
+          isProcessingRef.current = false;
+        }
+      });
+    } else {
+      setState('idle');
+      setCustomLabel(undefined);
+      isProcessingRef.current = false;
+    }
+  };
+
+  /**
+   * Process microphone speech audio through Faster-Whisper STT
    */
   const processAudioTranscriptionAndInterview = async (audioBlob: Blob) => {
     if (!isMicEnabled || isCompleted) {
@@ -566,7 +995,6 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     }
 
     isProcessingRef.current = true;
-    // Keep voice sphere indicator internal during Whisper transcription; do NOT show chat thinking bubble yet
     setState('thinking');
     setCustomLabel('transcribing answer…');
 
@@ -583,412 +1011,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         : Math.max(1, Math.round((Date.now() - recordingStartTimeRef.current) / 1000));
 
       if (userText.length > 0) {
-        if (replayState.isRetryMode) {
-          console.log('[Live Interview] User spoken Attempt 2 transcription:', userText);
-          const audioUrl2 = URL.createObjectURL(audioBlob);
-          objectUrlsRef.current.push(audioUrl2);
-
-          const attempt2Data: AnswerAttempt = {
-            attemptNumber: 2,
-            audioBlob,
-            audioUrl: audioUrl2,
-            transcript: userText,
-            durationSeconds,
-            aiNotes: [],
-            aiNotesStatus: 'loading'
-          };
-
-          setReplayState((prev) => ({
-            ...prev,
-            attempt2: attempt2Data,
-            comparison: {
-              improvements: [],
-              stillImprove: [],
-              attempt2Notes: [],
-              status: 'loading'
-            },
-            isRetryMode: false,
-            isVisible: true,
-            isMinimized: false
-          }));
-
-          showCaption(`"Attempt 2: ${userText}"`);
-          if (onUserTranscribed) {
-            onUserTranscribed(`(Attempt 2) ${userText}`);
-          }
-
-          const questionToCompare = (replayState.questionText && !isQuotaExceededText(replayState.questionText))
-            ? replayState.questionText
-            : (currentQuestionBeingAnsweredRef.current && !isQuotaExceededText(currentQuestionBeingAnsweredRef.current))
-            ? currentQuestionBeingAnsweredRef.current
-            : 'Interview Question';
-
-          // Update exchange record with revised Attempt 2 transcript
-          if (currentExchangeIdRef.current) {
-            onExchangeRecorded?.({
-              id: currentExchangeIdRef.current,
-              order: candidateTurnCountRef.current || 1,
-              question: questionToCompare,
-              userAnswer: userText,
-              attempt1Answer: replayState.attempt1?.transcript || '',
-              attempt2Answer: userText,
-              durationSeconds,
-              aiNotes: replayState.attempt1?.aiNotes || [],
-              aiNotesStatus: 'loading',
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            });
-          }
-
-          setState('idle');
-          setCustomLabel('Attempt 2 complete');
-          setStatusHint('Compare your answers above · Click Resume Interview to continue');
-          isProcessingRef.current = false;
-
-          fetchAnswerComparison({
-            interviewId,
-            question: questionToCompare,
-            attempt1Answer: replayState.attempt1?.transcript || '',
-            attempt1DurationSeconds: replayState.attempt1?.durationSeconds,
-            attempt2Answer: userText,
-            attempt2DurationSeconds: durationSeconds,
-            jobRole,
-            attachedDocuments: attachedDocuments.map((d) => ({
-              id: d.id,
-              name: d.name,
-              category: d.category,
-              content: d.content || d.extractedText,
-              extracted_text: d.content || d.extractedText
-            }))
-          }).then((compRes) => {
-            if (currentExchangeIdRef.current && compRes.attempt2_notes && compRes.attempt2_notes.length > 0) {
-              onExchangeAiNotesUpdated?.(currentExchangeIdRef.current, compRes.attempt2_notes);
-            }
-            setReplayState((prev) => {
-              if (!prev.attempt2) return prev;
-              return {
-                ...prev,
-                attempt2: {
-                  ...prev.attempt2,
-                  aiNotes: compRes.attempt2_notes || [],
-                  aiNotesStatus: compRes.status === 'success' ? 'success' : 'error',
-                  errorMessage: compRes.error_message
-                },
-                comparison: {
-                  improvements: compRes.improvements || [],
-                  stillImprove: compRes.still_improve || [],
-                  attempt2Notes: compRes.attempt2_notes || [],
-                  status: compRes.status === 'success' ? 'success' : 'error',
-                  errorMessage: compRes.error_message
-                }
-              };
-            });
-          });
-
-          return;
-        }
-
-        // --- Standard Interview Turn (Attempt 1) ---
-        console.log('[Live Interview] 1. User spoken transcription:', userText);
-
-        // Revoke previous turn object URLs to keep session memory clean
-        objectUrlsRef.current.forEach((u) => {
-          try { URL.revokeObjectURL(u); } catch {}
-        });
-        objectUrlsRef.current = [];
-
-        const audioUrl1 = URL.createObjectURL(audioBlob);
-        objectUrlsRef.current.push(audioUrl1);
-
-        const questionAnswered = (currentQuestionBeingAnsweredRef.current && !isQuotaExceededText(currentQuestionBeingAnsweredRef.current))
-          ? currentQuestionBeingAnsweredRef.current
-          : (initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak))
-          ? initialQuestionToSpeak
-          : 'Interview Question';
-
-        const attempt1Data: AnswerAttempt = {
-          attemptNumber: 1,
-          audioBlob,
-          audioUrl: audioUrl1,
-          transcript: userText,
-          durationSeconds,
-          aiNotes: [],
-          aiNotesStatus: 'loading'
-        };
-
-        setReplayState({
-          questionText: questionAnswered,
-          attempt1: attempt1Data,
-          attempt2: null,
-          comparison: null,
-          isRetryMode: false,
-          isVisible: true,
-          isMinimized: false
-        });
-
-        // Calculate candidate turn count (excluding Attempt 2 retries)
-        const previousCandidateTurns = conversationHistory.filter(
-          (m) => m.sender === 'You' && !m.text.startsWith('(Attempt 2)')
-        ).length;
-        const currentTurn = Math.max(previousCandidateTurns + 1, candidateTurnCountRef.current + 1);
-        candidateTurnCountRef.current = currentTurn;
-
-        const exchangeId = `exchange-${interviewId || 'session'}-${currentTurn}`;
-        currentExchangeIdRef.current = exchangeId;
-
-        // Record complete current-session interview exchange in memory
-        const newExchange: InterviewExchangeRecord = {
-          id: exchangeId,
-          order: currentTurn,
-          question: questionAnswered,
-          userAnswer: userText,
-          attempt1Answer: userText,
-          durationSeconds,
-          aiNotes: [],
-          aiNotesStatus: 'loading',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        onExchangeRecorded?.(newExchange);
-
-        // Fire AI notes generation asynchronously (does NOT delay interview turn)
-        fetchAnswerAiNotes({
-          interviewId,
-          question: questionAnswered,
-          userAnswer: userText,
-          jobRole,
-          attachedDocuments: attachedDocuments.map((d) => ({
-            id: d.id,
-            name: d.name,
-            category: d.category,
-            content: d.content || d.extractedText,
-            extracted_text: d.content || d.extractedText
-          })),
-          durationSeconds,
-          hesitationEvidence: result.hesitation_evidence
-        }).then((notesRes) => {
-          if (notesRes.status === 'success' && notesRes.notes && notesRes.notes.length > 0) {
-            onExchangeAiNotesUpdated?.(exchangeId, notesRes.notes);
-          }
-          setReplayState((prev) => {
-            if (!prev.attempt1 || prev.attempt1.audioUrl !== audioUrl1) return prev;
-            return {
-              ...prev,
-              attempt1: {
-                ...prev.attempt1,
-                aiNotes: notesRes.notes || [],
-                aiNotesStatus: notesRes.status === 'success' ? 'success' : 'error',
-                errorMessage: notesRes.error_message
-              }
-            };
-          });
-        });
-
-        // Step 2: Immediately commit & render user's message as "You"
-        if (onUserTranscribed) {
-          onUserTranscribed(userText);
-        }
-
-        // Show user transcription on caption bubble
-        showCaption(`"${userText}"`);
-
-        console.log(`[Live Interview] Candidate turn ${currentTurn} of ${MAX_INTERVIEW_TURNS}`);
-
-        // CHECK HARD TURN LIMIT: On the 8th turn, naturally conclude without calling Gemini follow-up
-        if (currentTurn >= MAX_INTERVIEW_TURNS) {
-          console.log(
-            `[Live Interview] Final allowed turn (${currentTurn}/${MAX_INTERVIEW_TURNS}) reached. ` +
-            'Naturally ending interview with concluding statement (bypassing Gemini follow-up API call).'
-          );
-          setIsLocallyCompleted(true);
-
-          // Turn off thinking indicator
-          onThinkingChange?.(false);
-
-          // Append PAL ending message to conversation transcript
-          if (onPalResponse) {
-            onPalResponse(INTERVIEW_ENDING_MESSAGE);
-            currentQuestionBeingAnsweredRef.current = INTERVIEW_ENDING_MESSAGE;
-          }
-
-          // Display ending message caption
-          showCaption(INTERVIEW_ENDING_MESSAGE);
-          setCustomLabel('Interview Complete');
-          setStatusHint('Interview Complete · Well done!');
-
-          // Mark interview COMPLETED
-          onInterviewCompleted?.('turn_limit_reached');
-
-          // Speak ending message with TTS
-          speakText(INTERVIEW_ENDING_MESSAGE, {
-            onStart: () => {
-              setState('speaking');
-            },
-            onEnd: () => {
-              setState('idle');
-              setCustomLabel('Interview Complete');
-              setStatusHint('Interview Complete · Review the full transcript in the side panel');
-              isProcessingRef.current = false;
-            },
-            onError: (err) => {
-              console.warn('[VoiceExperience] TTS ending message error:', err);
-              setState('idle');
-              setCustomLabel('Interview Complete');
-              setStatusHint('Interview Complete · Review the full transcript in the side panel');
-              isProcessingRef.current = false;
-            }
-          });
-          return;
-        }
-
-        // Cost protection: strictly check turn availability before calling Gemini
-        if (!hasRemainingTurns || isCompleted) {
-          console.log('[Live Interview] Session completed or turn limit reached. Aborting Gemini follow-up.');
-          return;
-        }
-
-        // Step 3: Wait for user message render to settle in conversation UI before showing thinking
-        await new Promise((resolve) => setTimeout(resolve, 250));
-
-        // Step 4: ONLY after the YOU message is committed, show Gemini "thinking" in the chat
-        setCustomLabel('consulting Gemini interviewer…');
-        onThinkingChange?.(true);
-
-        // Step 5: Build updated conversation context including the new user response
-        const updatedHistory = [
-          ...conversationHistory.map((m) => ({
-            sender: m.sender as 'You' | 'Pal',
-            text: m.text
-          })),
-          {
-            sender: 'You' as const,
-            text: userText
-          }
-        ];
-
-        // Step 6: Query Gemini API for next follow-up question (including document contents!)
-        const followupResult = await fetchFollowupInterviewQuestion(
-          userText,
-          jobRole,
-          updatedHistory,
-          attachedDocuments.map((d) => ({
-            id: d.id,
-            name: d.name,
-            category: d.category,
-            content: d.content || d.extractedText,
-            extracted_text: d.content || d.extractedText
-          })),
-          interviewId
-        );
-
-        const aiResponse = followupResult.response;
-        const shouldEnd = followupResult.should_end;
-        const endReason = followupResult.reason;
-
-        console.log('[Live Interview] 2. Gemini follow-up response:', aiResponse, 'should_end:', shouldEnd, 'reason:', endReason);
-        // Turn off chat thinking bubble before rendering Pal follow-up
-        onThinkingChange?.(false);
-
-        const isErrorState = followupResult.status === 'error' || Boolean(followupResult.error_type);
-        const isQuota = isErrorState && (
-          followupResult.error_type === 'quota_exceeded' ||
-          followupResult.error_type === 'quota_exhausted' ||
-          followupResult.reason === 'gemini_quota_exceeded' ||
-          (Boolean(aiResponse) && (aiResponse.includes('usage limit') || aiResponse.includes('quota')))
-        );
-
-        if (isQuota) {
-          console.warn('[Live Interview] Gemini quota reached. Silently keeping session intact and awaiting next user turn.');
-          setState('idle');
-          setCustomLabel(undefined);
-          hideCaption();
-          isProcessingRef.current = false;
-          return;
-        }
-
-        // For non-quota errors, preserve genuine error handling
-        if (isErrorState) {
-          const isConnection = followupResult.error_type === 'connection_error' || (Boolean(aiResponse) && aiResponse.includes('connection error'));
-          const errorMsg = isConnection
-            ? 'Connection error · Tap the mic to try speaking again'
-            : 'AI service error · Tap the mic to try speaking again';
-
-          setCustomLabel(isConnection ? 'connection error' : 'service error');
-          setStatusHint(errorMsg);
-          showCaption(aiResponse || errorMsg);
-
-          // Reset creature to idle ready for retry, keeping interview active
-          setTimeout(() => {
-            setState('idle');
-            setCustomLabel(undefined);
-            setStatusHint(errorMsg);
-            isProcessingRef.current = false;
-          }, 3500);
-          return;
-        }
-
-        // Step 6: Append Gemini response as separate "Pal (Interviewer)" state update
-        if (onPalResponse && aiResponse) {
-          onPalResponse(aiResponse);
-          currentQuestionBeingAnsweredRef.current = aiResponse;
-        }
-
-        // Step 7: Display interviewer follow-up, closing statement, or wrap-up
-        if (aiResponse) {
-          showCaption(aiResponse);
-
-          if (shouldEnd) {
-            setIsLocallyCompleted(true);
-            setCustomLabel('Interview Complete');
-            setStatusHint('Interview Complete · Well done!');
-            onInterviewCompleted?.(endReason);
-
-            speakText(aiResponse, {
-              onStart: () => {
-                setState('speaking');
-              },
-              onEnd: () => {
-                setState('idle');
-                setCustomLabel('Interview Complete');
-                setStatusHint('Interview Complete · Review the full transcript in the side panel');
-                isProcessingRef.current = false;
-              },
-              onError: (err) => {
-                console.warn('[VoiceExperience] Kokoro TTS closing statement error:', err);
-                setState('idle');
-                setCustomLabel('Interview Complete');
-                setStatusHint('Interview Complete · Review the full transcript in the side panel');
-                isProcessingRef.current = false;
-              }
-            });
-            return;
-          }
-
-          const currentTurnLabel = endReason === 'wrapup_question' ? 'Wrap-up question' : 'Interviewer follow-up';
-          setCustomLabel(currentTurnLabel);
-
-          speakText(aiResponse, {
-            onStart: () => {
-              setState('speaking');
-            },
-            onEnd: () => {
-              setState('idle');
-              setCustomLabel(endReason === 'wrapup_question' ? 'Wrap-up question' : undefined);
-              if (endReason === 'wrapup_question') {
-                setStatusHint('Wrap-up · Feel free to share anything not yet covered');
-              }
-              isProcessingRef.current = false;
-            },
-            onError: (err) => {
-              console.warn('[VoiceExperience] Kokoro TTS speech playback error:', err);
-              setState('idle');
-              setCustomLabel(endReason === 'wrapup_question' ? 'Wrap-up question' : undefined);
-              isProcessingRef.current = false;
-            }
-          });
-        } else {
-          setState('idle');
-          setCustomLabel(undefined);
-          isProcessingRef.current = false;
-        }
+        await processCandidateAnswer(userText, audioBlob, durationSeconds, result.hesitation_evidence);
       } else {
         // No speech recognized
         onThinkingChange?.(false);
@@ -1020,10 +1043,42 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   };
 
   /**
-   * Flow handler: Mic button click starts turn when idle,
-   * interrupts and starts answering when speaking (barge-in),
-   * or finishes recording early when listening.
+   * Process permanent typed answer directly from the transcript sidebar
    */
+  const processTypedAnswer = async (typedText: string) => {
+    if (!isMicEnabled || isCompleted || isProcessingRef.current) {
+      return;
+    }
+    const cleanText = typedText.trim();
+    if (!cleanText) return;
+
+    // Interrupt any active TTS or recording
+    stopSpeaking();
+    if (state === 'listening') {
+      try {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+        }
+      } catch {}
+    }
+
+    isProcessingRef.current = true;
+    setState('thinking');
+    setCustomLabel('processing answer…');
+
+    // Create a lightweight audio blob to represent the typed turn in replay cards
+    const syntheticBlob = new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])], { type: 'audio/webm' });
+    const wordCount = cleanText.split(/\s+/).length;
+    const estimatedDuration = Math.max(2, Math.round(wordCount / 2.5));
+
+    await processCandidateAnswer(cleanText, syntheticBlob, estimatedDuration, undefined);
+  };
+
+  // Register permanent typed answer submission handler with parent VoiceCompanion
+  useEffect(() => {
+    onRegisterSubmitAnswer?.(processTypedAnswer);
+  }, [onRegisterSubmitAnswer, isMicEnabled, isCompleted]);
+
   const handleToggleFlow = () => {
     unlockAudio();
     if (!isMicEnabled || isCompleted) return;
@@ -1044,79 +1099,261 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     }
   };
 
-  const isCompactVisual = Boolean(replayState.isVisible && replayState.attempt1 && !replayState.isMinimized);
+  // Dynamic status text for Savi status badge
+  const getDynamicSaviStatus = (): string => {
+    if (isCompleted) return 'Interview Complete';
+    if (customLabel) return customLabel;
+    switch (state) {
+      case 'speaking':
+        return 'Speaking';
+      case 'listening':
+        return 'Listening';
+      case 'thinking':
+        return 'Thinking...';
+      case 'idle':
+      default:
+        return 'Ready';
+    }
+  };
+
+  const isCompactVisual = Boolean(!replayState.isMinimized);
+
+  // Maintain caption references for defensive state guards without displaying in workspace
+  void captionText;
+  void captionVisible;
 
   return (
-    <div className="stage relative w-full h-full flex flex-col items-center justify-between overflow-hidden select-none">
-      {/* 1. Fixed Header */}
-      <div className="w-full shrink-0">
-        <Header />
-      </div>
-
-      {/* 2. Responsive Central Interactive Area */}
-      <div className="flex-1 min-h-0 w-full flex flex-col items-center justify-between px-3 sm:px-6 py-1 sm:py-2 overflow-hidden">
-        {/* Upper Zone: Pal / Voice Visualization */}
-        <div className={`w-full flex flex-col items-center justify-center transition-all duration-300 overflow-visible ${
-          isCompactVisual ? 'shrink-0 pt-0.5' : 'flex-1'
-        }`}>
-          <VoiceCreature
-            state={state}
-            onTap={!isMicEnabled || isCompleted ? undefined : handleToggleFlow}
-            audioLevelRef={micAudioLevelRef}
-            compact={isCompactVisual}
-          />
-
-          <div className="shrink-0 mt-1 sm:mt-1.5 min-h-[18px] flex items-center justify-center">
-            <StateLabel state={state} customLabel={customLabel} />
+    <div className="stage relative w-full h-full flex flex-col justify-between overflow-hidden select-none px-3 sm:px-6 py-2 sm:py-3">
+      {/* 1. Header Bar: Brand Logo, Job Role, In Progress pill, Transcript toggle sitting directly on background */}
+      <header className="flex items-center justify-between w-full pb-2 shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Savi Logo */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            <svg viewBox="0 0 40 40" aria-hidden="true" className="w-8 h-8 shrink-0">
+              <path d="M20 4c8 3 12 10 8 17-3-6-8-8-14-8 0-4 2-7 6-9z" fill="#FFB347"/>
+              <path d="M36 20c-3 8-10 12-17 8 6-3 8-8 8-14 4 0 7 2 9 6z" fill="#4fbf83"/>
+              <path d="M20 36c-8-3-12-10-8-17 3 6 8 8 14 8 0 4-2 7-6 9z" fill="#FFB347" opacity=".8"/>
+              <path d="M4 20c3-8 10-12 17-8-6 3-8 8-8 14-4 0-7-2-9-6z" fill="#2f8f5c"/>
+            </svg>
+            <span className="font-fraunces font-light text-2xl tracking-tight text-[#F5EEDB] leading-none">
+              Savi
+            </span>
           </div>
 
-          {/* Dynamic Subtitle Slot: Visible when caption text exists, or collapsed to save space during replay */}
-          {captionVisible ? (
-            <div className="w-full max-w-lg h-[46px] shrink-0 flex items-center justify-center mt-1 px-2 overflow-hidden">
-              <ResponseCaption captionText={captionText} visible={captionVisible} />
-            </div>
-          ) : !replayState.isVisible ? (
-            <div className="w-full max-w-lg h-[46px] shrink-0 flex items-center justify-center mt-1 px-2 overflow-hidden" />
-          ) : null}
+          <span className="w-px h-6 bg-[rgba(218,241,222,0.14)] shrink-0" />
+
+          {/* AI Mock Interview & Job Role */}
+          <div className="flex flex-col justify-center min-w-0">
+            <span className="font-semibold text-xs sm:text-[13px] text-[#F5EEDB] leading-tight truncate">
+              AI Mock Interview
+            </span>
+            <span className="text-[11px] text-[#8EB69B] leading-tight truncate">
+              {jobRole || 'Software Developer'}
+            </span>
+          </div>
         </div>
 
-        {/* Dedicated Lower-Middle Zone: Answer Comparison / Replay Panel */}
-        {replayState.isVisible && replayState.attempt1 && (
-          <div className="w-full flex-1 min-h-0 flex flex-col items-center justify-center my-1 sm:my-2 px-1 sm:px-2 z-10">
-            <AnswerReplayCard
-              replayState={replayState}
-              onPlayAttempt={playAttempt}
-              onStopPlayback={stopReplayPlayback}
-              playingAttempt={playingAttempt}
-              playbackCurrentTime={playbackCurrentTime}
-              playbackProgress={playbackProgress}
-              onTryAgain={handleTryAgain}
-              onCancelRetry={handleCancelRetry}
-              onResumeInterview={handleResumeInterview}
-              onToggleMinimize={() => setReplayState((prev) => ({ ...prev, isMinimized: !prev.isMinimized }))}
-              onClose={() => setReplayState((prev) => ({ ...prev, isVisible: false }))}
-              isCompleted={!isMicEnabled || isCompleted}
+        {/* Header Right: In Progress Badge & Transcript Button */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[rgba(255,179,71,0.4)] text-[#FFC370] text-xs font-semibold bg-[rgba(255,179,71,0.06)] shadow-sm">
+            <i className="w-1.5 h-1.5 rounded-full bg-[#FFB347] animate-pulse" />
+            {isCompleted ? 'Completed' : 'In Progress'}
+          </span>
+
+          <button
+            type="button"
+            onClick={onToggleLivePanel}
+            className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all active:scale-95 border backdrop-blur-md ${
+              isLivePanelOpen
+                ? 'bg-[rgba(255,179,71,0.16)] text-[#FFC370] border-[rgba(255,179,71,0.35)] shadow-sm'
+                : 'bg-[rgba(9,32,23,0.55)] hover:bg-[rgba(9,32,23,0.8)] text-[#F5EEDB] border-[rgba(218,241,222,0.14)]'
+            }`}
+            title="Toggle Transcript Panel"
+            aria-expanded={isLivePanelOpen}
+          >
+            <MessageSquare className="w-3.5 h-3.5 text-[#FFB347]" />
+            <span>Transcript</span>
+          </button>
+        </div>
+      </header>
+
+      {/* 3. Main Stage: Candidate Camera (Left, when active) | Savi Orb (Centered or Right) */}
+      <div
+        className={`w-full mx-auto flex-1 min-h-0 overflow-visible py-1 sm:py-2 transition-all duration-300 flex flex-col justify-center ${
+          isLivePanelOpen ? 'max-w-5xl' : 'max-w-5xl xl:max-w-6xl'
+        }`}
+      >
+        <div
+          className={`w-full flex items-center justify-center transition-all duration-300 ${
+            isCameraActive
+              ? 'grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-8 items-center justify-items-center'
+              : 'flex flex-col items-center justify-center gap-2 sm:gap-3'
+          }`}
+        >
+          {/* Left Column on Desktop / Second in Stack: Candidate Camera (Always mounted to retain stream hooks; hidden when camera is off) */}
+          <div
+            className={
+              isCameraActive
+                ? 'flex flex-col items-center justify-center w-full max-w-[420px] lg:max-w-[460px] h-full order-2 md:order-1 shrink-0'
+                : 'hidden'
+            }
+          >
+            <CandidateCamera
+              candidateName={candidateName || 'Alex Chen'}
+              candidateRole="Job Candidate"
+              compact={isCompactVisual}
+              onCameraActiveChange={setIsCameraActive}
+              registerToggle={(fn) => { cameraToggleFnRef.current = fn; }}
             />
           </div>
-        )}
+
+          {/* Savi Orb Column: Top priority in vertical stack (order-1), Right on desktop (md:order-2), Centered when camera is OFF */}
+          <div
+            className={`flex flex-col items-center justify-center h-full gap-2 transition-all duration-300 shrink-0 ${
+              isCameraActive
+                ? 'w-full max-w-[420px] lg:max-w-[460px] order-1 md:order-2'
+                : 'w-full max-w-2xl'
+            }`}
+          >
+            <div className="w-full flex items-center justify-center overflow-visible">
+              <VoiceCreature
+                state={state}
+                onTap={!isMicEnabled || isCompleted ? undefined : handleToggleFlow}
+                audioLevelRef={micAudioLevelRef}
+                compact={isCompactVisual}
+                className={!isCameraActive && !isCompactVisual ? 'canvas-wrap--hero' : ''}
+              />
+            </div>
+
+            {/* Status & Info Container under the Orb */}
+            {isCameraActive ? (
+              /* When camera is ON: Candidate Info is on the camera; below Orb is Savi Status */
+              <div className={`flex items-center justify-center gap-2.5 rounded-full bg-[rgba(6,24,18,0.70)] border border-[rgba(218,241,222,0.14)] backdrop-blur-md shadow-sm shrink-0 transition-all duration-300 ease-out ${
+                isCompactVisual ? 'px-3 py-1' : 'px-4 py-1.5'
+              }`}>
+                <div className={`rounded-full bg-[rgba(47,224,168,0.12)] border border-[rgba(47,224,168,0.25)] flex items-center justify-center text-[#2FE0A8] shrink-0 transition-all duration-300 ${
+                  isCompactVisual ? 'w-6 h-6' : 'w-7 h-7'
+                }`}>
+                  <svg viewBox="0 0 24 24" className={`${isCompactVisual ? 'w-3 h-3' : 'w-3.5 h-3.5'} transition-all duration-300`} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M4 12v0M8 9v6M12 6v12M16 9v6M20 12v0"/>
+                  </svg>
+                </div>
+                <div className="flex flex-col text-left min-w-0">
+                  <b className={`font-bold text-white leading-tight transition-all duration-300 ${
+                    isCompactVisual ? 'text-[11px]' : 'text-xs'
+                  }`}>Savi</b>
+                  <small className={`font-semibold text-[#2FE0A8] leading-tight transition-all duration-300 ${
+                    isCompactVisual ? 'text-[10px]' : 'text-[11px]'
+                  }`}>{getDynamicSaviStatus()}</small>
+                </div>
+              </div>
+            ) : (
+              /* When camera is OFF: Candidate Info sits BELOW the orb + Savi Status + Camera Prompt */
+              <div className={`flex flex-col items-center transition-all duration-300 ease-out ${
+                isCompactVisual ? 'gap-1.5' : 'gap-2'
+              }`}>
+                <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-2.5">
+                  <div className={`flex items-center rounded-2xl bg-[rgba(10,32,24,0.52)] border border-[rgba(218,241,222,0.14)] backdrop-blur-md shadow-sm transition-all duration-300 ease-out ${
+                    isCompactVisual ? 'gap-2 px-3 py-1' : 'gap-3 px-3.5 py-1.5'
+                  }`}>
+                    <div className={`rounded-full bg-[rgba(218,241,222,0.1)] flex items-center justify-center text-[#F5EEDB] shrink-0 transition-all duration-300 ${
+                      isCompactVisual ? 'w-6 h-6' : 'w-7 h-7'
+                    }`}>
+                      <User className={`${isCompactVisual ? 'w-3 h-3' : 'w-3.5 h-3.5'} transition-all duration-300`} />
+                    </div>
+                    <div className="flex flex-col text-left min-w-0">
+                      <b className={`font-semibold text-white leading-tight truncate transition-all duration-300 ${
+                        isCompactVisual ? 'text-xs' : 'text-sm'
+                      }`}>{candidateName || 'Alex Chen'}</b>
+                      <small className={`text-[#8EB69B] leading-tight truncate transition-all duration-300 ${
+                        isCompactVisual ? 'text-[10px]' : 'text-xs'
+                      }`}>Job Candidate</small>
+                    </div>
+                  </div>
+
+                  <div className={`flex items-center rounded-2xl bg-[rgba(10,32,24,0.48)] border border-[rgba(218,241,222,0.14)] backdrop-blur-md shadow-sm transition-all duration-300 ease-out ${
+                    isCompactVisual ? 'gap-2 px-3 py-1' : 'gap-2.5 px-3.5 py-1.5'
+                  }`}>
+                    <div className={`rounded-full bg-[rgba(218,241,222,0.1)] flex items-center justify-center text-[#8EB69B] shrink-0 transition-all duration-300 ${
+                      isCompactVisual ? 'w-6 h-6' : 'w-7 h-7'
+                    }`}>
+                      <Sparkles className={`${isCompactVisual ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-[#FFB347] transition-all duration-300`} />
+                    </div>
+                    <div className="flex flex-col text-left min-w-0">
+                      <b className={`font-semibold text-white leading-tight transition-all duration-300 ${
+                        isCompactVisual ? 'text-xs' : 'text-sm'
+                      }`}>Savi</b>
+                      <small className={`font-semibold text-[#6fd3a0] leading-tight transition-all duration-300 ${
+                        isCompactVisual ? 'text-[10px]' : 'text-xs'
+                      }`}>{getDynamicSaviStatus()}</small>
+                    </div>
+                  </div>
+                </div>
+
+                {!isCameraActive && (
+                  <button
+                    type="button"
+                    onClick={() => cameraToggleFnRef.current?.()}
+                    className={`inline-flex items-center gap-2 rounded-full bg-[rgba(218,241,222,0.06)] hover:bg-[rgba(218,241,222,0.12)] border border-[rgba(218,241,222,0.14)] text-[#8EB69B] hover:text-[#F5EEDB] transition-all cursor-pointer backdrop-blur-md shadow-xs active:scale-95 group ${
+                      isCompactVisual ? 'px-3 py-1 text-[11px]' : 'px-3.5 py-1.5 text-xs mt-0.5'
+                    }`}
+                    title="Turn on camera to Enable Visual Analysis"
+                  >
+                    <Video className="w-3.5 h-3.5 text-[#FFB347] group-hover:scale-110 transition-transform" />
+                    <span>Turn on camera to Enable Visual Analysis</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* 3. Anchored Bottom Controls: Mic button ALWAYS fixed in position */}
-      <div className="w-full shrink-0">
-        <VoiceControls
-          state={state}
-          onStartFlow={handleToggleFlow}
-          isPanelOpen={isLivePanelOpen}
-          onTogglePanel={onToggleLivePanel}
-          unreadCount={unreadCount}
-          statusHint={statusHint || (!isMicEnabled || isCompleted ? 'Interview Complete · Review the full transcript in the side panel' : 'Tap microphone once to speak · Auto-detects when you finish')}
-          isCompleted={!isMicEnabled || isCompleted}
-          onOpenReview={onOpenCompletionReview}
-          canDownloadReview={canDownloadReview}
-          onDownloadReview={onDownloadReview}
-          isDownloadingReview={isDownloadingReview}
-          downloadReviewError={downloadReviewError}
-        />
+      {/* 4. Dedicated Lower-Middle Zone: Answer Comparison / Replay Panel & Bottom Controls (One Cohesive Lower Section) */}
+      {/* Container class invariant: w-full flex-1 min-h-0 flex flex-col items-center justify-center */}
+      <div className="w-full shrink-0 flex flex-col items-center gap-1.5 sm:gap-2 z-10 mt-auto pb-1 transition-all duration-300 ease-out">
+        {/* Audio Playback + AI Notes */}
+        <div
+          className={`w-full mx-auto px-1 sm:px-2 z-10 shrink-0 transition-all duration-300 flex flex-col items-center ${
+            isLivePanelOpen ? 'max-w-5xl' : 'max-w-5xl xl:max-w-6xl'
+          }`}
+        >
+          <AnswerReplayCard
+            replayState={replayState}
+            onPlayAttempt={playAttempt}
+            onStopPlayback={stopReplayPlayback}
+            playingAttempt={playingAttempt}
+            playbackCurrentTime={playbackCurrentTime}
+            playbackProgress={playbackProgress}
+            onTryAgain={handleTryAgain}
+            onCancelRetry={handleCancelRetry}
+            onResumeInterview={handleResumeInterview}
+            onToggleMinimize={() => setReplayState((prev) => ({ ...prev, isMinimized: !prev.isMinimized }))}
+            onClose={() => setReplayState((prev) => ({ ...prev, isVisible: false }))}
+            isCompleted={!isMicEnabled || isCompleted}
+          />
+        </div>
+
+        {/* 5. Anchored Bottom Controls: Speak, Camera, Tip, Supporting Instruction Text */}
+        <div className="w-full shrink-0 transition-all duration-300 ease-out">
+          <VoiceControls
+            state={state}
+            onStartFlow={handleToggleFlow}
+            isPanelOpen={isLivePanelOpen}
+            onTogglePanel={onToggleLivePanel}
+            unreadCount={unreadCount}
+            statusHint={statusHint || (!isMicEnabled || isCompleted ? 'Interview Complete · Review the full transcript in the side panel' : 'Tap microphone once to speak · Auto-detects when you finish')}
+            isCompleted={!isMicEnabled || isCompleted}
+            onOpenReview={onOpenCompletionReview}
+            canDownloadReview={canDownloadReview}
+            onDownloadReview={onDownloadReview}
+            isDownloadingReview={isDownloadingReview}
+            downloadReviewError={downloadReviewError}
+            onToggleCamera={() => cameraToggleFnRef.current?.()}
+            isCameraActive={isCameraActive}
+            compact={isCompactVisual}
+          />
+        </div>
       </div>
     </div>
   );

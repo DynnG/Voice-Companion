@@ -1,13 +1,29 @@
 :root {
-  --bg: #050810;
-  --bg-2: #0a0e18;
-  --ink: #e8ecf5;
-  --ink-dim: #7f8aa3;
-  --line: #1b2130;
-  --glow-a: #5eead4; /* teal, listening */
-  --glow-b: #a78bfa; /* violet, thinking */
-  --glow-c: #fdba74; /* amber, speaking */
-  --glow-idle: #4b5675;
+  /* Savi reference visual palette */
+  --paper: #F5EEDB;
+  --ser: #133020;
+  --cas: #046241;
+  --saf: #FFB347;
+  --earth: #FFC370;
+  --g5: #8EB69B;
+  --g6: #DAF1DE;
+
+  /* Global theme tokens */
+  --bg: #04170F;
+  --bg-2: #0B2B26;
+  --ink: #F5EEDB;
+  --ink-dim: #8EB69B;
+  --line: rgba(218, 241, 222, 0.13);
+  --line-gold: rgba(255, 179, 71, 0.4);
+  --glass: rgba(218, 241, 222, 0.06);
+  --glass-surface: rgba(10, 32, 24, 0.65);
+  --glass-border: rgba(218, 241, 222, 0.14);
+
+  /* Dynamic creature / voice states */
+  --glow-a: #2FE0A8; /* botanical emerald - listening */
+  --glow-b: #FFC370; /* warm earth gold - thinking */
+  --glow-c: #FFB347; /* amber saffron - speaking */
+  --glow-idle: #8EB69B; /* muted botanical green - idle */
 }
 
 .stage {
@@ -18,7 +34,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
-  background: radial-gradient(ellipse at 50% 38%, var(--bg-2) 0%, var(--bg) 70%);
+  background: transparent;
 }
 
 .voice-header {
@@ -27,16 +43,18 @@
 }
 
 .wordmark {
-  font-family: 'Space Grotesk', sans-serif;
-  font-weight: 600;
-  font-size: 15px;
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 500;
+  font-size: 18px;
   letter-spacing: 0.02em;
-  color: var(--ink);
+  color: var(--paper);
 }
 
 .wordmark span {
-  color: var(--ink-dim);
-  font-weight: 400;
+  font-family: 'Manrope', system-ui, sans-serif;
+  color: var(--g5);
+  font-weight: 500;
+  font-size: 13px;
 }
 
 .voice-canvas {
@@ -46,8 +64,8 @@
 
 .canvas-wrap {
   position: relative;
-  width: min(72vw, min(42vh, 320px));
-  height: min(72vw, min(42vh, 320px));
+  width: min(70vw, min(30vh, 250px));
+  height: min(70vw, min(30vh, 250px));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -57,29 +75,37 @@
   overflow: visible;
 }
 
+.canvas-wrap.canvas-wrap--hero {
+  width: min(75vw, min(38vh, 310px));
+  height: min(75vw, min(38vh, 310px));
+}
+
 .canvas-wrap.canvas-wrap--compact {
-  width: min(38vw, min(18vh, 150px));
-  height: min(38vw, min(18vh, 150px));
+  width: min(36vw, min(20vh, 170px));
+  height: min(36vw, min(20vh, 170px));
 }
 
 .state-label {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Manrope', system-ui, sans-serif;
   font-size: 13px;
-  letter-spacing: 0.04em;
-  color: var(--ink-dim);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--g5);
   min-height: 18px;
   transition: color .4s ease;
 }
 
 .caption {
-  max-width: 520px;
+  max-width: 560px;
   width: 100%;
   height: auto;
   max-height: 60px;
   text-align: center;
-  font-size: 14px;
-  line-height: 1.45;
-  color: var(--ink);
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: clamp(15px, 2.2vh + 4px, 19px);
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--paper);
   padding: 0 16px;
   opacity: 0;
   transform: translateY(4px);
@@ -120,13 +146,22 @@
   flex-shrink: 0;
   border-radius: 50%;
   border: 1px solid var(--line);
-  background: var(--bg-2);
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: border-color .3s ease, background .3s ease, transform .15s ease;
+  transition: border-color .3s ease, background .3s ease, transform .15s ease, box-shadow .3s ease;
   position: relative;
+}
+
+.mic-btn:hover {
+  background: rgba(218, 241, 222, 0.12);
+  border-color: rgba(255, 179, 71, 0.4);
+  transform: translateY(-1px);
 }
 
 .mic-btn:active {
@@ -134,23 +169,25 @@
 }
 
 .mic-btn:focus-visible {
-  outline: 2px solid var(--glow-a);
+  outline: 2px solid var(--saf);
   outline-offset: 3px;
 }
 
 .mic-btn svg {
   width: 22px;
   height: 22px;
-  stroke: var(--ink);
+  stroke: var(--paper);
   transition: stroke .3s ease;
 }
 
 .mic-btn.live {
-  border-color: var(--glow-a);
+  background: linear-gradient(135deg, rgba(255, 195, 112, 0.25), rgba(255, 179, 71, 0.35));
+  border-color: var(--saf);
+  box-shadow: 0 0 0 6px rgba(255, 179, 71, 0.18), 0 12px 34px rgba(255, 179, 71, 0.35);
 }
 
 .mic-btn.live svg {
-  stroke: var(--glow-a);
+  stroke: var(--saf);
 }
 
 .chat-btn {
@@ -158,14 +195,24 @@
   height: 60px;
   border-radius: 50%;
   border: 1px solid var(--line);
-  background: var(--bg-2);
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: border-color .3s ease, background .3s ease, transform .15s ease, color .3s ease;
+  transition: border-color .3s ease, background .3s ease, transform .15s ease, color .3s ease, box-shadow .3s ease;
   position: relative;
-  color: var(--ink);
+  color: var(--paper);
+}
+
+.chat-btn:hover {
+  border-color: rgba(255, 179, 71, 0.4);
+  background: rgba(218, 241, 222, 0.12);
+  color: var(--paper);
+  transform: translateY(-1px);
 }
 
 .chat-btn:active {
@@ -173,27 +220,90 @@
 }
 
 .chat-btn:focus-visible {
-  outline: 2px solid #046241;
+  outline: 2px solid var(--saf);
   outline-offset: 3px;
 }
 
-.chat-btn:hover {
-  border-color: #046241;
-  color: #f5eedb;
-}
-
 .chat-btn.active-panel {
-  border-color: #046241;
-  background: rgba(4, 98, 65, 0.25);
-  color: #f5eedb;
+  border-color: var(--saf);
+  background: rgba(255, 179, 71, 0.18);
+  color: var(--saf);
+  box-shadow: 0 0 18px rgba(255, 179, 71, 0.25);
 }
 
 .hint {
-  font-size: 12px;
-  color: var(--ink-dim);
+  font-family: 'Manrope', system-ui, sans-serif;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--g5);
   letter-spacing: 0.01em;
+}
+
+/* ========================================================================= */
+/* SAVI CANONICAL INTERVIEW SCREEN STYLES (MATCHING IMAGE 1 SPECIFICATION)   */
+/* Scoped to active interview container - LOCKED first page is not affected  */
+/* ========================================================================= */
+
+.savi-app {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  padding: 14px;
+}
+
+.savi-frame {
+  border: 1px solid transparent;
+  background: linear-gradient(160deg, #0f2a1f, #08201c) padding-box,
+              linear-gradient(135deg, rgba(255, 179, 71, 0.65), rgba(255, 179, 71, 0.06) 38%, rgba(79, 191, 131, 0.28) 72%, rgba(255, 179, 71, 0.45)) border-box;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+  border-radius: 38px;
+}
+
+.savi-main {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  gap: 10px;
+  padding: 12px 24px 14px;
+}
+
+.savi-cream {
+  background: var(--paper);
+  color: var(--ser);
+  border-radius: 28px;
+  overflow: hidden;
+}
+
+.savi-segs {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+}
+
+.savi-segs i {
+  height: 5px;
+  border-radius: 9px;
+  background: rgba(218, 241, 222, 0.15);
+  transition: background 0.3s ease;
+}
+
+.savi-segs i.on {
+  background: var(--saf);
+}
+
+.savi-segs i.cur {
+  background: rgba(255, 179, 71, 0.5);
+}
+
+mark.f {
+  background: rgba(255, 179, 71, 0.5);
+  color: inherit;
+  border-radius: 5px;
+  padding: 0 4px;
 }
 
 @media (prefers-reduced-motion: reduce){
   * { animation-duration: 0.01ms !important; }
 }
+
