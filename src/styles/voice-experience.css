@@ -64,8 +64,8 @@
 
 .canvas-wrap {
   position: relative;
-  width: min(85vw, min(48vh, 380px));
-  height: min(85vw, min(48vh, 380px));
+  width: min(70vw, min(30vh, 250px));
+  height: min(70vw, min(30vh, 250px));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -75,9 +75,14 @@
   overflow: visible;
 }
 
+.canvas-wrap.canvas-wrap--hero {
+  width: min(75vw, min(38vh, 310px));
+  height: min(75vw, min(38vh, 310px));
+}
+
 .canvas-wrap.canvas-wrap--compact {
-  width: min(38vw, min(18vh, 150px));
-  height: min(38vw, min(18vh, 150px));
+  width: min(36vw, min(20vh, 170px));
+  height: min(36vw, min(20vh, 170px));
 }
 
 .state-label {
@@ -234,6 +239,71 @@
   letter-spacing: 0.01em;
 }
 
+/* ========================================================================= */
+/* SAVI CANONICAL INTERVIEW SCREEN STYLES (MATCHING IMAGE 1 SPECIFICATION)   */
+/* Scoped to active interview container - LOCKED first page is not affected  */
+/* ========================================================================= */
+
+.savi-app {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  padding: 14px;
+}
+
+.savi-frame {
+  border: 1px solid transparent;
+  background: linear-gradient(160deg, #0f2a1f, #08201c) padding-box,
+              linear-gradient(135deg, rgba(255, 179, 71, 0.65), rgba(255, 179, 71, 0.06) 38%, rgba(79, 191, 131, 0.28) 72%, rgba(255, 179, 71, 0.45)) border-box;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+  border-radius: 38px;
+}
+
+.savi-main {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  gap: 10px;
+  padding: 12px 24px 14px;
+}
+
+.savi-cream {
+  background: var(--paper);
+  color: var(--ser);
+  border-radius: 28px;
+  overflow: hidden;
+}
+
+.savi-segs {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+}
+
+.savi-segs i {
+  height: 5px;
+  border-radius: 9px;
+  background: rgba(218, 241, 222, 0.15);
+  transition: background 0.3s ease;
+}
+
+.savi-segs i.on {
+  background: var(--saf);
+}
+
+.savi-segs i.cur {
+  background: rgba(255, 179, 71, 0.5);
+}
+
+mark.f {
+  background: rgba(255, 179, 71, 0.5);
+  color: inherit;
+  border-radius: 5px;
+  padding: 0 4px;
+}
+
 @media (prefers-reduced-motion: reduce){
   * { animation-duration: 0.01ms !important; }
 }
+
