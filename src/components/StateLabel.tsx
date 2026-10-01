@@ -11,6 +11,7 @@ const DEFAULT_STATE_TEXT: Record<VoiceState, string> = {
   listening: 'listening…',
   thinking: 'thinking…',
   speaking: 'speaking…',
+  gesture_no: 'stay on topic…',
 };
 
 const STATE_COLORS: Record<VoiceState, string> = {
@@ -18,6 +19,7 @@ const STATE_COLORS: Record<VoiceState, string> = {
   listening: 'var(--glow-a)',
   thinking: 'var(--glow-b)',
   speaking: 'var(--glow-c)',
+  gesture_no: 'var(--glow-b)',
 };
 
 export const StateLabel: React.FC<StateLabelProps> = ({ state, customLabel }) => {

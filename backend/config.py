@@ -8,16 +8,16 @@ backend_env = Path(__file__).resolve().parent / ".env"
 root_env = Path(__file__).resolve().parent.parent / ".env"
 
 if backend_env.exists():
-    load_dotenv(dotenv_path=backend_env)
+    load_dotenv(dotenv_path=backend_env, override=True)
 elif root_env.exists():
-    load_dotenv(dotenv_path=root_env)
+    load_dotenv(dotenv_path=root_env, override=True)
 else:
-    load_dotenv()
+    load_dotenv(override=True)
 
 # Gemini API Configuration
-GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-# Default to gemini-2.5-flash for fast conversational responses
-GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
+# Default to gemini-3.5-flash-lite for fast conversational responses
+GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 def _load_env_file():
     possible_paths = [
@@ -73,9 +73,6 @@ CONDITION_ON_PREVIOUS_TEXT: bool = os.getenv("WHISPER_CONDITION_ON_PREV", "false
 HOST: str = os.getenv("HOST", "0.0.0.0")
 PORT: int = int(os.getenv("PORT", "8000"))
 
-# Gemini API Configuration (Job Interview Practice Brain)
-GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
-GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
 # Kokoro ONNX TTS Configuration (Local CPU Text-to-Speech)
 TTS_ENABLED: bool = os.getenv("TTS_ENABLED", "true").lower() in ("true", "1", "yes")

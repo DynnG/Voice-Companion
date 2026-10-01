@@ -23,6 +23,8 @@ const DEFAULT_CONFIG: Required<VoiceReactiveConfig> = {
 
 export interface VoiceCreatureProps {
   state: VoiceState;
+  gesture?: 'no' | null;
+  onGestureEnd?: () => void;
   onTap?: () => void;
   audioLevelRef?: React.MutableRefObject<number> | React.RefObject<number>;
   audioLevel?: number;
@@ -32,11 +34,108 @@ export interface VoiceCreatureProps {
 }
 
 const STATE_CONFIG: Record<VoiceState, { colorVar: string; amp: number; speed: number; lobes: number; ring: number }> = {
-  idle:      { colorVar: '--glow-idle', amp: 0.06, speed: 0.25, lobes: 3, ring: 0 },
-  listening: { colorVar: '--glow-a',    amp: 0.10, speed: 0.45, lobes: 5, ring: 0 },
-  thinking:  { colorVar: '--glow-b',    amp: 0.09, speed: 1.3,  lobes: 7, ring: 0 },
-  speaking:  { colorVar: '--glow-c',    amp: 0.20, speed: 0.9,  lobes: 4, ring: 1 },
+  idle:       { colorVar: '--glow-idle', amp: 0.06, speed: 0.25, lobes: 3, ring: 0 },
+  listening:  { colorVar: '--glow-a',    amp: 0.10, speed: 0.45, lobes: 5, ring: 0 },
+  thinking:   { colorVar: '--glow-b',    amp: 0.09, speed: 1.3,  lobes: 7, ring: 0 },
+  speaking:   { colorVar: '--glow-c',    amp: 0.20, speed: 0.9,  lobes: 4, ring: 1 },
+  gesture_no: { colorVar: '--glow-b',    amp: 0.08, speed: 0.6,  lobes: 4, ring: 0 },
 };
+
+export interface HandTargetPoint {
+  x: number;      // normalized relative to baseR [-1.0, 1.0]
+  y: number;      // normalized relative to baseR (negative = above orb center)
+  part: 'wrist' | 'palm' | 'thumb' | 'curled' | 'index';
+  isWagging?: boolean;
+}
+
+export const HAND_TARGET_TEMPLATES: readonly HandTargetPoint[] = [
+  // 1. Wrist / Attachment to top of Orb (10 points) - rooted in orb upper boundary
+  { x: -0.22, y: -0.48, part: 'wrist' },
+  { x: -0.15, y: -0.46, part: 'wrist' },
+  { x: -0.07, y: -0.45, part: 'wrist' },
+  { x:  0.00, y: -0.45, part: 'wrist' },
+  { x:  0.08, y: -0.46, part: 'wrist' },
+  { x:  0.15, y: -0.48, part: 'wrist' },
+  { x: -0.20, y: -0.58, part: 'wrist' },
+  { x: -0.08, y: -0.56, part: 'wrist' },
+  { x:  0.06, y: -0.56, part: 'wrist' },
+  { x:  0.16, y: -0.58, part: 'wrist' },
+
+  // 2. Palm body (8 points)
+  { x: -0.25, y: -0.68, part: 'palm' },
+  { x: -0.12, y: -0.68, part: 'palm' },
+  { x:  0.02, y: -0.68, part: 'palm' },
+  { x:  0.14, y: -0.68, part: 'palm' },
+  { x: -0.26, y: -0.80, part: 'palm' },
+  { x: -0.14, y: -0.80, part: 'palm' },
+  { x:  0.00, y: -0.80, part: 'palm' },
+  { x:  0.12, y: -0.80, part: 'palm' },
+
+  // 3. Thumb folded across the front of palm (6 points)
+  { x:  0.22, y: -0.66, part: 'thumb' },
+  { x:  0.20, y: -0.74, part: 'thumb' },
+  { x:  0.12, y: -0.79, part: 'thumb' },
+  { x:  0.03, y: -0.82, part: 'thumb' },
+  { x: -0.05, y: -0.82, part: 'thumb' },
+  { x: -0.12, y: -0.79, part: 'thumb' },
+
+  // 4. Curled fingers: Pinky, Ring, Middle (14 points)
+  // Pinky (4 points)
+  { x: -0.28, y: -0.90, part: 'curled' },
+  { x: -0.30, y: -0.99, part: 'curled' },
+  { x: -0.24, y: -1.04, part: 'curled' },
+  { x: -0.20, y: -0.95, part: 'curled' },
+  // Ring finger (5 points)
+  { x: -0.18, y: -0.92, part: 'curled' },
+  { x: -0.20, y: -1.05, part: 'curled' },
+  { x: -0.15, y: -1.12, part: 'curled' },
+  { x: -0.10, y: -1.07, part: 'curled' },
+  { x: -0.11, y: -0.94, part: 'curled' },
+  // Middle finger (5 points)
+  { x: -0.07, y: -0.93, part: 'curled' },
+  { x: -0.08, y: -1.09, part: 'curled' },
+  { x: -0.04, y: -1.18, part: 'curled' },
+  { x:  0.02, y: -1.13, part: 'curled' },
+  { x:  0.01, y: -0.95, part: 'curled' },
+
+  // 5. Raised Index Finger (18 points) - points upwards and wags
+  // Knuckle base
+  { x:  0.05, y: -0.94, part: 'index', isWagging: true },
+  { x:  0.13, y: -0.94, part: 'index', isWagging: true },
+  // Lower phalanx column
+  { x:  0.04, y: -1.05, part: 'index', isWagging: true },
+  { x:  0.09, y: -1.05, part: 'index', isWagging: true },
+  { x:  0.14, y: -1.05, part: 'index', isWagging: true },
+  // Middle phalanx column
+  { x:  0.04, y: -1.18, part: 'index', isWagging: true },
+  { x:  0.09, y: -1.18, part: 'index', isWagging: true },
+  { x:  0.14, y: -1.18, part: 'index', isWagging: true },
+  // Upper phalanx column
+  { x:  0.04, y: -1.32, part: 'index', isWagging: true },
+  { x:  0.09, y: -1.32, part: 'index', isWagging: true },
+  { x:  0.14, y: -1.32, part: 'index', isWagging: true },
+  // Near fingertip
+  { x:  0.05, y: -1.45, part: 'index', isWagging: true },
+  { x:  0.09, y: -1.45, part: 'index', isWagging: true },
+  { x:  0.13, y: -1.45, part: 'index', isWagging: true },
+  // Rounded fingertip arc
+  { x:  0.06, y: -1.54, part: 'index', isWagging: true },
+  { x:  0.09, y: -1.58, part: 'index', isWagging: true },
+  { x:  0.12, y: -1.54, part: 'index', isWagging: true },
+  { x:  0.09, y: -1.50, part: 'index', isWagging: true },
+];
+
+export function calculateWagOffset(point: HandTargetPoint, wagPhase: number, baseR: number): { dx: number; dy: number } {
+  if (!point.isWagging) {
+    return { dx: 0, dy: 0 };
+  }
+  const knuckleY = -0.94;
+  const h = Math.max(0, (knuckleY - point.y) / 0.64);
+  const sway = Math.sin(wagPhase * Math.PI * 4); // 2 complete wag cycles
+  const dx = sway * baseR * 0.26 * h;
+  const dy = (1 - Math.cos(sway * 0.35)) * baseR * 0.12 * h;
+  return { dx, dy };
+}
 
 function hexToRgb(h: string) {
   const clean = h.replace('#', '');
@@ -92,6 +191,8 @@ function hueShift({ r, g, b }: { r: number; g: number; b: number }, deg: number)
 
 export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
   state,
+  gesture,
+  onGestureEnd,
   onTap,
   audioLevelRef,
   audioLevel,
@@ -102,6 +203,8 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const currentStateRef = useRef<VoiceState>(state);
+  const gesturePropRef = useRef<'no' | null | undefined>(gesture);
+  const onGestureEndRef = useRef<(() => void) | undefined>(onGestureEnd);
   const audioLevelPropRef = useRef<number | undefined>(audioLevel);
   const externalAudioRef = useRef<React.MutableRefObject<number> | React.RefObject<number> | undefined>(audioLevelRef);
   const configRef = useRef<VoiceReactiveConfig | undefined>(config);
@@ -109,6 +212,14 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
   useEffect(() => {
     currentStateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    gesturePropRef.current = gesture;
+  }, [gesture]);
+
+  useEffect(() => {
+    onGestureEndRef.current = onGestureEnd;
+  }, [onGestureEnd]);
 
   useEffect(() => {
     audioLevelPropRef.current = audioLevel;
@@ -164,7 +275,11 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
     let colorMix = { r: 75, g: 86, b: 117 };
     let smoothedMicLevel = 0;
 
-    const motes = Array.from({ length: 18 }, (_, i) => ({
+    let gestureTime = 0;
+    let isGestureRunning = false;
+    const GESTURE_DURATION = 3.8;
+
+    const motes = Array.from({ length: 56 }, (_, i) => ({
       radiusF: 1.10 + Math.random() * 0.45,
       speed: 0.2 + Math.random() * 0.4,
       dir: i % 2 === 0 ? 1 : -1,
@@ -360,23 +475,142 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       ctx.arc(cx, cy, haloR, 0, Math.PI * 2);
       ctx.fill();
 
-      // Light motes (particles)
-      for (const m of motes) {
+      // 5. Gesture "NO / STAY ON TOPIC" Lifecycle
+      const isGestureRequested = currentName === 'gesture_no' || gesturePropRef.current === 'no';
+
+      // Immediate interruption if candidate starts speaking (listening) or thinking
+      if (currentName === 'listening' || currentName === 'thinking') {
+        if (isGestureRunning) {
+          isGestureRunning = false;
+          gestureTime = 0;
+          onGestureEndRef.current?.();
+        }
+      } else if (isGestureRequested && !isGestureRunning) {
+        isGestureRunning = true;
+        gestureTime = 0;
+      }
+
+      let gatherWeight = 0;
+      let wagPhase = 0;
+
+      if (isGestureRunning) {
+        gestureTime += 0.016;
+        const progress = Math.min(1.0, gestureTime / GESTURE_DURATION);
+
+        if (progress < 0.22) {
+          // Phase 1: Particles gather & reorganize into hand (0.0 to 0.22)
+          const p = progress / 0.22;
+          gatherWeight = p * p * (3 - 2 * p); // smoothstep ease-in-out
+          wagPhase = 0;
+        } else if (progress < 0.32) {
+          // Phase 2: Formed hand pose hold (0.22 to 0.32)
+          gatherWeight = 1.0;
+          wagPhase = 0;
+        } else if (progress < 0.78) {
+          // Phase 3: Raised index finger wags LEFT -> RIGHT -> LEFT -> RIGHT (2 full cycles) (0.32 to 0.78)
+          gatherWeight = 1.0;
+          wagPhase = (progress - 0.32) / (0.78 - 0.32);
+        } else if (progress < 0.86) {
+          // Phase 4: Settle hold (0.78 to 0.86)
+          gatherWeight = 1.0;
+          wagPhase = 0;
+        } else if (progress < 1.0) {
+          // Phase 5: Hand dissolves back into the orb (0.86 to 1.0)
+          const p = (progress - 0.86) / (1.0 - 0.86);
+          gatherWeight = 1.0 - (p * p * (3 - 2 * p));
+          wagPhase = 0;
+        } else {
+          // Gesture complete: smoothly return to normal orb
+          gatherWeight = 0;
+          wagPhase = 0;
+          isGestureRunning = false;
+          gestureTime = 0;
+          onGestureEndRef.current?.();
+        }
+      }
+
+      // Light motes (particles) - orbiting in normal state, forming Savi's hand during gesture
+      const handCoords: { x: number; y: number }[] = [];
+
+      for (let i = 0; i < motes.length; i++) {
+        const m = motes[i];
         const ang = m.phase + t * m.speed * m.dir;
         const moteBonus = currentName === 'listening' ? smoothedMicLevel * 0.12 : 0;
         // Keep motes comfortably within canvas bounds
         const r = Math.min(maxSafeRadius * 0.78, dynBaseR * m.radiusF * (1 + dynAmp * 0.4 + moteBonus));
         const mx = cx + Math.cos(ang) * r;
         const my = cy + Math.sin(ang * 1.15) * r * 0.9;
+
+        let px = mx;
+        let py = my;
+
+        if (gatherWeight > 0.001) {
+          const target = HAND_TARGET_TEMPLATES[i % HAND_TARGET_TEMPLATES.length];
+          const wag = calculateWagOffset(target, wagPhase, dynBaseR);
+          const hx = cx + target.x * dynBaseR + wag.dx;
+          const hy = cy + target.y * dynBaseR + wag.dy;
+          px = mx + (hx - mx) * gatherWeight;
+          py = my + (hy - my) * gatherWeight;
+          handCoords.push({ x: px, y: py });
+        }
+
         const twinkle = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * (1.6 + (currentName === 'listening' ? smoothedMicLevel * 1.2 : 0)) + m.phase));
+        const alpha = (0.55 * twinkle) * (1 - gatherWeight * 0.3) + 0.88 * gatherWeight;
+        const pSize = m.size * (1 + gatherWeight * 0.5);
+
         ctx.beginPath();
-        ctx.arc(mx, my, m.size, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${secCol},${0.55 * twinkle})`;
-        ctx.shadowColor = `rgba(${secCol},0.8)`;
-        ctx.shadowBlur = 5;
+        ctx.arc(px, py, pSize, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${secCol},${alpha})`;
+        ctx.shadowColor = `rgba(${secCol},${0.8 + gatherWeight * 0.2})`;
+        ctx.shadowBlur = 5 + gatherWeight * 4;
         ctx.fill();
       }
       ctx.shadowBlur = 0;
+
+      // Constellation ligaments connecting hand structure when formed
+      if (gatherWeight > 0.35 && handCoords.length >= 56) {
+        ctx.save();
+        ctx.strokeStyle = `rgba(${secCol},${0.25 * gatherWeight})`;
+        ctx.lineWidth = 1.0;
+
+        // Index finger column
+        ctx.beginPath();
+        ctx.moveTo(handCoords[38].x, handCoords[38].y);
+        ctx.lineTo(handCoords[40].x, handCoords[40].y);
+        ctx.lineTo(handCoords[43].x, handCoords[43].y);
+        ctx.lineTo(handCoords[46].x, handCoords[46].y);
+        ctx.lineTo(handCoords[49].x, handCoords[49].y);
+        ctx.lineTo(handCoords[52].x, handCoords[52].y);
+        ctx.lineTo(handCoords[53].x, handCoords[53].y);
+        ctx.lineTo(handCoords[54].x, handCoords[54].y);
+        ctx.lineTo(handCoords[51].x, handCoords[51].y);
+        ctx.lineTo(handCoords[48].x, handCoords[48].y);
+        ctx.lineTo(handCoords[45].x, handCoords[45].y);
+        ctx.lineTo(handCoords[42].x, handCoords[42].y);
+        ctx.lineTo(handCoords[39].x, handCoords[39].y);
+        ctx.stroke();
+
+        // Curled knuckles
+        ctx.beginPath();
+        ctx.moveTo(handCoords[24].x, handCoords[24].y);
+        ctx.lineTo(handCoords[25].x, handCoords[25].y);
+        ctx.lineTo(handCoords[26].x, handCoords[26].y);
+        ctx.lineTo(handCoords[30].x, handCoords[30].y);
+        ctx.lineTo(handCoords[35].x, handCoords[35].y);
+        ctx.stroke();
+
+        // Thumb fold
+        ctx.beginPath();
+        ctx.moveTo(handCoords[18].x, handCoords[18].y);
+        ctx.lineTo(handCoords[19].x, handCoords[19].y);
+        ctx.lineTo(handCoords[20].x, handCoords[20].y);
+        ctx.lineTo(handCoords[21].x, handCoords[21].y);
+        ctx.lineTo(handCoords[22].x, handCoords[22].y);
+        ctx.lineTo(handCoords[23].x, handCoords[23].y);
+        ctx.stroke();
+
+        ctx.restore();
+      }
 
 
       // Layered echoes - multiple overlapping translucent organic layers

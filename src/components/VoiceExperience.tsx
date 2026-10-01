@@ -7,7 +7,7 @@ import { ResponseCaption } from './ResponseCaption';
 import { CandidateCamera } from './CandidateCamera';
 import { VoiceControls } from './VoiceControls';
 import { AnswerReplayCard } from './AnswerReplayCard';
-import { transcribeAudio, fetchFollowupInterviewQuestion, fetchAnswerAiNotes, fetchAnswerComparison, isQuotaExceededText, isInterviewErrorText } from '../services/sttService';
+import { transcribeAudio, fetchFollowupInterviewQuestion, fetchAnswerAiNotes, fetchAnswerComparison, isQuotaExceededText, isInterviewErrorText, isOffTopicRedirect, isClarificationQuery } from '../services/sttService';
 import { speakText, stopSpeaking, unlockAudio } from '../services/ttsService';
 
 interface VoiceExperienceProps {
@@ -105,6 +105,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   const [statusHint, setStatusHint] = useState<string | undefined>(
     isCompleted ? 'Interview Complete · Review the full transcript in the side panel' : undefined
   );
+  const [creatureGesture, setCreatureGesture] = useState<'no' | null>(null);
 
   // Session-Only Answer Replay State
   const [replayState, setReplayState] = useState<ReplayState>({
@@ -472,6 +473,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   const startRecording = async () => {
     if (!isMicEnabled || isCompleted || isProcessingRef.current) return;
     stopSpeaking();
+    setCreatureGesture(null);
     cleanupAudioResources();
     hideCaption();
     setStatusHint(undefined);
@@ -970,15 +972,32 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         return;
       }
 
-      const currentTurnLabel = endReason === 'wrapup_question' ? 'Wrap-up question' : 'Interviewer follow-up';
+      const isOffTopic = !isClarificationQuery(userText) && (
+        endReason === 'off_topic_redirect' ||
+        isOffTopicRedirect(aiResponse, endReason)
+      );
+
+      if (isOffTopic) {
+        setCreatureGesture('no');
+      }
+
+      const currentTurnLabel = endReason === 'wrapup_question'
+        ? 'Wrap-up question'
+        : isOffTopic
+          ? 'stay on topic…'
+          : 'Interviewer follow-up';
       setCustomLabel(currentTurnLabel);
 
       speakText(aiResponse, {
         onStart: () => {
           setState('speaking');
+          if (isOffTopic) {
+            setCreatureGesture('no');
+          }
         },
         onEnd: () => {
           setState('idle');
+          setCreatureGesture(null);
           setCustomLabel(endReason === 'wrapup_question' ? 'Wrap-up question' : undefined);
           if (endReason === 'wrapup_question') {
             setStatusHint('Wrap-up · Feel free to share anything not yet covered');
@@ -988,6 +1007,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         onError: (err) => {
           console.warn('[VoiceExperience] Kokoro TTS speech playback error:', err);
           setState('idle');
+          setCreatureGesture(null);
           setCustomLabel(endReason === 'wrapup_question' ? 'Wrap-up question' : undefined);
           isProcessingRef.current = false;
         }
@@ -1103,6 +1123,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     // Barge-in: if Pal is currently speaking, tapping mic immediately stops speech and starts recording
     if (state === 'speaking') {
       stopSpeaking();
+      setCreatureGesture(null);
       isProcessingRef.current = false;
       startRecording();
       return;
@@ -1282,6 +1303,8 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             <div className="w-full flex items-center justify-center overflow-visible">
               <VoiceCreature
                 state={state}
+                gesture={creatureGesture}
+                onGestureEnd={() => setCreatureGesture(null)}
                 onTap={!isMicEnabled || isCompleted ? undefined : handleToggleFlow}
                 audioLevelRef={micAudioLevelRef}
                 compact={isCompactVisual}

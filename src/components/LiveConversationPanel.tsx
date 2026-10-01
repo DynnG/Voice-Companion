@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageSquare, User, Download, Send, X } from 'lucide-react';
+import { MessageSquare, Download, Send, X } from 'lucide-react';
 import { Conversation } from '../types/conversation';
 
 interface LiveConversationPanelProps {
