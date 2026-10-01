@@ -1,9 +1,16 @@
+try:
+    from .runtime_storage import runtime_directory
+except ImportError:
+    from runtime_storage import runtime_directory
+
 import os
 import io
 import re
 import time
 import logging
 import urllib.request
+import tempfile
+import threading
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
 
@@ -22,6 +29,27 @@ except ImportError:
     )
 
 logger = logging.getLogger("voice-companion-tts")
+_download_lock = threading.Lock()
+
+
+def download_model_file(url: str, destination: Path) -> str:
+    """Publish complete downloads atomically; remove partial files on any failure."""
+    with _download_lock:
+        if destination.is_file() and destination.stat().st_size > 0:
+            return str(destination)
+        partial = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=destination.parent, suffix=".part", delete=False) as file:
+                partial = Path(file.name)
+            urllib.request.urlretrieve(url, str(partial))
+            if partial.stat().st_size == 0:
+                raise RuntimeError("Downloaded model file is empty")
+            os.replace(partial, destination)
+            return str(destination)
+        finally:
+            if partial is not None:
+                partial.unlink(missing_ok=True)
+
 
 # Official Kokoro-82M ONNX release URLs (quantized INT8 model + all 54 voices)
 KOKORO_INT8_MODEL_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.int8.onnx"
@@ -141,7 +169,7 @@ class TTSService:
         """
         backend_dir = Path(__file__).resolve().parent
         kokoro_dir = backend_dir / "models" / "kokoro"
-        kokoro_dir.mkdir(parents=True, exist_ok=True)
+        # Bundled model files are read-only inputs, never runtime download targets.
 
         model_path: Optional[str] = None
         voices_path: Optional[str] = None
@@ -172,10 +200,10 @@ class TTSService:
 
         # 4. If files are not present, download automatically
         if not model_path:
-            target_model = str(default_model)
+            target_model = runtime_directory("savi-kokoro") / "kokoro-v1.0.int8.onnx"
             logger.info(f"Downloading Kokoro ONNX model to {target_model}...")
             try:
-                urllib.request.urlretrieve(KOKORO_INT8_MODEL_URL, target_model)
+                target_model = download_model_file(KOKORO_INT8_MODEL_URL, target_model)
                 logger.info("Kokoro ONNX model download complete.")
                 model_path = target_model
             except Exception as e:
@@ -183,10 +211,10 @@ class TTSService:
                 raise RuntimeError(f"Could not obtain Kokoro ONNX model: {e}")
 
         if not voices_path:
-            target_voices = str(default_voices)
+            target_voices = runtime_directory("savi-kokoro") / "voices-v1.0.bin"
             logger.info(f"Downloading Kokoro voices to {target_voices}...")
             try:
-                urllib.request.urlretrieve(KOKORO_VOICES_URL, target_voices)
+                target_voices = download_model_file(KOKORO_VOICES_URL, target_voices)
                 logger.info("Kokoro voices download complete.")
                 voices_path = target_voices
             except Exception as e:

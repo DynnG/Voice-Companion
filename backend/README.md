@@ -135,3 +135,67 @@ A high-performance Speech-to-Text (STT) backend service powered by [FastAPI](htt
 # Run standard endpoint tests
 & backend\.venv\Scripts\python.exe backend\test_stt.py
 ```
+
+### Transcription storage in serverless production
+
+The Speak button posts multipart audio to `/api/transcribe` (also available at
+`/transcribe`). PyAV decodes uploaded bytes in memory and faster-whisper receives
+a NumPy array; neither step creates an audio file in the project directory.
+
+`runtime_storage.py` runs before multipart/speech-library imports. On Vercel,
+Python upload spooling and Hugging Face model, tokenizer and Xet caches are
+redirected beneath `/tmp/savi-transcription`, regardless of a project-relative
+TMPDIR. Elsewhere the platform temporary directory is used. Whisper also gets
+an explicit download_root so its model downloads cannot fall back to a home or
+project cache. UploadFile is closed in a finally block immediately after reading,
+removing any spilled audio even on failed requests. Model caches intentionally
+remain for warm invocation reuse; they are ephemeral, not candidate audio.
+
+Filesystem audit: Starlette uses SpooledTemporaryFile for multipart audio;
+PyAV uses BytesIO; faster-whisper's download_model uses Hugging Face
+snapshot_download; a missing tokenizer can cause Tokenizer.from_pretrained to
+download to the configured Hugging Face cache. VAD reads bundled model assets.
+
+Serverless runtime paths:
+
+| Runtime output | Vercel path | Local development |
+| --- | --- | --- |
+| Audio/document upload spools | /tmp/savi-transcription | OS temporary directory/savi-transcription |
+| Whisper, tokenizer, Hugging Face/Xet caches | /tmp/savi-transcription/huggingface | OS temporary directory/savi-transcription/huggingface |
+| Generic XDG cache | /tmp/savi-transcription/cache | OS temporary directory/savi-transcription/cache |
+| Kokoro downloaded model | /tmp/savi-kokoro/kokoro-v1.0.int8.onnx | OS temporary directory/savi-kokoro/kokoro-v1.0.int8.onnx |
+| Kokoro downloaded voices | /tmp/savi-kokoro/voices-v1.0.bin | OS temporary directory/savi-kokoro/voices-v1.0.bin |
+| SQLite database and adjacent journal/WAL/SHM files | /tmp/savi-sqlite/voice_companion.db | backend/voice_companion.db (unchanged) |
+
+Kokoro checks configured paths and bundled backend/models/kokoro and kokoro_hf
+files as read-only inputs. It never creates or modifies those directories.
+Missing files download to unique .part files in savi-kokoro, publish atomically
+only on success, and delete partial files on failure. Completed model files remain
+for warm reuse. There are no model extraction steps. ONNX Runtime, tokenizers and
+espeak-ng read bundled assets; synthesized WAV data remains in BytesIO.
+Both audio and document UploadFiles are closed after reading. SQLite temp tables
+use memory, SQLITE_TMPDIR points to transcription scratch storage, and SQLite
+journals stay beside its database. Python bytecode writes are disabled on Vercel.
+Environment files are only read. Logging uses stderr, not project log files.
+
+IMPORTANT: /tmp is ephemeral and instance-local. SQLite is still enabled, but
+production records can disappear on cold starts, redeployments or instance
+replacement and are not shared across scaled instances. Startup logs warn about
+this. No existing local database is copied, deleted or migrated automatically.
+Persistent interview history requires an external database for the interviews,
+documents (including extracted text), and messages tables. If uploaded originals
+or generated reports need retention, use durable object storage; current uploads
+and reports are processed in memory. Session-only endpoints remain session-only.
+
+Remaining operational risks: combined downloaded models, caches and SQLite share
+Vercel's 500 MB /tmp allowance. Model download size, cold-start timeout, memory,
+native Python dependency compatibility and runtime network access must be verified
+in a deployed environment. Bundling compatible model assets can reduce cold-start
+downloads, subject to function bundle limits. Filesystem path fixes do not remove
+these platform limits or make scratch SQLite durable.
+
+Regression checks (from backend):
+`python -m unittest test_transcription_storage -v`
+`python test_hesitation_pauses.py`
+
+Additional path regressions: `python -m unittest test_serverless_storage -v`

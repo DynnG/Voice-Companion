@@ -1,3 +1,9 @@
+# Configure writable storage before multipart and speech-library imports.
+try:
+    from .runtime_storage import TRANSCRIPTION_STORAGE
+except ImportError:
+    from runtime_storage import TRANSCRIPTION_STORAGE
+
 import os
 import time
 import json
@@ -644,6 +650,9 @@ async def extract_document(
             detail=f"Failed to read file bytes: {e}"
         )
 
+    finally:
+        await file.close()
+
     result = extract_document_text(content_bytes, file.filename)
     return result
 
@@ -674,6 +683,10 @@ async def transcribe_audio(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to read audio file upload stream: {str(read_err)}"
         )
+
+    finally:
+        # Close/unlink multipart spool files on success and read failures alike.
+        await file.close()
 
     upload_write_ms = round((time.perf_counter() - request_start) * 1000, 2)
 

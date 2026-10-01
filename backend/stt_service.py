@@ -1,3 +1,9 @@
+# Configure writable storage before multipart and speech-library imports.
+try:
+    from .runtime_storage import TRANSCRIPTION_STORAGE
+except ImportError:
+    from runtime_storage import TRANSCRIPTION_STORAGE
+
 import io
 import gc
 import time
@@ -146,7 +152,8 @@ class STTService:
                 model_size_or_path=self.model_size,
                 device=self.device,
                 compute_type=self.compute_type,
-                cpu_threads=self.cpu_threads
+                cpu_threads=self.cpu_threads,
+                download_root=str(TRANSCRIPTION_STORAGE / "huggingface" / "hub")
             )
             logger.info("faster-whisper model successfully loaded and cached in memory.")
         return self._model
