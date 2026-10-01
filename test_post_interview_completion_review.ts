@@ -5,7 +5,7 @@
  * 1. Completion popup appears only after COMPLETED.
  * 2. Title: "YOU'VE FINISHED YOUR INTERVIEW" and subtitle match requirements.
  * 3. Actions: [ Download Interview Review ] and [ Close ] present.
- * 4. PDF content contains: Header (MockMate, Interview Review, date, role),
+ * 4. PDF content contains: Header (Savi, Interview Review, date, role),
  *    Session Summary (questions count, duration), and all Question/Answer exchanges.
  * 5. Questions and answers are strictly chronological.
  * 6. Actual transcripts are preserved and included.
@@ -24,7 +24,7 @@ import { generateInterviewReviewPdf, InterviewReviewPdfData } from './src/servic
 
 function runPostInterviewTestSuite() {
   console.log('============================================================');
-  console.log('MockMate Post-Interview Completion & PDF Review Test Suite');
+  console.log('Savi Post-Interview Completion & PDF Review Test Suite');
   console.log('============================================================\n');
 
   let passed = 0;
@@ -100,8 +100,8 @@ function runPostInterviewTestSuite() {
   // --- 3. PDF Service Structure & Hygiene (Requirement 2 & 4) ---
   console.log('\n--- 3. PDF Content & Design Architecture ---');
   assert(
-    pdfServiceCode.includes("'MockMate'"),
-    'PDF header includes MockMate branding'
+    pdfServiceCode.includes("'Savi'") && !pdfServiceCode.includes('MockMate'),
+    'PDF header includes Savi branding'
   );
   assert(
     pdfServiceCode.includes("' ·  Interview Review'") || pdfServiceCode.includes("'Interview Review'"),
@@ -261,7 +261,7 @@ function runPostInterviewTestSuite() {
   // Render header
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(20);
-  doc.text('MockMate', margin, currentY + 16);
+  doc.text('Savi', margin, currentY + 16);
   currentY += 40;
 
   // Render all 8 exchanges simulating multi-page layout

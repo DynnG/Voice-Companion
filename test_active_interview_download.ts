@@ -37,7 +37,7 @@ import { generateInterviewReviewPdf, InterviewReviewPdfData } from './src/servic
 
 function runActiveInterviewDownloadTestSuite() {
   console.log('============================================================');
-  console.log('MockMate Active Interview Download Action Test Suite');
+  console.log('Savi Active Interview Download Action Test Suite');
   console.log('============================================================\n');
 
   let passed = 0;
@@ -260,7 +260,7 @@ function runActiveInterviewDownloadTestSuite() {
   // Verify jsPDF generates document without throwing
   const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
   doc.setFont('helvetica', 'bold');
-  doc.text('MockMate', 40, 40);
+  doc.text('Savi', 40, 40);
   doc.text(`SESSION STATUS: ${activePayload.status}`, 40, 60);
   const pdfBytes = doc.output();
   assert(pdfBytes && pdfBytes.length > 0, 'jsPDF successfully generates valid document byte stream');

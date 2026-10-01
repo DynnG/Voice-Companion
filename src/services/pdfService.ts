@@ -11,6 +11,8 @@
  */
 
 import { jsPDF } from 'jspdf';
+import { manropeRegular, manropeBold, frauncesRegular } from '../assets/pdf-fonts/embeddedFonts';
+
 import { InterviewExchangeRecord } from '../types/conversation';
 
 export interface InterviewReviewPdfData {
@@ -33,6 +35,14 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     format: 'a4'
   });
 
+  // Embed the same font families configured by the Savi UI. No network requests.
+  doc.addFileToVFS('Manrope-Regular.ttf', manropeRegular);
+  doc.addFont('Manrope-Regular.ttf', 'Manrope', 'normal');
+  doc.addFileToVFS('Manrope-Bold.ttf', manropeBold);
+  doc.addFont('Manrope-Bold.ttf', 'Manrope', 'bold');
+  doc.addFileToVFS('Fraunces-Regular.ttf', frauncesRegular);
+  doc.addFont('Fraunces-Regular.ttf', 'Fraunces', 'normal');
+
   const pageWidth = doc.internal.pageSize.getWidth(); // 595.28 pt
   const pageHeight = doc.internal.pageSize.getHeight(); // 841.89 pt
   const margin = 40;
@@ -52,55 +62,46 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
   };
 
   // ---------------------------------------------------------------------------
-  // 1. Top Decorative Brand Accent Bar
+  // 1. Minimal Savi Header
   // ---------------------------------------------------------------------------
-  doc.setFillColor(4, 98, 65); // Savi Forest Emerald (#046241)
-  doc.rect(0, 0, pageWidth, 5, 'F');
+  // Keep the UI's Fraunces wordmark; the PDF header has no logo icon.
 
-  // ---------------------------------------------------------------------------
-  // 2. Header: Savi Branding + Session Context
-  // ---------------------------------------------------------------------------
-  // Brand Logo Text
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(20);
-  doc.setTextColor(4, 98, 65);
-  doc.text('MockMate', margin, currentY + 16);
+  doc.setFont('Fraunces', 'normal');
+  doc.setFontSize(26);
+  doc.setTextColor(19, 48, 32);
+  doc.text('Savi', margin, currentY + 27);
+  currentY += 64;
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(13);
-  doc.setTextColor(71, 85, 105); // slate-600
-  doc.text(' ·  Interview Review', margin + 104, currentY + 16);
+  doc.setFont('Fraunces', 'normal');
+  doc.setFontSize(22);
+  doc.setTextColor(19, 48, 32);
+  doc.text('Interview Review', margin, currentY);
+  currentY += 26;
 
-  // Right-aligned Date & Role Header
-  const dateFormatted = data.completedAt || new Date().toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-
-  doc.setFontSize(8.5);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(100, 116, 139);
-  doc.text(dateFormatted, pageWidth - margin, currentY + 6, { align: 'right' });
-
-  const roleText = `Target Role: ${data.jobRole || 'Software Developer'}`;
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('Manrope', 'normal');
   doc.setFontSize(10);
-  doc.setTextColor(30, 41, 59);
-  doc.text(roleText, pageWidth - margin, currentY + 20, { align: 'right' });
+  doc.setTextColor(71, 85, 105);
+  const roleText = `Target Role: ${data.jobRole || 'Software Developer'}`;
+  const roleLines = doc.splitTextToSize(roleText, contentWidth);
+  doc.text(roleLines, margin, currentY);
+  currentY += roleLines.length * 14;
 
-  currentY += 32;
+  const reviewDate = data.completedAt ? new Date(data.completedAt) : new Date();
+  const dateFormatted = Number.isNaN(reviewDate.getTime())
+    ? data.completedAt!
+    : reviewDate.toLocaleDateString('en-US', {
+      month: 'long', day: 'numeric', year: 'numeric'
+    });
+  doc.text(dateFormatted, margin, currentY);
+  currentY += 20;
 
-  // Thin dividing line
-  doc.setDrawColor(226, 232, 240); // slate-200
-  doc.setLineWidth(0.75);
+  doc.setDrawColor(213, 226, 218);
+  doc.setLineWidth(0.6);
   doc.line(margin, currentY, pageWidth - margin, currentY);
-  currentY += 14;
+  currentY += 12;
 
   // ---------------------------------------------------------------------------
-  // 3. Session Summary Box
+  // 2. Quiet, unboxed session summary
   // ---------------------------------------------------------------------------
   let durationStr = 'N/A';
   if (data.startTime && data.endTime && data.endTime > data.startTime) {
@@ -117,51 +118,47 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     }
   }
 
-  const summaryBoxHeight = 52;
-  doc.setFillColor(248, 250, 252); // slate-50
-  doc.setDrawColor(203, 213, 225); // slate-300
-  doc.roundedRect(margin, currentY, contentWidth, summaryBoxHeight, 5, 5, 'FD');
-
+  const summaryBoxHeight = 38;
   const colWidth = contentWidth / 3;
 
   // Summary Item 1: Questions Answered
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('Manrope', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text('QUESTIONS ANSWERED', margin + 14, currentY + 16);
-  doc.setFontSize(13);
+  doc.text('QUESTIONS ANSWERED', margin, currentY + 8);
+  doc.setFontSize(11);
   doc.setTextColor(15, 23, 42);
-  doc.text(`${data.exchanges.length} ${data.exchanges.length === 1 ? 'Question' : 'Questions'}`, margin + 14, currentY + 36);
+  doc.text(`${data.exchanges.length} ${data.exchanges.length === 1 ? 'Question' : 'Questions'}`, margin, currentY + 25);
 
   // Summary Item 2: Total Duration
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('Manrope', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text('TOTAL DURATION', margin + colWidth + 14, currentY + 16);
-  doc.setFontSize(13);
+  doc.text('TOTAL DURATION', margin + colWidth, currentY + 8);
+  doc.setFontSize(11);
   doc.setTextColor(15, 23, 42);
-  doc.text(durationStr, margin + colWidth + 14, currentY + 36);
+  doc.text(durationStr, margin + colWidth, currentY + 25);
 
   // Summary Item 3: Session Status
   const sessionStatusText = data.status || 'Completed';
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('Manrope', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text('SESSION STATUS', margin + colWidth * 2 + 14, currentY + 16);
-  doc.setFontSize(13);
+  doc.text('SESSION STATUS', margin + colWidth * 2, currentY + 8);
+  doc.setFontSize(11);
   if (sessionStatusText === 'In Progress') {
     doc.setTextColor(217, 119, 6); // amber-600
   } else {
     doc.setTextColor(4, 98, 65); // forest emerald (#046241)
   }
-  doc.text(sessionStatusText, margin + colWidth * 2 + 14, currentY + 36);
+  doc.text(sessionStatusText, margin + colWidth * 2, currentY + 25);
 
   currentY += summaryBoxHeight + 20;
 
   // ---------------------------------------------------------------------------
   // 4. Questions & Answers Section Header
   // ---------------------------------------------------------------------------
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('Manrope', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(19, 48, 32);
   doc.text('Interview Questions & Candidate Answers', margin, currentY);
@@ -180,7 +177,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     ensureSpace(80);
 
     // --- Exchange Container Header ---
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('Manrope', 'bold');
     doc.setFontSize(10.5);
     doc.setTextColor(4, 98, 65);
     doc.text(`Question ${orderNum}`, margin, currentY);
@@ -188,7 +185,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
 
     // --- A. PAL (Interviewer Question) Block ---
     const qText = ex.question ? `"${ex.question.trim()}"` : '"[Interview Question]"';
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('Manrope', 'normal');
     doc.setFontSize(9.5);
     const qLines = doc.splitTextToSize(qText, contentWidth - 28);
     const qHeight = Math.max(28, qLines.length * 12 + 18);
@@ -205,13 +202,13 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     doc.rect(margin, currentY, 3.5, qHeight, 'F');
 
     // Label
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('Manrope', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(4, 98, 65);
     doc.text('PAL (INTERVIEWER):', margin + 12, currentY + 12);
 
     // Question Text
-    doc.setFont('helvetica', 'italic');
+    doc.setFont('Manrope', 'normal');
     doc.setFontSize(9.5);
     doc.setTextColor(30, 41, 59);
     doc.text(qLines, margin + 12, currentY + 24);
@@ -220,7 +217,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
 
     // --- B. YOUR ANSWER Block ---
     const aText = ex.userAnswer ? `"${ex.userAnswer.trim()}"` : '"[No answer transcribed]"';
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('Manrope', 'normal');
     doc.setFontSize(9.5);
     const aLines = doc.splitTextToSize(aText, contentWidth - 28);
     const aHeight = Math.max(30, aLines.length * 12 + 20);
@@ -237,7 +234,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     doc.rect(margin, currentY, 3.5, aHeight, 'F');
 
     // Label
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('Manrope', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(51, 65, 85);
     const answerLabel = ex.durationSeconds && ex.durationSeconds > 0
@@ -246,7 +243,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     doc.text(answerLabel, margin + 12, currentY + 12);
 
     // Transcript Text
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('Manrope', 'normal');
     doc.setFontSize(9.5);
     doc.setTextColor(15, 23, 42);
     doc.text(aLines, margin + 12, currentY + 24);
@@ -259,7 +256,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
       : ['AI notes are unavailable right now.'];
 
     // Calculate AI Notes height
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('Manrope', 'normal');
     doc.setFontSize(9);
     let totalNotesLines = 0;
     const splitNotes: string[][] = [];
@@ -285,13 +282,13 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     doc.rect(margin, currentY, 3.5, notesHeight, 'F');
 
     // Label
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('Manrope', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(180, 83, 9); // amber-700
     doc.text('AI NOTES:', margin + 12, currentY + 12);
 
     // Bullet Points
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('Manrope', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(30, 41, 59);
 
@@ -325,7 +322,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     doc.line(margin, pageHeight - 30, pageWidth - margin, pageHeight - 30);
 
     // Footer text
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('Manrope', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(148, 163, 184); // slate-400
     doc.text('Savi · Confidential Interview Review · Session-Only', margin, pageHeight - 18);
@@ -341,3 +338,4 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
 
   doc.save(filename);
 }
+
