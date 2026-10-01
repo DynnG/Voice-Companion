@@ -31,6 +31,8 @@ const DEFAULT_CONFIG: Required<VoiceReactiveConfig> = {
 
 export interface VoiceCreatureProps {
   state: VoiceState;
+  gesture?: 'no' | null;
+  onGestureEnd?: () => void;
   onTap?: () => void;
   audioLevelRef?: React.MutableRefObject<number> | React.RefObject<number>;
   audioLevel?: number;
@@ -44,11 +46,169 @@ export interface VoiceCreatureProps {
 }
 
 const STATE_CONFIG: Record<VoiceState, { colorVar: string; amp: number; speed: number; lobes: number; ring: number }> = {
-  idle:      { colorVar: '--glow-idle', amp: 0.06, speed: 0.25, lobes: 3, ring: 0 },
-  listening: { colorVar: '--glow-a',    amp: 0.10, speed: 0.45, lobes: 5, ring: 0 },
-  thinking:  { colorVar: '--glow-b',    amp: 0.09, speed: 1.3,  lobes: 7, ring: 0 },
-  speaking:  { colorVar: '--glow-c',    amp: 0.20, speed: 0.9,  lobes: 4, ring: 1 },
+  idle:       { colorVar: '--glow-idle', amp: 0.06, speed: 0.25, lobes: 3, ring: 0 },
+  listening:  { colorVar: '--glow-a',    amp: 0.10, speed: 0.45, lobes: 5, ring: 0 },
+  thinking:   { colorVar: '--glow-b',    amp: 0.09, speed: 1.3,  lobes: 7, ring: 0 },
+  speaking:   { colorVar: '--glow-c',    amp: 0.20, speed: 0.9,  lobes: 4, ring: 1 },
+  gesture_no: { colorVar: '--glow-b',    amp: 0.08, speed: 0.6,  lobes: 4, ring: 0 },
 };
+
+export interface RGBColor {
+  r: number;
+  g: number;
+  b: number;
+}
+
+export const GESTURE_NO_PALETTE = {
+  yellow:  { r: 255, g: 195, b: 112 }, // Normal yellow / warm earth gold (--glow-b)
+  orange:  { r: 255, g: 138, b: 48 },  // Transition amber / warm orange
+  softRed: { r: 248, g: 86,  b: 68 },  // Peak soft glowing red (warm coral/amber-red, gentle boundary)
+} as const;
+
+export function calculateGestureEmotionalProgress(timeMs: number): number {
+  if (timeMs <= 250) {
+    return 0.0;
+  }
+  if (timeMs <= 700) {
+    const p = (timeMs - 250) / 450;
+    return 0.5 * (p * p * (3 - 2 * p));
+  }
+  if (timeMs <= 1200) {
+    const p = (timeMs - 700) / 500;
+    return 0.5 + 0.5 * (p * p * (3 - 2 * p));
+  }
+  if (timeMs <= 3050) {
+    return 1.0;
+  }
+  if (timeMs <= 3800) {
+    const p = (timeMs - 3050) / 750;
+    return 1.0 - (p * p * (3 - 2 * p));
+  }
+  return 0.0;
+}
+
+export function interpolateEmotionalColor(emotionalProgress: number): RGBColor {
+  const clamped = Math.max(0, Math.min(1, emotionalProgress));
+  const { yellow, orange, softRed } = GESTURE_NO_PALETTE;
+
+  if (clamped <= 0.5) {
+    const t = clamped / 0.5;
+    return {
+      r: Math.round(yellow.r + (orange.r - yellow.r) * t),
+      g: Math.round(yellow.g + (orange.g - yellow.g) * t),
+      b: Math.round(yellow.b + (orange.b - yellow.b) * t),
+    };
+  } else {
+    const t = (clamped - 0.5) / 0.5;
+    return {
+      r: Math.round(orange.r + (softRed.r - orange.r) * t),
+      g: Math.round(orange.g + (softRed.g - orange.g) * t),
+      b: Math.round(orange.b + (softRed.b - orange.b) * t),
+    };
+  }
+}
+
+export interface HandTargetPoint {
+  x: number;      // local hand coordinates normalized relative to baseR
+  y: number;      // normalized relative to baseR (negative = above orb center)
+  part: 'wrist' | 'palm' | 'thumb' | 'curled' | 'index';
+  isWagging?: boolean;
+  wagHeight?: number; // distance along the raised index, 0 at knuckle and 1 at tip
+}
+
+// Local pose around a wrist at the orb's 8–9 o'clock edge. The wrist runs
+// rightward into the orb; palm/curled fingers sit left; index rises up-left.
+export const HAND_TARGET_TEMPLATES: readonly HandTargetPoint[] = [
+  { x: 0.0600, y: -0.0800, part: 'wrist' },
+  { x: -0.0200, y: -0.0700, part: 'wrist' },
+  { x: -0.1000, y: -0.0600, part: 'wrist' },
+  { x: -0.1800, y: -0.0400, part: 'wrist' },
+  { x: -0.2600, y: -0.0200, part: 'wrist' },
+  { x: 0.0600, y: 0.0800, part: 'wrist' },
+  { x: -0.0200, y: 0.0800, part: 'wrist' },
+  { x: -0.1000, y: 0.0900, part: 'wrist' },
+  { x: -0.1800, y: 0.0900, part: 'wrist' },
+  { x: -0.2600, y: 0.0800, part: 'wrist' },
+  { x: -0.4890, y: -0.0309, part: 'palm' },
+  { x: -0.3989, y: -0.0959, part: 'palm' },
+  { x: -0.3019, y: -0.1659, part: 'palm' },
+  { x: -0.2188, y: -0.2259, part: 'palm' },
+  { x: -0.5439, y: -0.1298, part: 'palm' },
+  { x: -0.4607, y: -0.1898, part: 'palm' },
+  { x: -0.3638, y: -0.2598, part: 'palm' },
+  { x: -0.2806, y: -0.3198, part: 'palm' },
+  { x: -0.1495, y: -0.2486, part: 'thumb' },
+  { x: -0.2068, y: -0.3078, part: 'thumb' },
+  { x: -0.3011, y: -0.3111, part: 'thumb' },
+  { x: -0.3940, y: -0.2921, part: 'thumb' },
+  { x: -0.4633, y: -0.2521, part: 'thumb' },
+  { x: -0.5089, y: -0.1911, part: 'thumb' },
+  { x: -0.5025, y: -0.2064, part: 'curled' },
+  { x: -0.5648, y: -0.2744, part: 'curled' },
+  { x: -0.5378, y: -0.3477, part: 'curled' },
+  { x: -0.4582, y: -0.2897, part: 'curled' },
+  { x: -0.4259, y: -0.2737, part: 'curled' },
+  { x: -0.5082, y: -0.3763, part: 'curled' },
+  { x: -0.4999, y: -0.4619, part: 'curled' },
+  { x: -0.4316, y: -0.4436, part: 'curled' },
+  { x: -0.3753, y: -0.3261, part: 'curled' },
+  { x: -0.3356, y: -0.3374, part: 'curled' },
+  { x: -0.4243, y: -0.4710, part: 'curled' },
+  { x: -0.4346, y: -0.5689, part: 'curled' },
+  { x: -0.3577, y: -0.5556, part: 'curled' },
+  { x: -0.2763, y: -0.3947, part: 'curled' },
+  { x: -0.2867, y: -0.4061, part: 'index', isWagging: true, wagHeight: 0.0000 },
+  { x: -0.2174, y: -0.4461, part: 'index', isWagging: true, wagHeight: 0.0000 },
+  { x: -0.3212, y: -0.4963, part: 'index', isWagging: true, wagHeight: 0.1719 },
+  { x: -0.2779, y: -0.5213, part: 'index', isWagging: true, wagHeight: 0.1719 },
+  { x: -0.2346, y: -0.5463, part: 'index', isWagging: true, wagHeight: 0.1719 },
+  { x: -0.3517, y: -0.6089, part: 'index', isWagging: true, wagHeight: 0.3750 },
+  { x: -0.3084, y: -0.6339, part: 'index', isWagging: true, wagHeight: 0.3750 },
+  { x: -0.2651, y: -0.6589, part: 'index', isWagging: true, wagHeight: 0.3750 },
+  { x: -0.3845, y: -0.7301, part: 'index', isWagging: true, wagHeight: 0.5938 },
+  { x: -0.3412, y: -0.7551, part: 'index', isWagging: true, wagHeight: 0.5938 },
+  { x: -0.2979, y: -0.7801, part: 'index', isWagging: true, wagHeight: 0.5938 },
+  { x: -0.4062, y: -0.8477, part: 'index', isWagging: true, wagHeight: 0.7969 },
+  { x: -0.3716, y: -0.8677, part: 'index', isWagging: true, wagHeight: 0.7969 },
+  { x: -0.3369, y: -0.8877, part: 'index', isWagging: true, wagHeight: 0.7969 },
+  { x: -0.4186, y: -0.9307, part: 'index', isWagging: true, wagHeight: 0.9375 },
+  { x: -0.4021, y: -0.9803, part: 'index', isWagging: true, wagHeight: 1.0000 },
+  { x: -0.3667, y: -0.9607, part: 'index', isWagging: true, wagHeight: 0.9375 },
+  { x: -0.3833, y: -0.9110, part: 'index', isWagging: true, wagHeight: 0.8750 },
+];
+
+export function calculateWagOffset(point: HandTargetPoint, wagPhase: number, baseR: number): { dx: number; dy: number } {
+  if (!point.isWagging) {
+    return { dx: 0, dy: 0 };
+  }
+  const h = point.wagHeight ?? 0;
+  const sway = Math.sin(wagPhase * Math.PI * 4); // 2 complete wag cycles
+  const dx = sway * baseR * 0.16 * h;
+  const dy = (1 - Math.cos(sway * 0.35)) * baseR * 0.12 * h;
+  return { dx, dy };
+}
+
+export function calculateGestureCanvasPadding(width: number, height: number, left: number, top: number, viewportWidth: number, viewportHeight: number) {
+  const allowance = Math.min(width, height) * 0.22;
+  return {
+    left: Math.max(0, Math.min(allowance, left - 4)),
+    right: Math.max(0, Math.min(allowance, viewportWidth - left - width - 4)),
+    top: Math.max(0, Math.min(allowance, top - 4)),
+    bottom: Math.max(0, Math.min(allowance, viewportHeight - top - height - 4)),
+  };
+}
+
+export function calculateGestureRenderScale(radius: number, cx: number, cy: number, padding: { left: number; top: number }) {
+  // Existing particles reach 3.45px radius and 12px shadow blur at peak anger.
+  // Reserve two blur radii so the natural glow fades before any bitmap edge.
+  const glowMargin = 28;
+  const leftExtent = Math.max(...HAND_TARGET_TEMPLATES.map(p => -p.x + 0.16 * (p.wagHeight ?? 0)));
+  const topExtent = Math.max(...HAND_TARGET_TEMPLATES.map(p => -p.y));
+  return Math.max(0, Math.min(1.5625,
+    (cx + padding.left - glowMargin - radius * 0.82) / (radius * leftExtent),
+    (cy + padding.top - glowMargin + radius * 0.25) / (radius * topExtent),
+  ));
+}
 
 function hexToRgb(h: string) {
   const clean = h.replace('#', '');
@@ -104,6 +264,8 @@ function hueShift({ r, g, b }: { r: number; g: number; b: number }, deg: number)
 
 export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
   state,
+  gesture,
+  onGestureEnd,
   onTap,
   audioLevelRef,
   audioLevel,
@@ -117,6 +279,8 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const currentStateRef = useRef<VoiceState>(state);
+  const gesturePropRef = useRef<'no' | null | undefined>(gesture);
+  const onGestureEndRef = useRef<(() => void) | undefined>(onGestureEnd);
   const audioLevelPropRef = useRef<number | undefined>(audioLevel);
   const externalAudioRef = useRef<React.MutableRefObject<number> | React.RefObject<number> | undefined>(audioLevelRef);
   const configRef = useRef<VoiceReactiveConfig | undefined>(config);
@@ -131,6 +295,14 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
   useEffect(() => {
     currentStateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    gesturePropRef.current = gesture;
+  }, [gesture]);
+
+  useEffect(() => {
+    onGestureEndRef.current = onGestureEnd;
+  }, [onGestureEnd]);
 
   useEffect(() => {
     audioLevelPropRef.current = audioLevel;
@@ -160,17 +332,25 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
     let H = 0;
     let cx = 0;
     let cy = 0;
+    let canvasPadding = { left: 0, right: 0, top: 0, bottom: 0 };
 
     function resize() {
       if (!wrap || !canvas || !ctx) return;
       const rect = wrap.getBoundingClientRect();
       W = rect.width;
       H = rect.height;
-      canvas.width = W * dpr;
-      canvas.height = H * dpr;
-      canvas.style.width = W + 'px';
-      canvas.style.height = H + 'px';
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      canvasPadding = calculateGestureCanvasPadding(W, H, rect.left, rect.top, window.innerWidth, window.innerHeight);
+      const drawWidth = W + canvasPadding.left + canvasPadding.right;
+      const drawHeight = H + canvasPadding.top + canvasPadding.bottom;
+      canvas.width = Math.ceil(drawWidth * dpr);
+      canvas.height = Math.ceil(drawHeight * dpr);
+      canvas.style.position = 'absolute';
+      canvas.style.left = -canvasPadding.left + 'px';
+      canvas.style.top = -canvasPadding.top + 'px';
+      canvas.style.width = drawWidth + 'px';
+      canvas.style.height = drawHeight + 'px';
+      // W/H, cx/cy and all normal orb radii still use the original wrapper.
+      ctx.setTransform(dpr, 0, 0, dpr, canvasPadding.left * dpr, canvasPadding.top * dpr);
       cx = W / 2;
       cy = H / 2;
     }
@@ -180,6 +360,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       if (isMotionReduced()) draw();
     });
     resizeObserver.observe(wrap);
+    window.addEventListener('resize', resize);
     resize();
 
     let cur = {
@@ -191,7 +372,12 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
     let colorMix = hexToRgb(visualStateRef.current ? SAVI_PALETTES[visualStateRef.current] : hex(STATE_CONFIG.idle.colorVar));
     let smoothedMicLevel = 0;
 
-    const motes = Array.from({ length: 18 }, (_, i) => ({
+    let gestureTime = 0;
+    let isGestureRunning = false;
+    let currentEmotion = 0;
+    const GESTURE_DURATION = 3.8;
+
+    const motes = Array.from({ length: 56 }, (_, i) => ({
       radiusF: 1.10 + Math.random() * 0.45,
       speed: 0.2 + Math.random() * 0.4,
       dir: i % 2 === 0 ? 1 : -1,
@@ -281,6 +467,70 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       cur.ring += (target.ring - cur.ring) * 0.06;
       rot += ambientLoop ? (isMotionReduced() ? 0 : elapsed * 0.32) : 0.0028 * cur.speed;
 
+      // Gesture "NO / STAY ON TOPIC" Lifecycle & Emotion Update
+      const isGestureRequested = currentName === 'gesture_no' || gesturePropRef.current === 'no';
+
+      // Immediate interruption if candidate starts speaking (listening) or thinking
+      if (currentName === 'listening' || currentName === 'thinking') {
+        if (isGestureRunning) {
+          isGestureRunning = false;
+          gestureTime = 0;
+          onGestureEndRef.current?.();
+        }
+      } else if (isGestureRequested && !isGestureRunning) {
+        isGestureRunning = true;
+        gestureTime = 0;
+      }
+
+      let gatherWeight = 0;
+      let wagPhase = 0;
+
+      if (isGestureRunning) {
+        gestureTime += 0.016;
+        const progress = Math.min(1.0, gestureTime / GESTURE_DURATION);
+
+        if (progress < 0.22) {
+          // Phase 1: Particles gather & reorganize into hand (0.0 to 0.22)
+          const p = progress / 0.22;
+          gatherWeight = p * p * (3 - 2 * p); // smoothstep ease-in-out
+          wagPhase = 0;
+        } else if (progress < 0.32) {
+          // Phase 2: Formed hand pose hold (0.22 to 0.32)
+          gatherWeight = 1.0;
+          wagPhase = 0;
+        } else if (progress < 0.78) {
+          // Phase 3: Raised index finger wags LEFT -> RIGHT -> LEFT -> RIGHT (2 full cycles) (0.32 to 0.78)
+          gatherWeight = 1.0;
+          wagPhase = (progress - 0.32) / (0.78 - 0.32);
+        } else if (progress < 0.86) {
+          // Phase 4: Settle hold (0.78 to 0.86)
+          gatherWeight = 1.0;
+          wagPhase = 0;
+        } else if (progress < 1.0) {
+          // Phase 5: Hand dissolves back into the orb (0.86 to 1.0)
+          const p = (progress - 0.86) / (1.0 - 0.86);
+          gatherWeight = 1.0 - (p * p * (3 - 2 * p));
+          wagPhase = 0;
+        } else {
+          // Gesture complete: smoothly return to normal orb
+          gatherWeight = 0;
+          wagPhase = 0;
+          isGestureRunning = false;
+          gestureTime = 0;
+          currentEmotion = 0;
+          onGestureEndRef.current?.();
+        }
+
+        if (isGestureRunning) {
+          currentEmotion = calculateGestureEmotionalProgress(gestureTime * 1000);
+        }
+      } else if (currentEmotion > 0.001) {
+        // Interrupted or settling: smoothly decay back to 0 over ~750ms
+        currentEmotion = Math.max(0, currentEmotion - 0.016 / 0.75);
+      } else {
+        currentEmotion = 0;
+      }
+
       // Color transition
       const targetHex = visual ? SAVI_PALETTES[visual] : hex(target.colorVar);
       let tc = hexToRgb(targetHex);
@@ -296,16 +546,29 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       }
       const colorEase = isMotionReduced() ? 1 : visual ? 0.065 : 0.05;
       const paletteEase = ambientLoop ? 1 : colorEase;
-      colorMix.r += (tc.r - colorMix.r) * paletteEase;
-      colorMix.g += (tc.g - colorMix.g) * paletteEase;
-      colorMix.b += (tc.b - colorMix.b) * paletteEase;
+
+      if (currentEmotion > 0.001) {
+        const emoCol = interpolateEmotionalColor(currentEmotion);
+        // During gesture or decay, blend target towards emotional color
+        const blendR = tc.r * (1 - currentEmotion) + emoCol.r * currentEmotion;
+        const blendG = tc.g * (1 - currentEmotion) + emoCol.g * currentEmotion;
+        const blendB = tc.b * (1 - currentEmotion) + emoCol.b * currentEmotion;
+        const emoEase = isMotionReduced() ? 1 : 0.12;
+        colorMix.r += (blendR - colorMix.r) * emoEase;
+        colorMix.g += (blendG - colorMix.g) * emoEase;
+        colorMix.b += (blendB - colorMix.b) * emoEase;
+      } else {
+        colorMix.r += (tc.r - colorMix.r) * paletteEase;
+        colorMix.g += (tc.g - colorMix.g) * paletteEase;
+        colorMix.b += (tc.b - colorMix.b) * paletteEase;
+      }
 
       const col = `${Math.round(colorMix.r)},${Math.round(colorMix.g)},${Math.round(colorMix.b)}`;
       const sec = hueShift(colorMix, ambientLoop ? 0 : visual ? 10 : 38);
       const secCol = `${sec.r},${sec.g},${sec.b}`;
 
       if (!ctx) return;
-      ctx.clearRect(0, 0, W, H);
+      ctx.clearRect(-canvasPadding.left, -canvasPadding.top, W + canvasPadding.left + canvasPadding.right, H + canvasPadding.top + canvasPadding.bottom);
 
       // Controlled base radius and maximum safe distance to canvas edge
       const baseR = Math.min(W, H) * 0.28;
@@ -356,12 +619,13 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
         dynPhase = t * (cur.speed + speechEnvelope * 0.25) * 1.2;
         dynRing = Math.max(dynRing, Math.min(1.0, 0.75 + speechEnvelope * 0.25));
       } else {
-        // 1. IDLE:
-        // Mostly calm, gentle organic breathing
+        // 1. IDLE / GESTURE_NO:
+        // Mostly calm, gentle organic breathing with subtle irritated tension pulse during gesture wag
         const idleBreathing = Math.sin(t * cur.speed * 0.9) * cfg.idleBreathingAmp;
-        dynBaseR = baseR * (1 + idleBreathing);
-        dynAmp = cur.amp;
-        dynPhase = t * cur.speed * 1.2;
+        const irritatedPulse = (Math.sin(t * 7.2) * 0.018 + Math.sin(t * 14.4) * 0.008) * currentEmotion;
+        dynBaseR = baseR * (1 + idleBreathing + irritatedPulse);
+        dynAmp = cur.amp + currentEmotion * 0.035;
+        dynPhase = t * (cur.speed + currentEmotion * 0.4) * 1.2;
         dynRing = Math.max(0, dynRing * 0.85);
       }
 
@@ -394,7 +658,10 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       // MUST guarantee that halo radius is safely smaller than maxSafeRadius (canvas edge),
       // and that the radial gradient smoothly fades to 100% transparent before reaching maxSafeRadius.
       const haloBoost = currentName === 'listening' ? smoothedMicLevel * 0.12 : currentName === 'speaking' ? 0.06 : 0;
-      const haloAlpha = 0.26 + haloBoost + (visual ? Math.sin(t * 0.7) * 0.025 : 0);
+      let haloAlpha = 0.26 + haloBoost + currentEmotion * 0.08;
+      if (visual) {
+        haloAlpha += Math.sin(t * 0.7) * 0.025;
+      }
       // Cap haloR at maxSafeRadius * 0.88 so it NEVER touches or exceeds the canvas boundary
       const haloR = Math.min(maxSafeRadius * 0.88, dynBaseR * (2.1 + (currentName === 'listening' ? smoothedMicLevel * 0.15 : 0)));
       
@@ -409,23 +676,94 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       ctx.arc(cx, cy, haloR, 0, Math.PI * 2);
       ctx.fill();
 
-      // Light motes (particles)
-      for (const m of motes) {
+      // Light motes (particles) - orbiting in normal state, forming Savi's hand during gesture
+      const handCoords: { x: number; y: number }[] = [];
+
+      for (let i = 0; i < motes.length; i++) {
+        const m = motes[i];
         const ang = m.phase + t * m.speed * m.dir;
         const moteBonus = currentName === 'listening' ? smoothedMicLevel * 0.12 : 0;
         // Keep motes comfortably within canvas bounds
         const r = Math.min(maxSafeRadius * 0.78, dynBaseR * m.radiusF * (1 + dynAmp * 0.4 + moteBonus));
         const mx = cx + Math.cos(ang) * r;
         const my = cy + Math.sin(ang * 1.15) * r * 0.9;
+
+        let px = mx;
+        let py = my;
+
+        if (gatherWeight > 0.001) {
+          const target = HAND_TARGET_TEMPLATES[i % HAND_TARGET_TEMPLATES.length];
+          // Only temporary gesture particles use this radius-relative anchor.
+          const handAnchorX = cx - dynBaseR * 0.82;
+          const handAnchorY = cy + dynBaseR * 0.25;
+          const handScale = 1.5625; // 25% larger than the previous 1.25x hand
+          // At viewport edges, fit only the gesture; keep the wrist anchor fixed.
+          const renderScale = Math.min(handScale, calculateGestureRenderScale(dynBaseR, cx, cy, canvasPadding));
+          const wag = calculateWagOffset(target, wagPhase, dynBaseR * renderScale);
+          const hx = handAnchorX + target.x * dynBaseR * renderScale + wag.dx;
+          const hy = handAnchorY + target.y * dynBaseR * renderScale + wag.dy;
+          px = mx + (hx - mx) * gatherWeight;
+          py = my + (hy - my) * gatherWeight;
+          handCoords.push({ x: px, y: py });
+        }
+
         const twinkle = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * (1.6 + (currentName === 'listening' ? smoothedMicLevel * 1.2 : 0)) + m.phase));
+        const alpha = (0.55 * twinkle) * (1 - gatherWeight * 0.3) + 0.88 * gatherWeight;
+        const pSize = m.size * (1 + gatherWeight * 0.5);
+
         ctx.beginPath();
-        ctx.arc(mx, my, m.size, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${secCol},${0.55 * twinkle})`;
-        ctx.shadowColor = `rgba(${secCol},0.8)`;
-        ctx.shadowBlur = 5;
+        ctx.arc(px, py, pSize, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${secCol},${alpha})`;
+        ctx.shadowColor = `rgba(${secCol},${0.8 + gatherWeight * 0.2})`;
+        ctx.shadowBlur = 5 + gatherWeight * 4 + currentEmotion * 3;
         ctx.fill();
       }
       ctx.shadowBlur = 0;
+
+      // Constellation ligaments connecting hand structure when formed
+      if (gatherWeight > 0.35 && handCoords.length >= 56) {
+        ctx.save();
+        ctx.strokeStyle = `rgba(${secCol},${0.25 * gatherWeight})`;
+        ctx.lineWidth = 1.0;
+
+        // Index finger column
+        ctx.beginPath();
+        ctx.moveTo(handCoords[38].x, handCoords[38].y);
+        ctx.lineTo(handCoords[40].x, handCoords[40].y);
+        ctx.lineTo(handCoords[43].x, handCoords[43].y);
+        ctx.lineTo(handCoords[46].x, handCoords[46].y);
+        ctx.lineTo(handCoords[49].x, handCoords[49].y);
+        ctx.lineTo(handCoords[52].x, handCoords[52].y);
+        ctx.lineTo(handCoords[53].x, handCoords[53].y);
+        ctx.lineTo(handCoords[54].x, handCoords[54].y);
+        ctx.lineTo(handCoords[51].x, handCoords[51].y);
+        ctx.lineTo(handCoords[48].x, handCoords[48].y);
+        ctx.lineTo(handCoords[45].x, handCoords[45].y);
+        ctx.lineTo(handCoords[42].x, handCoords[42].y);
+        ctx.lineTo(handCoords[39].x, handCoords[39].y);
+        ctx.stroke();
+
+        // Curled knuckles
+        ctx.beginPath();
+        ctx.moveTo(handCoords[24].x, handCoords[24].y);
+        ctx.lineTo(handCoords[25].x, handCoords[25].y);
+        ctx.lineTo(handCoords[26].x, handCoords[26].y);
+        ctx.lineTo(handCoords[30].x, handCoords[30].y);
+        ctx.lineTo(handCoords[35].x, handCoords[35].y);
+        ctx.stroke();
+
+        // Thumb fold
+        ctx.beginPath();
+        ctx.moveTo(handCoords[18].x, handCoords[18].y);
+        ctx.lineTo(handCoords[19].x, handCoords[19].y);
+        ctx.lineTo(handCoords[20].x, handCoords[20].y);
+        ctx.lineTo(handCoords[21].x, handCoords[21].y);
+        ctx.lineTo(handCoords[22].x, handCoords[22].y);
+        ctx.lineTo(handCoords[23].x, handCoords[23].y);
+        ctx.stroke();
+
+        ctx.restore();
+      }
 
 
       // Layered echoes - multiple overlapping translucent organic layers
@@ -448,8 +786,13 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
         ctx.lineWidth = 0.8;
         ctx.stroke();
       }
-      // Outer translucent botanical/forest layer
-      layer(1.42, 0.22, 0.75, 2, visual ? col : '4,98,65');
+      // Outer translucent botanical/warm layer (adapts smoothly during emotional irritation)
+      const outerTint = visual
+        ? col
+        : currentEmotion > 0.01
+          ? `${Math.round(4 + (180 - 4) * currentEmotion)},${Math.round(98 + (60 - 98) * currentEmotion)},${Math.round(65 + (40 - 65) * currentEmotion)}`
+          : '4,98,65';
+      layer(1.42, 0.22, 0.75, 2, outerTint);
       layer(1.36, 0.28, 0.55, 1);
       layer(1.18, 0.45, 0.28, 0);
       // Warm amber / cream translucent accent layer
@@ -466,8 +809,8 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       fill.addColorStop(0.70, `rgba(${secCol},0.55)`);
       fill.addColorStop(1,   `rgba(${col},0.16)`);
       ctx.fillStyle = fill;
-      ctx.shadowColor = `rgba(${col},0.45)`;
-      ctx.shadowBlur = 18;
+      ctx.shadowColor = `rgba(${col},${0.45 + currentEmotion * 0.15})`;
+      ctx.shadowBlur = 18 + currentEmotion * 8;
       ctx.fill();
       ctx.shadowBlur = 0;
 

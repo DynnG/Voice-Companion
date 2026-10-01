@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageSquare, User, Download, Send, X } from 'lucide-react';
+import { MessageSquare, Download, Send, X } from 'lucide-react';
 import { Conversation } from '../types/conversation';
 
 interface LiveConversationPanelProps {
@@ -134,24 +134,27 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
             displayMessages.map((msg) => {
               const isUser = msg.sender === 'You';
               return (
-                <div key={msg.id} className="flex gap-2.5 items-start text-xs sm:text-[13px]">
-                  {/* Avatar Icon */}
+                <div key={msg.id} className={`flex gap-2.5 items-start text-xs sm:text-[13px] max-w-[88%] ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}>
                   {isUser ? (
-                    <div className="w-7 h-7 rounded-full bg-[#b8b3a6] text-white flex items-center justify-center shrink-0 mt-0.5">
-                      <User className="w-3.5 h-3.5" />
+                    <div className="w-9 h-9 rounded-full overflow-hidden shrink-0 mt-0.5">
+                      <img
+                        src="/user.png"
+                        alt="You"
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                   ) : (
-<div className="w-7 h-7 rounded-full bg-[#133020] flex items-center justify-center shrink-0 mt-0.5 overflow-hidden">
-  <img
-    src="/favicon-16x16.png"
-    alt="Savi"
-    className="w-full h-full object-contain p-1"
-  />
-</div>
+                    <div className="w-9 h-9 rounded-full bg-[#133020] flex items-center justify-center shrink-0 mt-0.5 overflow-hidden">
+                      <img
+                        src="/favicon-16x16.png"
+                        alt="Savi"
+                        className="w-full h-full object-contain p-1"
+                      />
+                    </div>
                   )}
 
-                  {/* Message Bubble matching Image 1 */}
-                  <div className="flex-1 min-w-0">
+                  {/* Message Bubble */}
+                  <div className={`min-w-0 flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-bold text-xs text-[#133020]">
                         {isUser ? 'You' : 'Savi'}
@@ -161,12 +164,34 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
                       </span>
                     </div>
                     <div
-                      className={`p-3 rounded-2xl text-xs sm:text-[13px] leading-relaxed shadow-sm ${
+                      className={`relative p-3 text-xs sm:text-[13px] leading-relaxed shadow-sm ${
                         isUser
-                          ? 'bg-[#dcecdf] text-[#133020]'
-                          : 'bg-[#fffdf6] text-[#133020]'
+                          ? 'bg-[#dcecdf] text-[#133020] rounded-2xl rounded-tr-sm'
+                          : 'bg-[#fffdf6] text-[#133020] rounded-2xl rounded-tl-sm'
                       }`}
                     >
+                      {/* Chat Tail */}
+                      {isUser ? (
+                        <div
+                          className="absolute top-0 -right-[8px] w-0 h-0"
+                          style={{
+                            borderTop: '0px solid transparent',
+                            borderBottom: '10px solid transparent',
+                            borderLeft: '8px solid #dcecdf',
+                            borderRight: '0px solid transparent'
+                          }}
+                        />
+                      ) : (
+                        <div
+                          className="absolute top-0 -left-[8px] w-0 h-0"
+                          style={{
+                            borderTop: '0px solid transparent',
+                            borderBottom: '10px solid transparent',
+                            borderRight: '8px solid #fffdf6',
+                            borderLeft: '0px solid transparent'
+                          }}
+                        />
+                      )}
                       {renderMessageText(msg.text, isUser)}
                     </div>
                   </div>
