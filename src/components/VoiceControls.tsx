@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mic, Camera, Lightbulb } from 'lucide-react';
+import { Mic, Camera, Lightbulb, Download } from 'lucide-react';
 import { VoiceState } from '../types/conversation';
 
 interface VoiceControlsProps {
@@ -35,9 +35,6 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
   isCameraActive = false,
   compact = false,
 }) => {
-  void canDownloadReview;
-  void onDownloadReview;
-  void isDownloadingReview;
   void onTogglePanel;
   return (
     <footer className={`voice-footer relative transition-all duration-300 ${compact ? 'py-1 sm:py-2' : 'py-2 sm:py-3'}`}>
@@ -115,7 +112,17 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
         {downloadReviewError && (
           <span className="text-[10px] text-[#FFC370] font-manrope">{downloadReviewError}</span>
         )}
-        {/* Note: Exactly one download action per specification: Download Interview Review button moved exclusively to transcript panel (canDownloadReview && onDownloadReview) */}
+        {canDownloadReview && onDownloadReview && (
+          <button
+            onClick={onDownloadReview}
+            disabled={isDownloadingReview}
+            className="flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-manrope font-semibold bg-[rgba(255,179,71,0.12)] hover:bg-[rgba(255,179,71,0.22)] text-[#FFC370] border border-[rgba(255,179,71,0.4)] shadow-xs transition-all active:scale-95 mt-0.5 disabled:opacity-60"
+            title="Download Interview Review (PDF)"
+          >
+            <Download className="w-3.5 h-3.5 text-[#FFB347]" />
+            <span>{isDownloadingReview ? 'Generating PDF…' : 'Download Interview Review'}</span>
+          </button>
+        )}
         {isCompleted && onOpenReview && (
           <button
             onClick={onOpenReview}

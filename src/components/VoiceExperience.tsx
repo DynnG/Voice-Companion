@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { VoiceState, AttachedDocument, Message, AnswerAttempt, ReplayState, InterviewExchangeRecord } from '../types/conversation';
-import { Sparkles, MessageSquare, User, Video } from 'lucide-react';
+import { Sparkles, MessageSquare, User, Video, Plus, AlertCircle } from 'lucide-react';
 import { VoiceCreature } from './VoiceCreature';
+import { StateLabel } from './StateLabel';
+import { ResponseCaption } from './ResponseCaption';
 import { CandidateCamera } from './CandidateCamera';
 import { VoiceControls } from './VoiceControls';
 import { AnswerReplayCard } from './AnswerReplayCard';
-import { transcribeAudio, fetchFollowupInterviewQuestion, fetchAnswerAiNotes, fetchAnswerComparison, isQuotaExceededText } from '../services/sttService';
+import { transcribeAudio, fetchFollowupInterviewQuestion, fetchAnswerAiNotes, fetchAnswerComparison, isQuotaExceededText, isInterviewErrorText } from '../services/sttService';
 import { speakText, stopSpeaking, unlockAudio } from '../services/ttsService';
 
 interface VoiceExperienceProps {
@@ -33,6 +35,9 @@ interface VoiceExperienceProps {
   isDownloadingReview?: boolean;
   downloadReviewError?: string | null;
   onRegisterSubmitAnswer?: (handler: (text: string) => Promise<void>) => void;
+  startInterviewError?: string | null;
+  onRetryStartInterview?: () => void;
+  onNewInterview?: () => void;
 }
 
 // Silence Detection Configuration
@@ -69,7 +74,10 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   onDownloadReview,
   isDownloadingReview = false,
   downloadReviewError = null,
-  onRegisterSubmitAnswer
+  onRegisterSubmitAnswer,
+  startInterviewError = null,
+  onRetryStartInterview,
+  onNewInterview
 }) => {
   // Candidate camera state and toggle reference
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
@@ -100,7 +108,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
   // Session-Only Answer Replay State
   const [replayState, setReplayState] = useState<ReplayState>({
-    questionText: (initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak)) ? initialQuestionToSpeak : '',
+    questionText: (initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak) && !isInterviewErrorText(initialQuestionToSpeak)) ? initialQuestionToSpeak : '',
     attempt1: null,
     attempt2: null,
     comparison: null,
@@ -115,11 +123,11 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   const objectUrlsRef = useRef<string[]>([]);
   const recordingStartTimeRef = useRef<number>(0);
   const currentQuestionBeingAnsweredRef = useRef<string>(
-    (initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak)) ? initialQuestionToSpeak : ''
+    (initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak) && !isInterviewErrorText(initialQuestionToSpeak)) ? initialQuestionToSpeak : ''
   );
 
   useEffect(() => {
-    if (initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak)) {
+    if (initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak) && !isInterviewErrorText(initialQuestionToSpeak)) {
       currentQuestionBeingAnsweredRef.current = initialQuestionToSpeak;
     }
   }, [initialQuestionToSpeak]);
@@ -178,6 +186,15 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       // Defensive guard: never show or speak quota-error text as an initial question
       if (isQuotaExceededText(initialQuestionToSpeak)) {
         console.warn('[VoiceExperience] Quota error detected in initialQuestionToSpeak. Suppressing caption and TTS speech.');
+        setState('idle');
+        setCustomLabel(undefined);
+        hideCaption();
+        return;
+      }
+
+      // Defensive guard: never show or speak connection/service error text as an initial question
+      if (isInterviewErrorText(initialQuestionToSpeak)) {
+        console.warn('[VoiceExperience] Connection/service error detected in initialQuestionToSpeak. Suppressing caption and TTS speech.');
         setState('idle');
         setCustomLabel(undefined);
         hideCaption();
@@ -609,9 +626,9 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         onUserTranscribed(`(Attempt 2) ${userText}`);
       }
 
-      const questionToCompare = (replayState.questionText && !isQuotaExceededText(replayState.questionText))
+      const questionToCompare = (replayState.questionText && !isQuotaExceededText(replayState.questionText) && !isInterviewErrorText(replayState.questionText))
         ? replayState.questionText
-        : (currentQuestionBeingAnsweredRef.current && !isQuotaExceededText(currentQuestionBeingAnsweredRef.current))
+        : (currentQuestionBeingAnsweredRef.current && !isQuotaExceededText(currentQuestionBeingAnsweredRef.current) && !isInterviewErrorText(currentQuestionBeingAnsweredRef.current))
         ? currentQuestionBeingAnsweredRef.current
         : 'Interview Question';
 
@@ -688,9 +705,9 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     const audioUrl1 = URL.createObjectURL(audioBlob);
     objectUrlsRef.current.push(audioUrl1);
 
-    const questionAnswered = (currentQuestionBeingAnsweredRef.current && !isQuotaExceededText(currentQuestionBeingAnsweredRef.current))
+    const questionAnswered = (currentQuestionBeingAnsweredRef.current && !isQuotaExceededText(currentQuestionBeingAnsweredRef.current) && !isInterviewErrorText(currentQuestionBeingAnsweredRef.current))
       ? currentQuestionBeingAnsweredRef.current
-      : (initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak))
+      : (initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak) && !isInterviewErrorText(initialQuestionToSpeak))
       ? initialQuestionToSpeak
       : 'Interview Question';
 
@@ -1116,11 +1133,11 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     }
   };
 
-  const isCompactVisual = Boolean(!replayState.isMinimized);
-
-  // Maintain caption references for defensive state guards without displaying in workspace
-  void captionText;
-  void captionVisible;
+  const isCompactVisual = Boolean(
+    replayState.isVisible &&
+    replayState.attempt1 &&
+    !replayState.isMinimized
+  );
 
   return (
     <div className="stage relative w-full h-full flex flex-col justify-between overflow-hidden select-none px-3 sm:px-6 py-2 sm:py-3">
@@ -1152,10 +1169,37 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
               {jobRole || 'Software Developer'}
             </span>
           </div>
+
+          {/* New Interview Button in Header */}
+          {onNewInterview && (
+            <>
+              <span className="w-px h-6 bg-[rgba(218,241,222,0.14)] shrink-0 hidden sm:block" />
+              <button
+                type="button"
+                onClick={onNewInterview}
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[rgba(9,32,23,0.55)] hover:bg-[rgba(9,32,23,0.80)] text-[#F5EEDB] border border-[rgba(218,241,222,0.14)] active:scale-95 transition-all"
+                title="Start a new interview session"
+              >
+                <Plus className="w-3.5 h-3.5 text-[#FFB347]" />
+                <span>New Interview</span>
+              </button>
+            </>
+          )}
         </div>
 
         {/* Header Right: In Progress Badge & Transcript Button */}
         <div className="flex items-center gap-2.5 shrink-0">
+          {isCompleted && onOpenCompletionReview && (
+            <button
+              type="button"
+              onClick={onOpenCompletionReview}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[rgba(255,179,71,0.14)] hover:bg-[rgba(255,179,71,0.24)] text-[#FFC370] border border-[rgba(255,179,71,0.4)] active:scale-95 transition-all"
+              title="View Interview Review"
+            >
+              <span>Review</span>
+            </button>
+          )}
+
           <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[rgba(255,179,71,0.4)] text-[#FFC370] text-xs font-semibold bg-[rgba(255,179,71,0.06)] shadow-sm">
             <i className="w-1.5 h-1.5 rounded-full bg-[#FFB347] animate-pulse" />
             {isCompleted ? 'Completed' : 'In Progress'}
@@ -1177,6 +1221,25 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
           </button>
         </div>
       </header>
+
+      {/* Connection/Service Error Banner with Retry */}
+      {startInterviewError && (
+        <div className="w-full max-w-xl mx-auto my-2 p-3 rounded-2xl bg-[rgba(220,38,38,0.15)] border border-[rgba(248,113,113,0.35)] backdrop-blur-md flex items-center justify-between gap-3 text-red-200 text-xs shadow-lg animate-in fade-in shrink-0 z-20">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+            <span className="truncate">{startInterviewError}</span>
+          </div>
+          {onRetryStartInterview && (
+            <button
+              type="button"
+              onClick={onRetryStartInterview}
+              className="px-3 py-1 rounded-full text-xs font-semibold bg-red-500/20 hover:bg-red-500/30 text-white border border-red-400/40 transition-all active:scale-95 shrink-0"
+            >
+              Retry Connection
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 3. Main Stage: Candidate Camera (Left, when active) | Savi Orb (Centered or Right) */}
       <div
@@ -1200,8 +1263,8 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             }
           >
             <CandidateCamera
-              candidateName={candidateName || 'Alex Chen'}
-              candidateRole="Job Candidate"
+              candidateName={candidateName || 'Candidate'}
+              candidateRole="Candidate"
               compact={isCompactVisual}
               onCameraActiveChange={setIsCameraActive}
               registerToggle={(fn) => { cameraToggleFnRef.current = fn; }}
@@ -1225,6 +1288,20 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
                 className={!isCameraActive && !isCompactVisual ? 'canvas-wrap--hero' : ''}
               />
             </div>
+
+            {/* Dynamic Status & StateLabel under Orb */}
+            <div className="shrink-0 mt-0.5 sm:mt-1 min-h-[20px] flex items-center justify-center">
+              <StateLabel state={state} customLabel={customLabel} />
+            </div>
+
+            {/* Dynamic Subtitle Slot: Visible when caption text exists, or collapsed during replay */}
+            {captionVisible ? (
+              <div className="w-full max-w-lg min-h-[40px] max-h-[56px] shrink-0 flex items-center justify-center mt-0.5 px-3 overflow-hidden text-center">
+                <ResponseCaption captionText={captionText} visible={captionVisible} />
+              </div>
+            ) : !replayState.isVisible ? (
+              <div className="w-full max-w-lg min-h-[40px] max-h-[56px] shrink-0 flex items-center justify-center mt-0.5 px-3 overflow-hidden text-center" />
+            ) : null}
 
             {/* Status & Info Container under the Orb */}
             {isCameraActive ? (
@@ -1265,10 +1342,10 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
                     <div className="flex flex-col text-left min-w-0">
                       <b className={`font-semibold text-white leading-tight truncate transition-all duration-300 ${
                         isCompactVisual ? 'text-xs' : 'text-sm'
-                      }`}>{candidateName || 'Alex Chen'}</b>
+                      }`}>{candidateName || 'Candidate'}</b>
                       <small className={`text-[#8EB69B] leading-tight truncate transition-all duration-300 ${
                         isCompactVisual ? 'text-[10px]' : 'text-xs'
-                      }`}>Job Candidate</small>
+                      }`}>Candidate</small>
                     </div>
                   </div>
 
@@ -1313,27 +1390,29 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       {/* 4. Dedicated Lower-Middle Zone: Answer Comparison / Replay Panel & Bottom Controls (One Cohesive Lower Section) */}
       {/* Container class invariant: w-full flex-1 min-h-0 flex flex-col items-center justify-center */}
       <div className="w-full shrink-0 flex flex-col items-center gap-1.5 sm:gap-2 z-10 mt-auto pb-1 transition-all duration-300 ease-out">
-        {/* Audio Playback + AI Notes */}
-        <div
-          className={`w-full mx-auto px-1 sm:px-2 z-10 shrink-0 transition-all duration-300 flex flex-col items-center ${
-            isLivePanelOpen ? 'max-w-5xl' : 'max-w-5xl xl:max-w-6xl'
-          }`}
-        >
-          <AnswerReplayCard
-            replayState={replayState}
-            onPlayAttempt={playAttempt}
-            onStopPlayback={stopReplayPlayback}
-            playingAttempt={playingAttempt}
-            playbackCurrentTime={playbackCurrentTime}
-            playbackProgress={playbackProgress}
-            onTryAgain={handleTryAgain}
-            onCancelRetry={handleCancelRetry}
-            onResumeInterview={handleResumeInterview}
-            onToggleMinimize={() => setReplayState((prev) => ({ ...prev, isMinimized: !prev.isMinimized }))}
-            onClose={() => setReplayState((prev) => ({ ...prev, isVisible: false }))}
-            isCompleted={!isMicEnabled || isCompleted}
-          />
-        </div>
+        {/* Dedicated Lower-Middle Zone: Answer Comparison / Replay Panel */}
+        {replayState.isVisible && replayState.attempt1 && (
+          <div
+            className={`w-full flex-1 min-h-0 flex flex-col items-center justify-center mx-auto px-1 sm:px-2 z-10 shrink-0 transition-all duration-300 ${
+              isLivePanelOpen ? 'max-w-5xl' : 'max-w-5xl xl:max-w-6xl'
+            }`}
+          >
+            <AnswerReplayCard
+              replayState={replayState}
+              onPlayAttempt={playAttempt}
+              onStopPlayback={stopReplayPlayback}
+              playingAttempt={playingAttempt}
+              playbackCurrentTime={playbackCurrentTime}
+              playbackProgress={playbackProgress}
+              onTryAgain={handleTryAgain}
+              onCancelRetry={handleCancelRetry}
+              onResumeInterview={handleResumeInterview}
+              onToggleMinimize={() => setReplayState((prev) => ({ ...prev, isMinimized: !prev.isMinimized }))}
+              onClose={() => setReplayState((prev) => ({ ...prev, isVisible: false }))}
+              isCompleted={!isMicEnabled || isCompleted}
+            />
+          </div>
+        )}
 
         {/* 5. Anchored Bottom Controls: Speak, Camera, Tip, Supporting Instruction Text */}
         <div className="w-full shrink-0 transition-all duration-300 ease-out">

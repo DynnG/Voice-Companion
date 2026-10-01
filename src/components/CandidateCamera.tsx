@@ -10,8 +10,8 @@ interface CandidateCameraProps {
 }
 
 export const CandidateCamera: React.FC<CandidateCameraProps> = ({
-  candidateName = 'Alex Chen',
-  candidateRole = 'Job Candidate',
+  candidateName = 'Candidate',
+  candidateRole = 'Candidate',
   compact = false,
   onCameraActiveChange,
   registerToggle,
@@ -54,31 +54,8 @@ export const CandidateCamera: React.FC<CandidateCameraProps> = ({
               },
             });
           } catch (deviceErr) {
-            console.warn('[CandidateCamera] Physical camera access failed, using preview stream:', deviceErr);
-            try {
-              const canvas = document.createElement('canvas');
-              canvas.width = 640;
-              canvas.height = 480;
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                const img = new Image();
-                img.src = '/candidate-alex.jpg';
-                img.onload = () => {
-                  ctx.drawImage(img, 0, 0, 640, 480);
-                };
-                setInterval(() => {
-                  if (img.complete && ctx) {
-                    ctx.drawImage(img, 0, 0, 640, 480);
-                  }
-                }, 200);
-              }
-              const captureFn = (canvas as any).captureStream || (canvas as any).mozCaptureStream;
-              if (captureFn) {
-                stream = captureFn.call(canvas, 25);
-              }
-            } catch (canvasErr) {
-              console.warn('[CandidateCamera] Canvas fallback error:', canvasErr);
-            }
+            console.warn('[CandidateCamera] Physical camera access failed:', deviceErr);
+            throw new Error('Camera access unavailable');
           }
         }
         if (!stream) {

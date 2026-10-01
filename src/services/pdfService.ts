@@ -1,5 +1,5 @@
 /**
- * MockMate Session-Only PDF Review Generator
+ * Savi Session-Only PDF Review Generator
  *
  * Generates clean, professional, multi-page PDF reviews for completed interview sessions
  * directly in the browser using jsPDF.
@@ -54,11 +54,11 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
   // ---------------------------------------------------------------------------
   // 1. Top Decorative Brand Accent Bar
   // ---------------------------------------------------------------------------
-  doc.setFillColor(4, 98, 65); // MockMate Forest Emerald (#046241)
+  doc.setFillColor(4, 98, 65); // Savi Forest Emerald (#046241)
   doc.rect(0, 0, pageWidth, 5, 'F');
 
   // ---------------------------------------------------------------------------
-  // 2. Header: MockMate Branding + Session Context
+  // 2. Header: Savi Branding + Session Context
   // ---------------------------------------------------------------------------
   // Brand Logo Text
   doc.setFont('helvetica', 'bold');
@@ -328,7 +328,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(148, 163, 184); // slate-400
-    doc.text('MockMate · Confidential Interview Review · Session-Only', margin, pageHeight - 18);
+    doc.text('Savi · Confidential Interview Review · Session-Only', margin, pageHeight - 18);
     doc.text(`Page ${p} of ${totalPages}`, pageWidth - margin, pageHeight - 18, { align: 'right' });
   }
 
@@ -337,7 +337,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
   // ---------------------------------------------------------------------------
   const cleanRole = (data.jobRole || 'Interview').replace(/[^a-zA-Z0-9_-]/g, '_');
   const dateStamp = new Date().toISOString().slice(0, 10);
-  const filename = `MockMate-Interview-Review-${cleanRole}-${dateStamp}.pdf`;
+  const filename = `Savi-Interview-Review-${cleanRole}-${dateStamp}.pdf`;
 
   doc.save(filename);
 }

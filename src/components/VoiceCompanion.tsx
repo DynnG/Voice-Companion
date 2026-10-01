@@ -5,7 +5,7 @@ import { VoiceExperience } from './VoiceExperience';
 import { LiveConversationPanel } from './LiveConversationPanel';
 import { DocumentAttachmentScreen } from './DocumentAttachmentScreen';
 import { PostInterviewCompletionModal } from './PostInterviewCompletionModal';
-import { fetchInitialInterviewQuestion, isQuotaExceededText } from '../services/sttService';
+import { fetchInitialInterviewQuestion, isQuotaExceededText, isInterviewErrorText } from '../services/sttService';
 import { stopSpeaking, unlockAudio } from '../services/ttsService';
 import { generateInterviewReviewPdf, InterviewReviewPdfData } from '../services/pdfService';
 
@@ -46,6 +46,7 @@ export const VoiceCompanion: React.FC = () => {
   const [isCompletionModalOpen, setIsCompletionModalOpen] = useState<boolean>(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
   const [downloadPdfError, setDownloadPdfError] = useState<string | null>(null);
+  const [startInterviewError, setStartInterviewError] = useState<string | null>(null);
   const [submitAnswerFn, setSubmitAnswerFn] = useState<((text: string) => Promise<void>) | null>(null);
   const isStartingInterviewRef = useRef<boolean>(false);
 
@@ -60,12 +61,13 @@ export const VoiceCompanion: React.FC = () => {
     setIsCompletionModalOpen(false);
     setIsDownloadingPdf(false);
     setDownloadPdfError(null);
+    setStartInterviewError(null);
     setSubmitAnswerFn(null);
   };
 
   // Transition from Document Attachment Screen to Live Voice Interview
   const handleStartInterview = async (jobRole: string, docs: AttachedDocument[]) => {
-    if (isStartingInterviewRef.current || session.status !== 'setup') {
+    if (isStartingInterviewRef.current || (session.status !== 'setup' && !startInterviewError)) {
       return;
     }
     isStartingInterviewRef.current = true;
@@ -86,19 +88,29 @@ export const VoiceCompanion: React.FC = () => {
       const questionText = await fetchInitialInterviewQuestion(cleanRole, docSummary, session.id);
 
       const isQuota = isQuotaExceededText(questionText);
+      const isConnectionError = isInterviewErrorText(questionText) && !isQuota;
 
       const initialMessages: Message[] = [];
       if (!isQuota && questionText) {
-        const initialPalMessage: Message = {
-          id: `msg-${Date.now()}-init`,
-          sender: 'Pal',
-          text: questionText,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        initialMessages.push(initialPalMessage);
-        setInitialQuestionToSpeak(questionText);
+        if (!isConnectionError) {
+          const initialPalMessage: Message = {
+            id: `msg-${Date.now()}-init`,
+            sender: 'Pal',
+            text: questionText,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+          initialMessages.push(initialPalMessage);
+          setInitialQuestionToSpeak(questionText);
+          setStartInterviewError(null);
+        } else {
+          setInitialQuestionToSpeak(undefined);
+          setStartInterviewError(questionText);
+        }
       } else {
         setInitialQuestionToSpeak(undefined);
+        if (isQuota) {
+          setStartInterviewError(null);
+        }
       }
 
       setIsLivePanelOpen(true);
@@ -340,6 +352,9 @@ export const VoiceCompanion: React.FC = () => {
               isDownloadingReview={isDownloadingPdf}
               downloadReviewError={downloadPdfError}
               onRegisterSubmitAnswer={setSubmitAnswerFn}
+              startInterviewError={startInterviewError}
+              onRetryStartInterview={() => handleStartInterview(session.jobRole, session.attachedDocuments)}
+              onNewInterview={handleNewInterview}
             />
           </section>
 

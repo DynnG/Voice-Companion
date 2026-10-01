@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, MessageSquare } from 'lucide-react';
+import { Plus, MessageSquare, Download } from 'lucide-react';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -25,6 +25,9 @@ export const AppShell: React.FC<AppShellProps> = (props) => {
     activeRole,
     showNewInterviewButton = false,
     isInterviewActive = false,
+    canDownloadReview = false,
+    onDownloadReview,
+    isDownloadingReview = false,
   } = props;
   return (
     <div className="w-screen h-screen flex flex-col bg-[#030d08] text-[#F5EEDB] overflow-hidden select-none font-manrope relative">
@@ -232,7 +235,26 @@ export const AppShell: React.FC<AppShellProps> = (props) => {
               </>
             )}
 
-            {/* Note: "Download Interview Review" excluded from top navigation per design requirement; download remains inside transcript */}
+            {/* Download Interview Review Button (available after at least 2 answers or when completed) */}
+            {canDownloadReview && onDownloadReview && (
+              <>
+                <span className="w-px h-6 bg-[rgba(218,241,222,0.14)] shrink-0 hidden sm:block" />
+                <button
+                  onClick={onDownloadReview}
+                  disabled={isDownloadingReview}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-manrope font-semibold bg-[rgba(9,32,23,0.55)] hover:bg-[rgba(9,32,23,0.80)] backdrop-blur-xl text-[#FFC370] border border-[rgba(255,179,71,0.35)] shadow-[inset_0_1px_1px_rgba(255,195,112,0.16),0_4px_16px_rgba(0,0,0,0.25)] active:scale-95 transition-all disabled:opacity-60"
+                  title="Download Interview Review (PDF)"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#FFB347]" />
+                  <span className="hidden sm:inline">
+                    {isDownloadingReview ? 'Generating PDF…' : 'Download Interview Review'}
+                  </span>
+                  <span className="sm:hidden">
+                    {isDownloadingReview ? 'PDF…' : 'Download Review'}
+                  </span>
+                </button>
+              </>
+            )}
           </div>
 
           {/* Right Section: Transcript Button */}

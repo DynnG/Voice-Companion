@@ -8,6 +8,7 @@ import {
   ChevronUp,
   ArrowRight,
   MessageSquare,
+  X,
 } from 'lucide-react';
 import { ReplayState } from '../types/conversation';
 
@@ -144,8 +145,8 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
   onPlayAttempt,
   onStopPlayback,
   playingAttempt = null,
-  playbackCurrentTime = 47,
-  playbackProgress = 0.51,
+  playbackCurrentTime = 0,
+  playbackProgress = 0,
   onTryAgain,
   onCancelRetry,
   onResumeInterview,
@@ -153,17 +154,18 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
   onClose,
   isCompleted = false,
 }) => {
-  void playbackProgress;
-  void onClose;
-  void formatDuration;
+  if (!replayState?.isVisible || !replayState?.attempt1) {
+    return null;
+  }
+
   const [localCollapsed, setLocalCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<'notes' | 'comparison'>('notes');
 
-  const attempt1 = replayState?.attempt1;
-  const attempt2 = replayState?.attempt2;
-  const comparison = replayState?.comparison;
-  const isRetryMode = replayState?.isRetryMode || false;
-  const isMinimized = Boolean(replayState?.isMinimized || localCollapsed);
+  const attempt1 = replayState.attempt1;
+  const attempt2 = replayState.attempt2;
+  const comparison = replayState.comparison;
+  const isRetryMode = replayState.isRetryMode || false;
+  const isMinimized = Boolean(replayState.isMinimized || localCollapsed);
 
   const handleToggle = () => {
     setLocalCollapsed((prev) => !prev);
@@ -209,27 +211,14 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
 
   // Canonical Target View: Unified Container for Audio Playback & AI Notes
   const isPlaying = playingAttempt === 1;
-  const displayDuration =
-    attempt1?.durationSeconds && attempt1.durationSeconds > 0
-      ? attempt1.durationSeconds
-      : 47;
-  const displayCurrentTime = attempt1 ? playbackCurrentTime : 47;
-  const progressRatio = displayDuration > 0 ? displayCurrentTime / displayDuration : 0.51;
+  const displayDuration = attempt1.durationSeconds || 0;
+  const displayCurrentTime = playbackCurrentTime || 0;
+  const progressRatio = displayDuration > 0
+    ? Math.min(1, Math.max(0, displayCurrentTime / displayDuration))
+    : (playbackProgress || 0);
 
-  const displayTranscript =
-    attempt1?.transcript ||
-    'So, um... I worked on a caching layer, basically, for our API. It was, like, really slow at first, and I had to analyze performance problems, so I profiled it and added Redis.';
-
-  const displayNotes = useMemo(() => {
-    if (attempt1?.aiNotes && attempt1.aiNotes.length > 0) {
-      return attempt1.aiNotes;
-    }
-    return [
-      'You explained the trade-offs clearly and showed strong understanding of the problem.',
-      'Try to include more specific examples and measurable metrics from your experience.',
-      'Clear technical terminology used throughout with steady, confident delivery.'
-    ];
-  }, [attempt1?.aiNotes]);
+  const displayTranscript = attempt1.transcript || '';
+  const displayNotes = attempt1.aiNotes || [];
 
   return (
     <section
@@ -273,6 +262,19 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
             >
               {activeTab === 'comparison' ? 'Show Live Notes' : 'Compare Attempts'}
             </span>
+          )}
+          {onClose && (
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
+              className="w-7 h-7 rounded-full bg-[rgba(218,241,222,0.06)] border border-[rgba(218,241,222,0.12)] flex items-center justify-center text-[#8EB69B] hover:text-[#F5EEDB] hover:border-[rgba(218,241,222,0.25)] transition-all cursor-pointer"
+              title="Close Replay Card"
+              aria-label="Close Replay Card"
+            >
+              <X className="w-3.5 h-3.5" />
+            </div>
           )}
           <div className="w-7 h-7 rounded-full bg-[rgba(218,241,222,0.06)] border border-[rgba(218,241,222,0.12)] flex items-center justify-center text-[#8EB69B] group-hover:text-[#F5EEDB] group-hover:border-[rgba(218,241,222,0.25)] transition-all">
             <ChevronUp
@@ -493,6 +495,10 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                       <div className="p-3 rounded-xl bg-[rgba(30,12,12,0.45)] border border-[rgba(255,100,100,0.2)] text-xs text-[#F5EEDB]/80">
                         <p className="font-semibold text-[#FF8585] mb-1">AI notes unavailable</p>
                         <p className="text-[11px] text-[#8EB69B]">{attempt1.errorMessage || 'AI notes are unavailable right now.'}</p>
+                      </div>
+                    ) : displayNotes.length === 0 ? (
+                      <div className="p-3 rounded-xl bg-[rgba(6,24,18,0.45)] border border-[rgba(218,241,222,0.08)] text-xs text-[#8EB69B]">
+                        No specific AI coaching notes for this response.
                       </div>
                     ) : (
                       /* Specific observations from actual answer analysis */

@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MessageSquare, User, Download, Send, X } from 'lucide-react';
-import { Conversation, Message } from '../types/conversation';
+import { Conversation } from '../types/conversation';
 
 interface LiveConversationPanelProps {
   conversation: Conversation | null;
@@ -13,34 +13,6 @@ interface LiveConversationPanelProps {
   onSendAnswer?: (text: string) => void;
 }
 
-// Canonical sample transcript from Image 1 specification
-const SAMPLE_MESSAGES: Message[] = [
-  {
-    id: 'sample-savi-1',
-    sender: 'Pal',
-    text: 'Tell me about a project where you solved a difficult technical problem.',
-    timestamp: '07:00 PM'
-  },
-  {
-    id: 'sample-user-1',
-    sender: 'You',
-    text: 'So, um... I worked on a caching layer, basically, for our API. It was, like, really slow at first, and I had to analyze performance problems, so I profiled it and added Redis.',
-    timestamp: '07:02 PM'
-  },
-  {
-    id: 'sample-savi-2',
-    sender: 'Pal',
-    text: 'What trade-offs did you weigh when you made that decision?',
-    timestamp: '07:04 PM'
-  },
-  {
-    id: 'sample-user-2',
-    sender: 'You',
-    text: 'The main trade-off was between performance and complexity. I chose to accept a bit more complexity because I was worth the long-term gains in speed...',
-    timestamp: '07:07 PM'
-  }
-];
-
 export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
   conversation,
   isOpen,
@@ -51,28 +23,13 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
   isDownloadingReview = false,
   onSendAnswer,
 }) => {
-  void onClose;
-  void canDownloadReview;
   const [inputText, setInputText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Determine messages to display: display session messages if active, fallback to Image 1 canonical seed
-  const displayMessages = useMemo(() => {
-    const sessionMsgs = conversation?.messages || [];
-    if (sessionMsgs.length >= 2) {
-      return sessionMsgs;
-    }
-    if (sessionMsgs.length === 1) {
-      // Keep real Gemini opening question, append remaining sample exchange
-      return [
-        sessionMsgs[0],
-        SAMPLE_MESSAGES[1],
-        SAMPLE_MESSAGES[2],
-        SAMPLE_MESSAGES[3]
-      ];
-    }
-    return SAMPLE_MESSAGES;
-  }, [conversation?.messages]);
+  // Use only actual current interview messages from session state
+  const displayMessages = conversation?.messages || [];
+  const questionCount = displayMessages.filter((m) => m.sender === 'Pal').length;
+  const messageCount = displayMessages.length;
 
   useEffect(() => {
     if (isOpen && messagesEndRef.current) {
@@ -110,8 +67,6 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
     });
   };
 
-  const messageCount = displayMessages.length > 3 ? 3 : displayMessages.length;
-
   return (
     <aside
       className="savi-frame w-full md:w-[370px] lg:w-[400px] xl:w-[420px] shrink-0 h-full flex flex-col p-2.5 overflow-hidden font-manrope z-20 transition-all duration-300"
@@ -127,16 +82,16 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
               Interview Transcript
             </h3>
             <p className="text-[11px] text-[#8EB69B] leading-tight mt-0.5 truncate">
-              {conversation?.jobRole || 'Software Developer'} • 5 questions • 12:34
+              {conversation?.jobRole || 'Software Developer'} • {questionCount} question{questionCount !== 1 ? 's' : ''}
             </p>
           </div>
         </div>
 
-        {/* Close Button or Question Stepper matching Image 1 */}
+        {/* Close Button matching Image 1 */}
         <button
           type="button"
           onClick={onClose}
-          className="w-7 h-7 rounded-full bg-[rgba(218,241,222,0.06)] border border-[rgba(218,241,222,0.12)] hover:bg-[rgba(218,241,222,0.16)] text-[#F5EEDB] flex items-center justify-center transition-all"
+          className="w-7 h-7 rounded-full bg-[rgba(218,241,222,0.06)] border border-[rgba(218,241,222,0.12)] hover:bg-[rgba(218,241,222,0.16)] text-[#F5EEDB] flex items-center justify-center transition-all cursor-pointer"
           title="Close transcript"
           aria-label="Close transcript"
         >
@@ -149,18 +104,20 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
         <div className="flex items-center justify-between text-xs font-semibold text-[#DAF1DE]">
           <span>Interview length</span>
           <span className="border border-[rgba(255,179,71,0.5)] text-[#FFC370] rounded-full px-2.5 py-0.5 text-[11px] font-bold">
-            Questions 5/8
+            Questions {Math.min(questionCount, 8)}/8
           </span>
         </div>
         <div className="savi-segs mt-1.5">
-          <i className="on" />
-          <i className="on" />
-          <i className="on" />
-          <i className="on" />
-          <i className="cur" />
-          <i />
-          <i />
-          <i />
+          {Array.from({ length: 8 }).map((_, i) => {
+            const isFilled = i < questionCount;
+            const isCurrent = i === questionCount && !isThinking;
+            return (
+              <i
+                key={i}
+                className={isFilled ? 'on' : isCurrent ? 'cur' : ''}
+              />
+            );
+          })}
         </div>
       </div>
 
@@ -200,7 +157,7 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
                         {isUser ? 'You' : 'Savi'}
                       </span>
                       <span className="text-[11px] text-[#133020]/50 font-normal">
-                        {msg.timestamp || '07:00 PM'}
+                        {msg.timestamp || ''}
                       </span>
                     </div>
                     <div
@@ -232,8 +189,8 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
 
         {/* Footer Area: Message count & Download Review Button matching Image 1 */}
         <div className="px-3.5 py-2 border-t border-[#133020]/10 shrink-0 flex items-center justify-between text-xs text-[#5b6f61]">
-          <span>{messageCount} messages</span>
-          {canDownloadReview ? (
+          <span>{messageCount} message{messageCount !== 1 ? 's' : ''}</span>
+          {canDownloadReview && onDownloadReview && (
             <button
               type="button"
               onClick={onDownloadReview}
@@ -244,18 +201,6 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
             >
               <Download className="w-3 h-3 text-[#FFB347]" />
               <span>{isDownloadingReview ? 'Downloading…' : 'Download Review'}</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onDownloadReview}
-              disabled={isDownloadingReview}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#133020] text-[#F5EEDB] hover:bg-[#1a442e] transition-all active:scale-95 disabled:opacity-40"
-              title="Download Review"
-              aria-label="Download Review"
-            >
-              <Download className="w-3 h-3 text-[#FFB347]" />
-              <span>{isDownloadingReview ? 'Downloading…' : 'Download'}</span>
             </button>
           )}
         </div>

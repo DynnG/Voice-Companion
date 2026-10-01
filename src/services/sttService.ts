@@ -241,6 +241,26 @@ export function isQuotaExceededText(text?: string | null): boolean {
   );
 }
 
+export function isInterviewErrorText(text?: string | null): boolean {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  return (
+    lower.includes('temporarily unavailable') ||
+    lower.includes('connection error') ||
+    lower.includes('ai service error') ||
+    lower.includes('unexpected response format') ||
+    lower.startsWith('error:')
+  );
+}
+
+export function isValidInterviewQuestion(text?: string | null): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (trimmed.length < 5) return false;
+  if (isInterviewErrorText(trimmed)) return false;
+  return true;
+}
+
 export async function fetchInitialInterviewQuestion(
   jobRole: string,
   attachedDocuments?: AttachedDocumentPayload[],
