@@ -165,7 +165,7 @@ Serverless runtime paths:
 | Generic XDG cache | /tmp/savi-transcription/cache | OS temporary directory/savi-transcription/cache |
 | Kokoro downloaded model | /tmp/savi-kokoro/kokoro-v1.0.int8.onnx | OS temporary directory/savi-kokoro/kokoro-v1.0.int8.onnx |
 | Kokoro downloaded voices | /tmp/savi-kokoro/voices-v1.0.bin | OS temporary directory/savi-kokoro/voices-v1.0.bin |
-| SQLite database and adjacent journal/WAL/SHM files | /tmp/savi-sqlite/voice_companion.db | backend/voice_companion.db (unchanged) |
+| Database records | Remote hosted Turso/libSQL (no local replica) | backend/voice_companion.db when DATABASE_URL is unset |
 
 Kokoro checks configured paths and bundled backend/models/kokoro and kokoro_hf
 files as read-only inputs. It never creates or modifies those directories.
@@ -175,27 +175,85 @@ for warm reuse. There are no model extraction steps. ONNX Runtime, tokenizers an
 espeak-ng read bundled assets; synthesized WAV data remains in BytesIO.
 Both audio and document UploadFiles are closed after reading. SQLite temp tables
 use memory, SQLITE_TMPDIR points to transcription scratch storage, and SQLite
-journals stay beside its database. Python bytecode writes are disabled on Vercel.
+journals stay beside the database in local development; Vercel uses remote-only libSQL. Python bytecode writes are disabled on Vercel.
 Environment files are only read. Logging uses stderr, not project log files.
 
-IMPORTANT: /tmp is ephemeral and instance-local. SQLite is still enabled, but
-production records can disappear on cold starts, redeployments or instance
-replacement and are not shared across scaled instances. Startup logs warn about
-this. No existing local database is copied, deleted or migrated automatically.
-Persistent interview history requires an external database for the interviews,
-documents (including extracted text), and messages tables. If uploaded originals
-or generated reports need retention, use durable object storage; current uploads
-and reports are processed in memory. Session-only endpoints remain session-only.
+IMPORTANT: /tmp is ephemeral and instance-local; it contains upload spools and
+model caches only. Production session/document/message records use hosted Turso.
+No /tmp SQLite fallback or embedded replica is allowed on Vercel. Local SQLite
+remains available outside Vercel. Existing local records are not automatically
+copied, deleted or migrated. Back up/import them separately if they must be retained.
 
-Remaining operational risks: combined downloaded models, caches and SQLite share
-Vercel's 500 MB /tmp allowance. Model download size, cold-start timeout, memory,
-native Python dependency compatibility and runtime network access must be verified
-in a deployed environment. Bundling compatible model assets can reduce cold-start
-downloads, subject to function bundle limits. Filesystem path fixes do not remove
-these platform limits or make scratch SQLite durable.
+Remaining operational risks: downloaded models/caches share Vercel's 500 MB /tmp
+allowance. Verify model size, cold-start time, memory, native Linux dependencies,
+database network access and credential expiry in the deployed environment.
+Python's automatic import bytecode writes should also be disabled before startup
+with PYTHONDONTWRITEBYTECODE=1 in Vercel. The backend additionally disables them
+when configuring runtime storage. The developer-only benchmark_models.py can
+download backend/test_sample_jfk.flac; it is not imported by or run in the API.
+No vector store, original-document directory, long-term audio file store, generated
+report directory or project log file exists in the serving path.
 
 Regression checks (from backend):
 `python -m unittest test_transcription_storage -v`
 `python test_hesitation_pauses.py`
 
 Additional path regressions: `python -m unittest test_serverless_storage -v`
+
+### Persistent Turso database setup on Vercel
+
+1. Create a **libSQL** database in Turso (compatible with the SQLAlchemy libSQL
+   dialect). For example: `turso db create savi`.
+2. Get the URL with `turso db show --url savi` and create an authentication token
+   with `turso db tokens create savi`. Keep the token private.
+3. In Vercel Project → Settings → Environment Variables, set:
+
+   - DATABASE_URL: the libsql://your-database.turso.io URL, without a token/query.
+   - DATABASE_AUTH_TOKEN: the database authentication token.
+   - PYTHONDONTWRITEBYTECODE: 1, to prevent import-time writes before app startup.
+
+   Apply these to Production and the desired Preview environments. Never prefix
+   database credentials with VITE_ or expose them to the frontend.
+4. Redeploy with the updated backend requirements. Vercel's Linux environment
+   installs sqlalchemy-libsql; Windows local development skips that native
+   dependency and continues using standard SQLite. Hosted development on Windows
+   requires Linux/WSL; do not configure DATABASE_URL for normal Windows local dev.
+5. Schema initialization runs on cold start and before the first database request
+   using CREATE TABLE/INDEX IF NOT EXISTS. No manual schema creation is required.
+   This creates missing tables/indexes; future column changes still require migrations.
+6. Verify creation and retrieval in separate requests: POST /api/interviews,
+   POST /api/interviews/{id}/documents, then GET /api/interviews/{id} from another
+   client/request. Confirm the records also survive a redeploy/new function instance.
+   Start an interview and confirm POST /api/interview/initial-question returns 200;
+   test POST /api/transcribe with a valid multipart audio upload.
+
+get_db and SessionLocal preserve their existing signatures. Remote access uses TLS,
+a separate auth-token argument and no local sync file. DATABASE_URL is required on
+Vercel; invalid/missing configuration fails startup with a specific safe error.
+Connection/schema/query failures return HTTP 503 with a redacted database target;
+missing stored sessions return 404 rather than silently dropping their documents.
+Log messages include the operation/host and error class, never credentials or SQL.
+
+The initial-question endpoint registers frontend-generated session-… IDs and
+persists supplied extracted document text before calling Gemini. Retries reuse the
+session and document entries. Existing /api/interviews CRUD endpoints store their
+records in the same hosted database. Anonymous requests without an interview ID
+remain stateless. Conversation messages continue to be saved through the existing
+message API; this change does not add automatic transcript saving. In-memory turn
+tracking still supplements the supplied conversation history; it is not a durable
+distributed session-state store.
+
+Original document/audio binaries are not retained: uploaded files are processed in
+memory (or temporary multipart spools) and closed. PDF reviews are generated on the
+client. Vercel Blob/S3 is therefore unnecessary for this change; if retention is
+added later, store originals there and keep only their keys/URLs in the database.
+
+Run regressions from backend:
+`python -m unittest test_hosted_database test_serverless_storage test_transcription_storage -v`
+
+Hosted connectivity cannot be verified without real DATABASE_URL and
+DATABASE_AUTH_TOKEN. Local tests check configuration, schema idempotence,
+cross-connection data retention, session/document registration and safe 404/503
+responses. They do not substitute for the Vercel smoke test above.
+
+Official integration: https://docs.turso.tech/sdk/python/orm/sqlalchemy

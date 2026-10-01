@@ -18,7 +18,7 @@ def runtime_directory(name: str) -> Path:
 
 def sqlite_database_path(backend_dir: Path) -> Path:
     if os.environ.get("VERCEL"):
-        return runtime_directory("savi-sqlite") / "voice_companion.db"
+        raise RuntimeError("Local SQLite is disabled on Vercel; configure DATABASE_URL and DATABASE_AUTH_TOKEN.")
     return backend_dir / "voice_companion.db"
 
 

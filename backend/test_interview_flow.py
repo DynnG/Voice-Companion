@@ -42,7 +42,12 @@ def test_full_interview_pipeline():
     print("  Health Response:", data)
     assert data["status"] == "healthy"
     assert data["service"] == "faster-whisper-stt"
-    assert data["gemini_brain"] == "enabled"
+    from config import GEMINI_MODEL
+    from gemini_service import GeminiInterviewService
+    assert data["gemini"] == {
+        "configured": bool(GeminiInterviewService.get_instance().get_api_key()),
+        "model": GEMINI_MODEL,
+    }
 
     # 2. Initial Interview Question Generation
     print("\n[Step 2] Testing Initial Question Generation for 'Software Developer' with attached Resume/JD...")
