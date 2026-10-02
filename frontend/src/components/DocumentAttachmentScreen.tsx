@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { AttachedDocument, DocumentCategory } from '../types/conversation';
 import { extractDocumentText, validateJobTitle } from '../services/sttService';
 import { VoiceCreature } from './VoiceCreature';
-import { ArrowRight, BriefcaseBusiness, FileText, Lightbulb, Mic, UploadCloud } from 'lucide-react';
+import { ArrowRight, BriefcaseBusiness, FileText, Lightbulb, Mic, UploadCloud, AlertCircle } from 'lucide-react';
 
 interface DocumentAttachmentScreenProps {
   initialJobRole?: string;
@@ -470,14 +470,25 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
               placeholder="Enter your Target Job Title"
               value={jobRole}
               onChange={(e) => {
-                setJobRole(e.target.value);
+                const sanitizedValue = e.target.value.replace(/[^A-Za-z\s]/g, '');
+                setJobRole(sanitizedValue);
                 if (jobRoleError) setJobRoleError('');
               }}
-              className="setup-job-input"
+              className={`setup-job-input ${jobRoleError ? '!border-red-500 !ring-1 !ring-red-500/20' : ''}`}
+              style={jobRoleError ? { paddingRight: '40px' } : undefined}
             />
+            {jobRoleError && (
+              <AlertCircle
+                style={{ left: 'auto', right: '16px', transform: 'translateY(-50%)' }}
+                className="absolute top-1/2 text-red-500"
+                size={18}
+                aria-hidden="true"
+              />
+            )}
           </div>
           {jobRoleError && (
-            <p className="text-[#FFB347] text-xs mt-2 ml-1">
+            <p className="flex items-center gap-1.5 text-red-400 text-xs mt-2 ml-1">
+              <AlertCircle size={14} aria-hidden="true" />
               {jobRoleError}
             </p>
           )}
