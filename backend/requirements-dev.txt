@@ -1,0 +1,2 @@
+# Install alongside requirements.txt to run asynchronous backend tests.
+pytest-asyncio>=1.0.0

@@ -111,6 +111,7 @@ dist-ssr/
 *.sqlite3
 
 # Python / Virtual Environments
+.pytest_cache/
 __pycache__/
 *.py[cod]
 *$py.class

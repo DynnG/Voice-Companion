@@ -5,9 +5,12 @@ except ImportError:
     from runtime_storage import TRANSCRIPTION_STORAGE
 
 import io
+import os
 import gc
 import time
 import logging
+import tempfile
+import httpx
 from typing import Dict, Any, Optional, Tuple, Union, List
 import av
 import av.audio.resampler
@@ -23,7 +26,8 @@ try:
         CPU_THREADS,
         DEFAULT_LANGUAGE,
         VAD_FILTER,
-        CONDITION_ON_PREVIOUS_TEXT
+        CONDITION_ON_PREVIOUS_TEXT,
+        WHISPER_CACHE_DIR
     )
 except ImportError:
     from config import (
@@ -34,7 +38,8 @@ except ImportError:
         CPU_THREADS,
         DEFAULT_LANGUAGE,
         VAD_FILTER,
-        CONDITION_ON_PREVIOUS_TEXT
+        CONDITION_ON_PREVIOUS_TEXT,
+        WHISPER_CACHE_DIR
     )
 
 try:
@@ -49,6 +54,17 @@ except ImportError:
     )
 
 logger = logging.getLogger(__name__)
+
+
+class STTUnavailable(RuntimeError):
+    """Inference is unavailable; callers should return a retryable HTTP 503."""
+
+
+def should_preload_stt() -> bool:
+    # Never allow a Vercel cold start to download weights, even with an override.
+    return not os.environ.get("VERCEL") and not os.getenv("STT_SERVICE_URL") and os.getenv(
+        "STT_PRELOAD", "true"
+    ).lower() in ("true", "1", "yes")
 
 def decode_audio_bytes(
     file_bytes: bytes,
@@ -70,26 +86,33 @@ def decode_audio_bytes(
     if len(file_bytes) < 32:
         raise ValueError("Audio payload is too small to contain valid audio stream headers.")
 
+    tmp_path = None
+    container = None
     try:
-        container = av.open(io.BytesIO(file_bytes), mode="r", metadata_errors="ignore")
-    except Exception as e:
-        raise ValueError(f"Could not open audio container: {str(e)}") from e
+        try:
+            container = av.open(io.BytesIO(file_bytes), mode="r", metadata_errors="ignore")
+        except Exception as mem_err:
+            logger.info(f"In-memory audio decode failed ({mem_err}), trying safe temp file in writable directory...")
+            fd, tmp_path = tempfile.mkstemp(dir=tempfile.gettempdir(), prefix="savi_audio_", suffix=".tmp")
+            with os.fdopen(fd, "wb") as f:
+                f.write(file_bytes)
+            container = av.open(tmp_path, mode="r", metadata_errors="ignore")
 
-    if not container.streams.audio:
-        container.close()
-        raise ValueError("Audio container contains no valid audio stream tracks.")
+        if not container.streams.audio:
+            container.close()
+            container = None
+            raise ValueError("Audio container contains no valid audio stream tracks.")
 
-    resampler = av.audio.resampler.AudioResampler(
-        format="s16",
-        layout="mono",
-        rate=sampling_rate,
-    )
+        resampler = av.audio.resampler.AudioResampler(
+            format="s16",
+            layout="mono",
+            rate=sampling_rate,
+        )
 
-    raw_buffer = io.BytesIO()
-    dtype = None
-    frame_count = 0
+        raw_buffer = io.BytesIO()
+        dtype = None
+        frame_count = 0
 
-    try:
         for frame in container.decode(audio=0):
             frame.pts = None
             resampled_frames = resampler.resample(frame)
@@ -103,12 +126,24 @@ def decode_audio_bytes(
                     frame_count += 1
     except (av.error.InvalidDataError, av.error.FFmpegError, Exception) as err:
         if frame_count == 0:
-            container.close()
+            if container is not None:
+                container.close()
+                container = None
             raise ValueError(f"Corrupted or invalid audio stream data: {str(err)}") from err
         logger.warning(f"PyAV warning encountered during stream decode (recovered {frame_count} frames): {err}")
     finally:
-        container.close()
-        del resampler
+        if container is not None:
+            try:
+                container.close()
+            except Exception:
+                pass
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+        if 'resampler' in locals():
+            del resampler
         gc.collect()
 
     if frame_count == 0 or raw_buffer.tell() == 0:
@@ -143,6 +178,11 @@ class STTService:
         self.condition_on_previous_text = CONDITION_ON_PREVIOUS_TEXT
 
     def load_model(self) -> WhisperModel:
+        if os.environ.get("VERCEL"):
+            raise STTUnavailable(
+                "Local Whisper downloads/inference are disabled on Vercel. "
+                "Configure STT_SERVICE_URL for a dedicated transcription service."
+            )
         if self._model is None:
             logger.info(
                 f"Loading faster-whisper model '{self.model_size}' on {self.device} with {self.compute_type} "
@@ -168,6 +208,8 @@ class STTService:
         """
         Transcribe an audio payload (bytes, numpy array, or file path) with stage-by-stage latency tracking.
         """
+        if os.getenv("STT_SERVICE_URL"):
+            return self._transcribe_external(audio_input, beam_size, language, upload_write_ms)
         model = self.load_model()
         eff_beam = beam_size if beam_size is not None else self.beam_size
         eff_lang = language if language is not None else self.default_language
@@ -286,6 +328,47 @@ class STTService:
             "words": all_words,
             "hesitation_evidence": hesitation_evidence
         }
+
+    def _transcribe_external(self, audio_input, beam_size, language, upload_write_ms):
+        """Delegate STT only; Gemini and persistence remain in the public API."""
+        if not isinstance(audio_input, bytes):
+            raise STTUnavailable("External STT expects uploaded audio bytes.")
+        headers = {}
+        if os.getenv("STT_SERVICE_TOKEN"):
+            headers["Authorization"] = "Bearer " + os.environ["STT_SERVICE_TOKEN"]
+        data = {"generate_ai_response": "false"}
+        if beam_size is not None:
+            data["beam_size"] = str(beam_size)
+        if language is not None:
+            data["language"] = language
+        try:
+            # URL is the full dedicated /transcribe endpoint. No automatic retries
+            # or redirects that could duplicate work or forward credentials.
+            with httpx.Client(timeout=120.0, follow_redirects=False) as client:
+                response = client.post(
+                    os.environ["STT_SERVICE_URL"], headers=headers, data=data,
+                    files={"file": ("audio", audio_input, "application/octet-stream")},
+                )
+                response.raise_for_status()
+                result = response.json()
+            required = {"text", "transcription", "raw_text", "language", "language_probability",
+                        "duration", "processing_time_ms", "inference_time_ms", "timings",
+                        "model", "segments", "words", "hesitation_evidence"}
+            if not isinstance(result, dict) or not required.issubset(result):
+                raise ValueError("Incomplete STT response")
+            if not isinstance(result["text"], str) or not isinstance(result["timings"], dict):
+                raise ValueError("Invalid STT response")
+            if not {"audio_decode_ms", "inference_ms", "total_processing_ms"}.issubset(result["timings"]):
+                raise ValueError("Incomplete STT timings")
+            # Do not propagate remote interview/session state into the public API.
+            result = {key: result[key] for key in required}
+            result["timings"] = dict(result["timings"])
+            result["timings"]["upload_write_ms"] = upload_write_ms
+            return result
+        except (httpx.HTTPError, ValueError, TypeError) as error:
+            # Avoid exposing endpoint credentials, headers or upstream bodies.
+            logger.warning("Dedicated STT request failed (%s)", type(error).__name__)
+            raise STTUnavailable("Dedicated STT service is unavailable; please retry.") from error
 
     # Backward compatible helper
     def transcribe(

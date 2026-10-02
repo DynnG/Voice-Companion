@@ -24,7 +24,9 @@ class TranscriptionStorageTests(unittest.TestCase):
                     upload = UploadFile(spool)
                     asyncio.run(upload.close())
                     self.assertTrue(spool.closed)
-                    self.assertEqual(list(root.iterdir()), [])
+                    # Cache setup intentionally creates directories; no uploaded
+                    # audio or spool files should remain after closing.
+                    self.assertEqual([p for p in root.rglob('*') if p.is_file()], [])
             finally:
                 tempfile.tempdir = previous
 

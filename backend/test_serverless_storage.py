@@ -13,7 +13,8 @@ class ServerlessStorageTests(unittest.TestCase):
     def test_vercel_paths_ignore_project_tmpdir(self):
         with patch.dict(os.environ, {'VERCEL': '1', 'TMPDIR': '/var/task'}, clear=True), patch.object(Path, 'mkdir'):
             self.assertEqual(runtime_storage.runtime_directory('savi-kokoro'), Path('/tmp/savi-kokoro'))
-            self.assertEqual(runtime_storage.sqlite_database_path(Path('/var/task/backend')), Path('/tmp/savi-sqlite/voice_companion.db'))
+            with self.assertRaisesRegex(RuntimeError, 'Local SQLite is disabled'):
+                runtime_storage.sqlite_database_path(Path('/var/task/backend'))
 
     def test_local_sqlite_keeps_existing_database(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -56,7 +57,7 @@ class ServerlessStorageTests(unittest.TestCase):
     def test_sqlite_schema_crud_and_journals_use_scratch_directory(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'voice_companion.db'
-            with patch.dict(os.environ, {'VERCEL': '1'}), patch.object(runtime_storage, 'runtime_directory', return_value=Path(directory)):
+            with patch.dict(os.environ, {'DATABASE_URL': f'sqlite:///{path}'}, clear=True):
                 spec = importlib.util.spec_from_file_location('isolated_database', Path(__file__).parent / 'database.py')
                 db = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(db)

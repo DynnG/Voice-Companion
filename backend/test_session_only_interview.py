@@ -3,7 +3,7 @@ Test suite verifying Session-Only Interview architecture:
 1. In-memory session flow: New Interview -> Upload Documents -> Start Interview -> Live Interview.
 2. Documents are provided in-memory and grounded during the active interview turns.
 3. Starting a New Interview clears previous documents, messages, and context.
-4. No confidential documents, extracted text, or messages are persisted to SQLite/database.
+4. Explicitly started sessions and their document text are persisted; message auto-save remains unchanged.
 5. Automatic interview completion and error handling operate in session memory.
 """
 import sys
@@ -171,9 +171,9 @@ def test_database_remains_clean_after_turns():
     try:
         doc_count = db.query(Document).count()
         msg_count = db.query(Message).count()
-        assert doc_count == 0, "No documents should be saved to database"
+        assert doc_count == 1, "The initial session document should be persisted exactly once"
         assert msg_count == 0, "No messages should be saved to database"
-        print("  [PASS] Zero database records after full session interaction.")
+        print("  [PASS] Session document persisted; conversation message auto-save remains unchanged.")
     finally:
         db.close()
 
