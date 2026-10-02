@@ -379,9 +379,15 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
     );
 
     if (!isPopularRole) {
-      const isValid = await validateJobTitle(cleanRole);
-      if (!isValid) {
-        setJobRoleError('Please enter a valid Target Job Title.');
+      try {
+        const isValid = await validateJobTitle(cleanRole);
+        if (!isValid) {
+          setJobRoleError('Please enter a valid Target Job Title.');
+          setIsStarting(false);
+          return;
+        }
+      } catch (err) {
+        setJobRoleError('Validation service is temporarily unavailable. Please try again.');
         setIsStarting(false);
         return;
       }
