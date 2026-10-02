@@ -552,3 +552,23 @@ export async function fetchAnswerComparison(params: {
 }
 
 
+
+export async function validateJobTitle(jobRole: string): Promise<boolean> {
+  const baseUrl = getApiBaseUrl();
+  const apiUrl = baseUrl + '/interview/validate-job-title';
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_role: jobRole })
+    });
+    if (response.ok) {
+      const data = await response.json();
+      return Boolean(data.is_valid);
+    }
+  } catch (err) {
+    console.warn('Failed to validate job title:', err);
+  }
+  return false;
+}

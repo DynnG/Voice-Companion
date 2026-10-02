@@ -1038,3 +1038,16 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run("backend.main:app", host=HOST, port=PORT, reload=True)
 
+
+class JobTitleValidationRequest(BaseModel):
+    job_role: str
+
+@app.post("/interview/validate-job-title", tags=["Interview Brain"])
+@app.post("/api/interview/validate-job-title", tags=["Interview Brain"])
+async def validate_job_title_endpoint(req: JobTitleValidationRequest):
+    \"\"\"
+    Validate whether the manually entered job title is a legitimate job role.
+    \"\"\"
+    gemini = GeminiInterviewService.get_instance()
+    is_valid = await gemini.validate_job_title(req.job_role)
+    return {\"is_valid\": is_valid}

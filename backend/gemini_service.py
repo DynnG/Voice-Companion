@@ -1578,3 +1578,33 @@ class GeminiInterviewService:
                 "error_message": "AI notes are unavailable right now."
             }
 
+    async def validate_job_title(self, job_title: str) -> bool:
+        "\""
+        Validate whether the COMPLETE input is a legitimate job title using Gemini.
+        Returns a simple boolean.
+        "\""
+        clean_title = job_title.strip()
+        if not clean_title:
+            return False
+
+        api_key = self.get_api_key()
+        if not api_key:
+            return False
+
+        prompt = (
+            "You are a validation assistant. A user has entered the following string as their Target Job Title for an interview:\\n\\n"
+            f"\\"{clean_title}\\"\\n\\n"
+            "Does this COMPLETE entered phrase represent a real, recognized, legitimate professional job role or title?\\n"
+            "Respond with exactly 'VALID' if it is a legitimate job title, or 'INVALID' if it is not."
+        )
+
+        try:
+            resp_text = await self._call_gemini_api(
+                prompt=prompt,
+                system_instruction="You validate job titles. Respond only with 'VALID' or 'INVALID'."
+            )
+            return "VALID" in resp_text.strip().upper()
+        except Exception as e:
+            logger.warning(f"Failed to validate job title: {e}")
+            return False
+
