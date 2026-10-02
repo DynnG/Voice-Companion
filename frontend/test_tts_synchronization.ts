@@ -2,7 +2,7 @@
  * Comprehensive MockMate TTS & Audio Playback Synchronization Test Suite
  */
 
-import { cleanTextForSpeech } from '../src/services/ttsService';
+import { cleanTextForSpeech } from './src/services/ttsService';
 
 async function runTests() {
   console.log('============================================================');

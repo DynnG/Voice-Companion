@@ -63,7 +63,7 @@ _load_env_file()
 
 # Whisper Model Configuration
 # Model size options: "tiny", "base", "small", "medium", "large-v3"
-# "small" is default for local CPU, "base" is serverless default to fit within ephemeral storage and cold-start limits
+# Local default is small. Vercel uses external STT; base is only a legacy model label.
 default_whisper_model = "base" if os.environ.get("VERCEL") else "small"
 MODEL_SIZE: str = os.getenv("WHISPER_MODEL_SIZE", default_whisper_model)
 

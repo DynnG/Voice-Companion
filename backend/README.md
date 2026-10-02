@@ -1,5 +1,10 @@
 # Pal Voice Companion — STT Backend (faster-whisper)
 
+Vercel STT deployment policy and disk investigation: see
+[STT_DEPLOYMENT.md](STT_DEPLOYMENT.md). Vercel never preloads or downloads local
+Whisper weights; configure `STT_SERVICE_URL` for dedicated inference. Local
+Whisper behavior is preserved, including optional startup preload.
+
 A high-performance Speech-to-Text (STT) backend service powered by [FastAPI](https://fastapi.tiangolo.com/) and [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CTranslate2-optimized Whisper engine) designed for interview dialogue recognition.
 
 ---
