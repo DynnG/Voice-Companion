@@ -25,7 +25,7 @@ try:
         GEMINI_API_KEY, GEMINI_MODEL,
         TTS_ENABLED, KOKORO_MODEL, KOKORO_VOICE
     )
-    from .stt_service import STTService
+    from .stt_service import STTService, STTUnavailable, should_preload_stt
     from .gemini_service import (
         GeminiInterviewService, extract_conversational_text,
         classify_gemini_error, get_user_friendly_error_message,
@@ -47,7 +47,7 @@ except ImportError:
         GEMINI_API_KEY, GEMINI_MODEL,
         TTS_ENABLED, KOKORO_MODEL, KOKORO_VOICE
     )
-    from stt_service import STTService
+    from stt_service import STTService, STTUnavailable, should_preload_stt
     from gemini_service import (
         GeminiInterviewService, extract_conversational_text,
         classify_gemini_error, get_user_friendly_error_message,
@@ -85,11 +85,14 @@ async def lifespan(app: FastAPI):
         f"Initializing STT Service (Model: {MODEL_SIZE}, Device: {DEVICE}, "
         f"Compute: {COMPUTE_TYPE}, Beam: {BEAM_SIZE}, DefaultLang: {DEFAULT_LANGUAGE})..."
     )
-    try:
-        STTService.get_instance().load_model()
-        logger.info("STT Model is preloaded and ready for ultra-low latency transcription.")
-    except Exception as e:
-        logger.error(f"Failed to preload STT model on startup: {e}")
+    if should_preload_stt():
+        try:
+            STTService.get_instance().load_model()
+            logger.info("STT Model is preloaded and ready for ultra-low latency transcription.")
+        except Exception as e:
+            logger.error(f"Failed to preload STT model on startup: {e}")
+    else:
+        logger.info("STT startup preload skipped (external service, Vercel, or STT_PRELOAD=false).")
 
     # Initialize Kokoro-82M ONNX TTS Service (Local CPU)
     if TTS_ENABLED:
@@ -159,6 +162,7 @@ class StageTimings(BaseModel):
 class TranscribeResponse(BaseModel):
     text: str
     transcription: Optional[str] = None
+    raw_text: Optional[str] = None
     ai_response: Optional[str] = None
     should_end: Optional[bool] = False
     reason: Optional[str] = None
@@ -877,6 +881,8 @@ async def transcribe_audio(
 
         return result
 
+    except STTUnavailable as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
     except (HTTPException, DatabaseUnavailable):
         raise
     except ValueError as ve:
