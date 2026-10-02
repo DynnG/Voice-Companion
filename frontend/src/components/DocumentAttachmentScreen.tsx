@@ -470,7 +470,8 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
               placeholder="Enter your Target Job Title"
               value={jobRole}
               onChange={(e) => {
-                setJobRole(e.target.value);
+                const sanitizedValue = e.target.value.replace(/[^A-Za-z\s]/g, '');
+                setJobRole(sanitizedValue);
                 if (jobRoleError) setJobRoleError('');
               }}
               className={`setup-job-input ${jobRoleError ? '!border-red-500 !ring-1 !ring-red-500/20' : ''}`}
