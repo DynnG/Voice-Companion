@@ -210,7 +210,6 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       setCustomLabel('Pal (Interviewer)');
 
       speakText(initialQuestionToSpeak, {
-        engine: 'kokoro',
         onStart: () => {
           setState('speaking');
         },
@@ -832,7 +831,6 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
       // Speak ending message with TTS
       speakText(INTERVIEW_ENDING_MESSAGE, {
-        engine: 'kokoro',
         onStart: () => {
           setState('speaking');
         },
@@ -958,7 +956,6 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         onInterviewCompleted?.(endReason);
 
         speakText(aiResponse, {
-          engine: 'kokoro',
           onStart: () => {
             setState('speaking');
           },
@@ -996,7 +993,6 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       setCustomLabel(currentTurnLabel);
 
       speakText(aiResponse, {
-        engine: 'kokoro',
         onStart: () => {
           setState('speaking');
           if (isOffTopic) {
