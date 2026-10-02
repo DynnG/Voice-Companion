@@ -266,3 +266,5 @@ Official integration: https://docs.turso.tech/sdk/python/orm/sqlalchemy
 ### Kokoro speech performance
 
 Kokoro uses a CPU-only ONNX session with two intra-op threads by default, one inter-op thread, and worker spinning disabled. Set KOKORO_CPU_THREADS between 1 and 8 to tune the deployment after measuring synthesis latency. The TTS endpoint runs in FastAPI's worker pool so synthesis does not block the event loop used by interview requests. This does not guarantee low latency on a CPU-constrained host; benchmark real speech before switching the frontend to Kokoro.
+
+Kokoro model selection: `KOKORO_MODEL_PRECISION=int8` preserves the smaller default model; `fp32` downloads the official full-precision model into the same writable temporary cache. FP32 can reduce CPU synthesis latency on hosts where INT8 kernels are slow, but uses more memory. Benchmark latency and memory on the deployed host before enabling it. Custom `KOKORO_MODEL_PATH` still takes precedence.

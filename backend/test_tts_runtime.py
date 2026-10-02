@@ -61,3 +61,36 @@ async def test_health_remains_responsive_during_synthesis():
             assert audio.status_code == 200
             assert audio.headers["content-type"] == "audio/wav"
             assert audio.content == b"RIFF-test-audio"
+
+@pytest.mark.parametrize("precision,filename,url", [
+    ("int8", "kokoro-v1.0.int8.onnx", tts_service.KOKORO_INT8_MODEL_URL),
+    ("fp32", "kokoro-v1.0.onnx", tts_service.KOKORO_FP32_MODEL_URL),
+])
+def test_selected_model_precision_uses_writable_cache(monkeypatch, tmp_path, precision, filename, url):
+    monkeypatch.setenv("KOKORO_MODEL_PRECISION", precision)
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    monkeypatch.setattr(tts_service, "__file__", str(bundle / "tts_service.py"))
+    monkeypatch.setattr(tts_service, "KOKORO_MODEL_PATH", None)
+    monkeypatch.setattr(tts_service, "KOKORO_VOICES_PATH", None)
+    monkeypatch.setattr(tts_service, "runtime_directory", lambda name: cache)
+    def download(source, destination):
+        from pathlib import Path
+        Path(destination).write_bytes(b"model")
+    with patch.object(tts_service.urllib.request, "urlretrieve", side_effect=download) as retrieve:
+        model, voices = tts_service.TTSService()._resolve_paths()
+    assert model == str(cache / filename)
+    assert voices == str(cache / "voices-v1.0.bin")
+    assert retrieve.call_args_list[0].args[0] == url
+    assert list(bundle.iterdir()) == []
+    assert not list(cache.glob("*.part"))
+
+
+def test_invalid_precision_fails_before_downloading(monkeypatch):
+    monkeypatch.setenv("KOKORO_MODEL_PRECISION", "invalid")
+    with patch.object(tts_service.urllib.request, "urlretrieve") as retrieve:
+        with pytest.raises(ValueError, match="KOKORO_MODEL_PRECISION"):
+            tts_service.TTSService()._resolve_paths()
+    retrieve.assert_not_called()
