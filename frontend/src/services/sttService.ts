@@ -130,6 +130,9 @@ export async function transcribeAudio(
   }
 
   formData.append('file', audioBlob, `recording.${ext}`);
+  if (import.meta.env.DEV) {
+    console.info('[Audio diagnostic] Upload', { filename: `recording.${ext}`, contentType: audioBlob.type, bytes: audioBlob.size });
+  }
 
   if (context?.jobRole) {
     formData.append('job_role', context.jobRole);
