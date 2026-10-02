@@ -152,6 +152,7 @@ class TTSService:
         self.kokoro = None
         self.loaded: bool = False
         self.error: Optional[str] = None
+        self._synthesis_lock = threading.Lock()
         self.sample_rate: int = 24000
         self.available_voices: List[str] = []
 
@@ -260,6 +261,10 @@ class TTSService:
             session_options = ort.SessionOptions()
             session_options.intra_op_num_threads = threads
             session_options.inter_op_num_threads = 1
+            # Avoid retaining large FP32 activation arenas beside the STT model.
+            if os.getenv("KOKORO_MODEL_PRECISION", "int8").strip().lower() == "fp32":
+                session_options.enable_cpu_mem_arena = False
+                session_options.enable_mem_pattern = False
             session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
             session_options.add_session_config_entry("session.intra_op.allow_spinning", "0")
             session_options.add_session_config_entry("session.inter_op.allow_spinning", "0")
@@ -299,6 +304,10 @@ class TTSService:
         if not self.loaded or self.kokoro is None:
             raise RuntimeError(f"Kokoro TTS model is not loaded: {self.error or 'Initialization failed'}")
 
+        with self._synthesis_lock:
+            return self._synthesize(text, voice, speed)
+
+    def _synthesize(self, text: str, voice: Optional[str], speed: float) -> Tuple[bytes, int]:
         clean_text = clean_text_for_speech(text)
         if not clean_text:
             raise ValueError("Input text for speech synthesis cannot be empty.")

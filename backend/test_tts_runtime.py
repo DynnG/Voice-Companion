@@ -12,7 +12,9 @@ import main
 import tts_service
 
 
-def test_kokoro_uses_bounded_cpu_threads_and_disables_spinning(monkeypatch):
+@pytest.mark.parametrize("precision", ["int8", "fp32"])
+def test_kokoro_uses_bounded_cpu_threads_and_disables_spinning(monkeypatch, precision):
+    monkeypatch.setenv("KOKORO_MODEL_PRECISION", precision)
     monkeypatch.setenv("KOKORO_CPU_THREADS", "2")
     options = Mock()
     session = Mock()
@@ -25,6 +27,9 @@ def test_kokoro_uses_bounded_cpu_threads_and_disables_spinning(monkeypatch):
          patch.object(kokoro_onnx.Kokoro, "from_session", return_value=kokoro) as create_kokoro:
         service.load_model()
     assert service.is_loaded(), service.get_error()
+    if precision == "fp32":
+        assert options.enable_cpu_mem_arena is False
+        assert options.enable_mem_pattern is False
     assert options.intra_op_num_threads == 2
     assert options.inter_op_num_threads == 1
     assert options.execution_mode == onnxruntime.ExecutionMode.ORT_SEQUENTIAL
@@ -94,3 +99,37 @@ def test_invalid_precision_fails_before_downloading(monkeypatch):
         with pytest.raises(ValueError, match="KOKORO_MODEL_PRECISION"):
             tts_service.TTSService()._resolve_paths()
     retrieve.assert_not_called()
+
+
+def test_synthesis_requests_do_not_allocate_models_concurrently():
+    from concurrent.futures import ThreadPoolExecutor
+    service = tts_service.TTSService()
+    service.enabled = service.loaded = True
+    service.kokoro = Mock()
+    entered = threading.Event()
+    release = threading.Event()
+    second_started = threading.Event()
+    calls = []
+    def generate(text, voice, speed):
+        calls.append(text)
+        if text == "first":
+            entered.set()
+            assert release.wait(3)
+        return b"audio", 24000
+    def second_request():
+        second_started.set()
+        return service.synthesize("second")
+    service._synthesize = generate
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(service.synthesize, "first")
+        assert entered.wait(1)
+        second = pool.submit(second_request)
+        try:
+            assert second_started.wait(1)
+            assert calls == ["first"]
+            assert not second.done()
+        finally:
+            release.set()
+        assert first.result() == (b"audio", 24000)
+        assert second.result() == (b"audio", 24000)
+    assert calls == ["first", "second"]
