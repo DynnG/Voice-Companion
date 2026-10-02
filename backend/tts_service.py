@@ -53,6 +53,7 @@ def download_model_file(url: str, destination: Path) -> str:
 
 # Official Kokoro-82M ONNX release URLs (quantized INT8 model + all 54 voices)
 KOKORO_INT8_MODEL_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.int8.onnx"
+KOKORO_FP32_MODEL_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx"
 KOKORO_VOICES_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin"
 
 # A modest conversational slowdown; callers can still override the model rate.
@@ -151,6 +152,7 @@ class TTSService:
         self.kokoro = None
         self.loaded: bool = False
         self.error: Optional[str] = None
+        self._synthesis_lock = threading.Lock()
         self.sample_rate: int = 24000
         self.available_voices: List[str] = []
 
@@ -176,6 +178,12 @@ class TTSService:
         kokoro_dir = backend_dir / "models" / "kokoro"
         # Bundled model files are read-only inputs, never runtime download targets.
 
+        precision = os.getenv("KOKORO_MODEL_PRECISION", "int8").strip().lower()
+        if precision not in {"int8", "fp32"}:
+            raise ValueError("KOKORO_MODEL_PRECISION must be int8 or fp32")
+        model_filename = "kokoro-v1.0.onnx" if precision == "fp32" else "kokoro-v1.0.int8.onnx"
+        model_url = KOKORO_FP32_MODEL_URL if precision == "fp32" else KOKORO_INT8_MODEL_URL
+
         model_path: Optional[str] = None
         voices_path: Optional[str] = None
 
@@ -187,11 +195,11 @@ class TTSService:
 
         # 2. Check HuggingFace onnx-community model path
         hf_dir = backend_dir / "models" / "kokoro_hf" / "onnx" / "model_quantized.onnx"
-        if not model_path and hf_dir.exists():
+        if not model_path and precision == "int8" and hf_dir.exists():
             model_path = str(hf_dir)
 
         # 3. Check default local model paths
-        default_model = kokoro_dir / "kokoro-v1.0.int8.onnx"
+        default_model = kokoro_dir / model_filename
         if not model_path and default_model.exists():
             model_path = str(default_model)
 
@@ -205,10 +213,10 @@ class TTSService:
 
         # 4. If files are not present, download automatically
         if not model_path:
-            target_model = runtime_directory("savi-kokoro") / "kokoro-v1.0.int8.onnx"
+            target_model = runtime_directory("savi-kokoro") / model_filename
             logger.info(f"Downloading Kokoro ONNX model to {target_model}...")
             try:
-                target_model = download_model_file(KOKORO_INT8_MODEL_URL, target_model)
+                target_model = download_model_file(model_url, target_model)
                 logger.info("Kokoro ONNX model download complete.")
                 model_path = target_model
             except Exception as e:
@@ -246,7 +254,24 @@ class TTSService:
                 f"Loading Kokoro-82M ONNX TTS from '{os.path.basename(model_path)}' "
                 f"with voices '{os.path.basename(voices_path)}' on CPU..."
             )
-            self.kokoro = Kokoro(model_path, voices_path)
+            import onnxruntime as ort
+            threads = int(os.getenv("KOKORO_CPU_THREADS", "2"))
+            if not 1 <= threads <= 8:
+                raise ValueError("KOKORO_CPU_THREADS must be between 1 and 8")
+            session_options = ort.SessionOptions()
+            session_options.intra_op_num_threads = threads
+            session_options.inter_op_num_threads = 1
+            # Avoid retaining large FP32 activation arenas beside the STT model.
+            if os.getenv("KOKORO_MODEL_PRECISION", "int8").strip().lower() == "fp32":
+                session_options.enable_cpu_mem_arena = False
+                session_options.enable_mem_pattern = False
+            session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            session_options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+            session_options.add_session_config_entry("session.inter_op.allow_spinning", "0")
+            session = ort.InferenceSession(
+                model_path, sess_options=session_options, providers=["CPUExecutionProvider"]
+            )
+            self.kokoro = Kokoro.from_session(session, voices_path)
             self.available_voices = self.kokoro.get_voices()
             self.loaded = True
             self.error = None
@@ -279,6 +304,10 @@ class TTSService:
         if not self.loaded or self.kokoro is None:
             raise RuntimeError(f"Kokoro TTS model is not loaded: {self.error or 'Initialization failed'}")
 
+        with self._synthesis_lock:
+            return self._synthesize(text, voice, speed)
+
+    def _synthesize(self, text: str, voice: Optional[str], speed: float) -> Tuple[bytes, int]:
         clean_text = clean_text_for_speech(text)
         if not clean_text:
             raise ValueError("Input text for speech synthesis cannot be empty.")
