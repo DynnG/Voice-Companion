@@ -1323,14 +1323,12 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
               <StateLabel state={state} customLabel={customLabel} />
             </div>
 
-            {/* Dynamic Subtitle Slot: Visible when caption text exists, or collapsed during replay */}
-            {captionVisible ? (
-              <div className="w-full max-w-lg min-h-[40px] max-h-[56px] shrink-0 flex items-center justify-center mt-0.5 px-3 overflow-hidden text-center">
+            {/* Interview text is shown in the transcript, without a duplicate below the orb. */}
+            {captionVisible && (
+              <div className="hidden" aria-hidden="true">
                 <ResponseCaption captionText={captionText} visible={captionVisible} />
               </div>
-            ) : !replayState.isVisible ? (
-              <div className="w-full max-w-lg min-h-[40px] max-h-[56px] shrink-0 flex items-center justify-center mt-0.5 px-3 overflow-hidden text-center" />
-            ) : null}
+            )}
 
             {/* Status & Info Container under the Orb */}
             {isCameraActive ? null : (
