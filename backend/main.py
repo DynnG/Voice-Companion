@@ -32,7 +32,7 @@ try:
         sanitize_error_message, HARD_INTERVIEW_TURN_LIMIT,
         HARD_LIMIT_ENDING_MESSAGE
     )
-    from .tts_service import TTSService
+    from .tts_service import TTSService, DEFAULT_KOKORO_SPEED
     from .document_service import extract_document_text
     from .database import engine, Base, get_db, init_db, DatabaseUnavailable, database_failure
     from .models import Interview, Document, Message
@@ -54,7 +54,7 @@ except ImportError:
         sanitize_error_message, HARD_INTERVIEW_TURN_LIMIT,
         HARD_LIMIT_ENDING_MESSAGE
     )
-    from tts_service import TTSService
+    from tts_service import TTSService, DEFAULT_KOKORO_SPEED
     from document_service import extract_document_text
     from database import engine, Base, get_db, init_db, DatabaseUnavailable, database_failure
     from models import Interview, Document, Message
@@ -218,7 +218,7 @@ class InterviewChatResponse(BaseModel):
 class TTSRequest(BaseModel):
     text: str
     voice: Optional[str] = None
-    speed: Optional[float] = 1.0
+    speed: Optional[float] = DEFAULT_KOKORO_SPEED
 
 class AnswerNotesRequest(BaseModel):
     interview_id: Optional[str] = None
@@ -650,7 +650,7 @@ async def text_to_speech(req: TTSRequest):
         wav_bytes, sample_rate = tts.synthesize(
             text=req.text.strip(),
             voice=req.voice,
-            speed=req.speed or 1.0
+            speed=req.speed or DEFAULT_KOKORO_SPEED
         )
         return Response(
             content=wav_bytes,

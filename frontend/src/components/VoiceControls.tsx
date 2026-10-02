@@ -25,7 +25,6 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
   onTogglePanel,
   statusHint,
   isCompleted = false,
-  onOpenReview,
   canDownloadReview = false,
   onDownloadReview,
   isDownloadingReview = false,
@@ -106,15 +105,6 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
         <span>{statusHint || 'Tap microphone to speak · faster-whisper STT backend connected'}</span>
         {downloadReviewError && (
           <span className="text-[10px] text-[#FFC370] font-manrope">{downloadReviewError}</span>
-        )}
-        {isCompleted && onOpenReview && (
-          <button
-            onClick={onOpenReview}
-            className="flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-manrope font-semibold bg-[rgba(255,179,71,0.12)] hover:bg-[rgba(255,179,71,0.22)] text-[#FFC370] border border-[rgba(255,179,71,0.4)] transition-all active:scale-95"
-            title="Open Completion Review"
-          >
-            <span>View Completion Review</span>
-          </button>
         )}
       </div>
     </footer>

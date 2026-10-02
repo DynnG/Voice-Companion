@@ -295,7 +295,7 @@ async function speakWithKokoroBackend(
       body: JSON.stringify({
         text: cleanText,
         voice: options?.voice,
-        speed: options?.speed || 1.0,
+        speed: options?.speed || 0.92,
       }),
       signal: abortController.signal,
     });

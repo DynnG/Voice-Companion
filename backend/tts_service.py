@@ -55,6 +55,11 @@ def download_model_file(url: str, destination: Path) -> str:
 KOKORO_INT8_MODEL_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.int8.onnx"
 KOKORO_VOICES_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin"
 
+# A modest conversational slowdown; callers can still override the model rate.
+DEFAULT_KOKORO_SPEED = 0.92
+SENTENCE_PAUSE_SECONDS = 0.18
+CLAUSE_PAUSE_SECONDS = 0.08
+
 
 def clean_text_for_speech(raw_text: str) -> str:
     """
@@ -260,7 +265,7 @@ class TTSService:
         self,
         text: str,
         voice: Optional[str] = None,
-        speed: float = 1.0
+        speed: float = DEFAULT_KOKORO_SPEED
     ) -> Tuple[bytes, int]:
         """
         Synthesize speech from input text using Kokoro ONNX.
@@ -294,9 +299,6 @@ class TTSService:
         audio_segments: List[np.ndarray] = []
         sample_rate = self.sample_rate
 
-        # Natural inter-sentence pause: 120ms of silence
-        pause_samples = np.zeros(int(sample_rate * 0.12), dtype=np.float32)
-
         for i, chunk in enumerate(chunks):
             try:
                 samples, sr = self.kokoro.create(
@@ -310,7 +312,10 @@ class TTSService:
                     sample_rate = sr
                     # Add pause between consecutive sentences
                     if i < len(chunks) - 1:
-                        audio_segments.append(pause_samples)
+                        # Keep clause breaks shorter than completed thoughts.
+                        # Commas within a chunk remain Kokoro's own prosody.
+                        pause = CLAUSE_PAUSE_SECONDS if chunk.endswith((",", ";", ":")) else SENTENCE_PAUSE_SECONDS
+                        audio_segments.append(np.zeros(int(sr * pause), dtype=np.float32))
             except Exception as chunk_err:
                 logger.warning(f"Error synthesizing chunk '{chunk[:30]}...': {chunk_err}")
                 continue

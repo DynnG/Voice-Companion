@@ -7,18 +7,15 @@
  *
  * Requirements:
  * - Shown only after interview reaches COMPLETED.
- * - Actions: [ Download Interview Review ] and [ Close ].
+ * - Download action with a header close control.
  * - Generates PDF locally in the browser from session memory.
  * - Robust error handling with retry and zero database persistence.
  */
 
 import React, { useState } from 'react';
 import {
-  Award,
   Download,
   X,
-  FileText,
-  Clock,
   CheckCircle2,
   AlertCircle,
   Loader2,
@@ -105,21 +102,12 @@ export const PostInterviewCompletionModal: React.FC<PostInterviewCompletionModal
       aria-modal="true"
       aria-labelledby="completion-modal-title"
     >
-      <div className="relative w-full max-w-2xl bg-gradient-to-b from-[rgba(218,241,222,0.06)] via-[rgba(7,28,19,0.80)] to-[rgba(5,20,14,0.85)] backdrop-blur-2xl border border-[rgba(218,241,222,0.14)] border-t-[rgba(245,238,219,0.28)] rounded-3xl shadow-[inset_0_1px_1px_rgba(245,238,219,0.22),0_30px_90px_rgba(0,0,0,0.65)] overflow-hidden flex flex-col max-h-[92vh] text-[#F5EEDB] font-manrope">
-        {/* Top Accent Line */}
-        <div className="h-1 w-full bg-gradient-to-r from-[#046241] via-[#8EB69B] to-[#FFB347]" />
-
+      <div className="relative w-full max-w-2xl bg-[#0D2017] border border-[#344A3D] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] text-[#F5EEDB] font-manrope">
         {/* Modal Header */}
         <div className="p-5 sm:p-6 pb-3 border-b border-[rgba(218,241,222,0.12)] flex items-start justify-between gap-4">
           <div className="flex items-start gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-[rgba(255,179,71,0.12)] border border-[rgba(255,179,71,0.30)] border-t-[rgba(255,195,112,0.50)] flex items-center justify-center text-[#FFB347] shrink-0 shadow-[inset_0_1px_1px_rgba(255,195,112,0.22)]">
-              <Award className="w-6 h-6" />
-            </div>
             <div>
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-manrope font-semibold tracking-wider uppercase bg-[rgba(255,179,71,0.14)] text-[#FFC370] border border-[rgba(255,179,71,0.35)]">
-                  Interview Concluded
-                </span>
                 <span className="text-xs text-[#8EB69B] font-manrope">
                   {sessionData.jobRole}
                 </span>
@@ -128,7 +116,7 @@ export const PostInterviewCompletionModal: React.FC<PostInterviewCompletionModal
                 id="completion-modal-title"
                 className="text-lg sm:text-xl font-fraunces font-medium text-[#F5EEDB] tracking-tight"
               >
-                YOU&apos;VE FINISHED YOUR INTERVIEW
+                Interview complete
               </h2>
               <p className="text-xs sm:text-sm text-[#8EB69B] mt-0.5 font-manrope">
                 Your interview session is complete. Review your answers and feedback below.
@@ -145,14 +133,13 @@ export const PostInterviewCompletionModal: React.FC<PostInterviewCompletionModal
           </button>
         </div>
 
-        {/* Session Summary Pills */}
-        <div className="px-5 sm:px-6 py-3 bg-[rgba(12,38,26,0.45)] backdrop-blur-md border-b border-[rgba(218,241,222,0.08)] grid grid-cols-3 gap-2 sm:gap-4 shrink-0 text-center shadow-[inset_0_1px_1px_rgba(245,238,219,0.10)]">
+        {/* Session Summary */}
+        <div className="px-5 sm:px-6 py-3 bg-[#12291D] border-b border-[rgba(218,241,222,0.08)] grid grid-cols-3 gap-2 sm:gap-4 shrink-0 text-center">
           <div className="flex flex-col items-center justify-center py-1">
             <span className="text-[10px] font-manrope uppercase tracking-wider text-[#8EB69B]">
               Questions
             </span>
-            <span className="text-sm sm:text-base font-manrope font-bold text-[#F5EEDB] flex items-center gap-1.5 mt-0.5">
-              <FileText className="w-3.5 h-3.5 text-[#2FE0A8]" />
+            <span className="text-lg sm:text-xl font-manrope font-semibold text-[#F5EEDB] flex items-center gap-1.5 mt-0.5">
               {sessionData.exchanges.length} Answered
             </span>
           </div>
@@ -160,8 +147,7 @@ export const PostInterviewCompletionModal: React.FC<PostInterviewCompletionModal
             <span className="text-[10px] font-manrope uppercase tracking-wider text-[#8EB69B]">
               Duration
             </span>
-            <span className="text-sm sm:text-base font-manrope font-bold text-[#F5EEDB] flex items-center gap-1.5 mt-0.5">
-              <Clock className="w-3.5 h-3.5 text-[#FFB347]" />
+            <span className="text-lg sm:text-xl font-manrope font-semibold text-[#F5EEDB] flex items-center gap-1.5 mt-0.5">
               {durationStr}
             </span>
           </div>
@@ -169,8 +155,7 @@ export const PostInterviewCompletionModal: React.FC<PostInterviewCompletionModal
             <span className="text-[10px] font-manrope uppercase tracking-wider text-[#8EB69B]">
               Session Status
             </span>
-            <span className="text-sm sm:text-base font-manrope font-bold text-[#2FE0A8] flex items-center gap-1.5 mt-0.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#2FE0A8]" />
+            <span className="text-lg sm:text-xl font-manrope font-semibold text-[#2FE0A8] flex items-center gap-1.5 mt-0.5">
               Completed
             </span>
           </div>
@@ -186,7 +171,7 @@ export const PostInterviewCompletionModal: React.FC<PostInterviewCompletionModal
             sessionData.exchanges.map((exchange, idx) => (
               <div
                 key={exchange.id || idx}
-                className="bg-[rgba(4,23,15,0.45)] backdrop-blur-md border border-[rgba(218,241,222,0.10)] border-t-[rgba(245,238,219,0.18)] shadow-[inset_0_1px_1px_rgba(245,238,219,0.12)] rounded-2xl p-4 space-y-2.5 transition-all"
+                className="bg-[#10241A] border border-[#2A4033] rounded-xl p-4 space-y-2.5 transition-all"
               >
                 {/* Question Header */}
                 <div className="flex items-center justify-between text-xs text-[#FFC370] font-manrope font-semibold">
@@ -256,20 +241,13 @@ export const PostInterviewCompletionModal: React.FC<PostInterviewCompletionModal
         )}
 
         {/* Modal Actions Footer */}
-        <div className="p-4 sm:p-5 border-t border-[rgba(245,238,219,0.12)] bg-gradient-to-b from-[rgba(218,241,222,0.03)] to-[rgba(12,38,26,0.50)] backdrop-blur-md flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0 shadow-[inset_0_1px_0_rgba(245,238,219,0.08)]">
+        <div className="p-4 sm:p-5 border-t border-[rgba(245,238,219,0.12)] bg-[#0D2017] flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <div className="text-[11px] text-[#8EB69B] flex items-center gap-1.5 text-center sm:text-left font-manrope">
             <span className="w-1.5 h-1.5 rounded-full bg-[#2FE0A8] inline-block" />
             <span>PDF is generated client-side from memory. Zero data is uploaded.</span>
           </div>
 
           <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-            <button
-              onClick={onClose}
-              className="flex-1 sm:flex-none px-4 py-2 rounded-full text-xs sm:text-sm font-manrope font-semibold text-[#F5EEDB] border border-[rgba(218,241,222,0.14)] border-t-[rgba(245,238,219,0.24)] bg-[rgba(9,32,23,0.60)] hover:bg-[rgba(9,32,23,0.80)] backdrop-blur-md shadow-[inset_0_1px_1px_rgba(245,238,219,0.14)] active:scale-95 transition-all"
-            >
-              Close
-            </button>
-
             <button
               onClick={handleDownload}
               disabled={isGenerating}
