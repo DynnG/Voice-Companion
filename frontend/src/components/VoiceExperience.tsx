@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { VoiceState, AttachedDocument, Message, AnswerAttempt, ReplayState, InterviewExchangeRecord } from '../types/conversation';
-import { Sparkles, MessageSquare, User, Plus, AlertCircle, X } from 'lucide-react';
+import { Sparkles, MessageSquare, User, Plus, AlertCircle, X, Lightbulb } from 'lucide-react';
 import { VoiceCreature } from './VoiceCreature';
 import { StateLabel } from './StateLabel';
 import { ResponseCaption } from './ResponseCaption';
@@ -79,6 +79,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   onNewInterview
 }) => {
   const [isErrorDismissed, setIsErrorDismissed] = useState(false);
+  const [isTipVisible, setIsTipVisible] = useState(true);
   useEffect(() => {
     setIsErrorDismissed(false);
   }, [startInterviewError, interviewId]);
@@ -1324,7 +1325,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
                 onTap={!isMicEnabled || isCompleted ? undefined : handleToggleFlow}
                 audioLevelRef={micAudioLevelRef}
                 compact={isCompactVisual}
-                className={!isCameraActive && !isCompactVisual ? 'canvas-wrap--hero' : ''}
+                className={`interview-orb ${!isCameraActive && !isCompactVisual ? 'canvas-wrap--hero' : ''}`}
               />
             </div>
 
@@ -1393,7 +1394,14 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
       {/* 4. Dedicated Lower-Middle Zone: Answer Comparison / Replay Panel & Bottom Controls (One Cohesive Lower Section) */}
       {/* Container class invariant: w-full flex-1 min-h-0 flex flex-col items-center justify-center */}
-      <div className="w-full shrink-0 flex flex-col items-center gap-1.5 sm:gap-2 z-10 mt-auto pb-1 transition-all duration-300 ease-out">
+      <div className="relative w-full shrink-0 flex flex-col items-center gap-1.5 sm:gap-2 z-10 mt-auto pb-1 transition-all duration-300 ease-out">
+        {isTipVisible && (
+          <aside className="interview-tip-card" aria-label="Interview tip">
+            <div className="interview-tip-heading"><Lightbulb size={18} aria-hidden="true" /><strong>Tip</strong></div>
+            <button type="button" className="interview-tip-dismiss" aria-label="Dismiss interview tip" onClick={() => setIsTipVisible(false)}><X size={14} aria-hidden="true" /></button>
+            <p>Be specific about your experiences, use concrete examples, and highlight the impact you made.</p>
+          </aside>
+        )}
         {/* Dedicated Lower-Middle Zone: Answer Comparison / Replay Panel */}
         {replayState.isVisible && replayState.attempt1 && (
           <div

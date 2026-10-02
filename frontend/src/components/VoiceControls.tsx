@@ -1,4 +1,4 @@
-import { Mic, Camera, Lightbulb } from 'lucide-react';
+import { Mic, Camera } from 'lucide-react';
 import { VoiceState } from '../types/conversation';
 
 interface VoiceControlsProps {
@@ -39,11 +39,6 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
   void isDownloadingReview;
   return (
     <footer className={`voice-footer relative transition-all duration-300 ${compact ? 'py-1 sm:py-2' : 'py-2 sm:py-3'}`}>
-      <details className="interview-tip-card" open>
-        <summary><Lightbulb size={18} aria-hidden="true" /><strong>Tip</strong></summary>
-        <p>Be specific about your experiences, use concrete examples, and highlight the impact you made.</p>
-      </details>
-
       <div className={`flex items-center justify-center transition-all duration-300 ${compact ? 'gap-5 sm:gap-6' : 'gap-7 sm:gap-8'}`}>
 
         {/* Speak Control: Glass button with Saffron accent */}

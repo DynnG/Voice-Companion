@@ -472,21 +472,29 @@ mark.f {
 .interview-shell .stage > header > div:last-child { margin-left: auto; }
 .interview-shell .interview-visual-stage { width: 100%; justify-self: center; }
 .interview-shell .voice-footer { width: 100%; }
+/* Floating tip sits above the replay/controls section without consuming a row. */
 .interview-tip-card {
-  position: absolute; left: 0; bottom: 4px; width: 250px;
+  position: absolute; left: 0; bottom: calc(100% + 12px); width: 250px;
+  max-width: calc(100vw - 32px); z-index: 20;
   padding: 14px 16px; border-radius: 20px;
-  background: rgba(19,48,32,.55); border: 1px solid rgba(218,241,222,.18);
+  background: rgba(19,48,32,.95); border: 1px solid rgba(218,241,222,.18);
   text-align: left; color: #8EB69B; font-size: 12px; line-height: 1.4;
 }
-.interview-tip-card summary {
-  display: flex; gap: 10px; align-items: center; list-style: none; color: #F5EEDB;
+.interview-tip-heading { display: flex; gap: 10px; align-items: center; color: #F5EEDB; }
+.interview-tip-heading svg { color: #FFB347; flex-shrink: 0; }
+.interview-tip-card p { margin: 4px 0 0 28px; }
+.interview-tip-dismiss {
+  position: absolute; top: 8px; right: 8px; width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%; background: transparent; color: #8EB69B; cursor: pointer;
 }
-.interview-tip-card summary::-webkit-details-marker { display: none; }
-.interview-tip-card summary svg { color: #FFB347; flex-shrink: 0; }
-.interview-tip-card p { display: block; margin: 4px 0 0 28px; }
-.interview-tip-card summary:focus-visible { outline: 2px solid #FFB347; outline-offset: 4px; }
-@media (max-width: 1100px) {
-  .interview-tip-card { position: relative; width: auto; max-width: 360px; margin: 0 auto 8px; padding: 8px 12px; }
-  .interview-tip-card summary { cursor: pointer; }
-  .interview-tip-card:not([open]) p { display: none; }
+.interview-tip-dismiss:hover { background: rgba(218,241,222,.1); color: #F5EEDB; }
+.interview-tip-dismiss:focus-visible { outline: 2px solid #FFB347; outline-offset: 2px; }
+.interview-shell .canvas-wrap.interview-orb.canvas-wrap--compact {
+  width: min(46vw, 26vh, 225px); height: min(46vw, 26vh, 225px);
+}
+@media (max-width: 767px) {
+  .interview-shell .stage[data-camera-active="true"] .canvas-wrap.interview-orb.canvas-wrap--compact {
+    width: min(40vw, 26vh, 225px); height: min(40vw, 26vh, 225px);
+  }
 }
