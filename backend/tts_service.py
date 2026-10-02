@@ -246,7 +246,20 @@ class TTSService:
                 f"Loading Kokoro-82M ONNX TTS from '{os.path.basename(model_path)}' "
                 f"with voices '{os.path.basename(voices_path)}' on CPU..."
             )
-            self.kokoro = Kokoro(model_path, voices_path)
+            import onnxruntime as ort
+            threads = int(os.getenv("KOKORO_CPU_THREADS", "2"))
+            if not 1 <= threads <= 8:
+                raise ValueError("KOKORO_CPU_THREADS must be between 1 and 8")
+            session_options = ort.SessionOptions()
+            session_options.intra_op_num_threads = threads
+            session_options.inter_op_num_threads = 1
+            session_options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            session_options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+            session_options.add_session_config_entry("session.inter_op.allow_spinning", "0")
+            session = ort.InferenceSession(
+                model_path, sess_options=session_options, providers=["CPUExecutionProvider"]
+            )
+            self.kokoro = Kokoro.from_session(session, voices_path)
             self.available_voices = self.kokoro.get_voices()
             self.loaded = True
             self.error = None

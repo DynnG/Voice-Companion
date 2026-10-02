@@ -622,7 +622,8 @@ async def compare_answers(req: AnswerComparisonRequest, db: Session = Depends(ge
 
 @app.post("/tts", tags=["Text-to-Speech"])
 @app.post("/api/tts", tags=["Text-to-Speech"])
-async def text_to_speech(req: TTSRequest):
+# FastAPI runs this CPU-bound handler in its worker pool, keeping the event loop free.
+def text_to_speech(req: TTSRequest):
     """
     Synthesize speech from text using Kokoro-82M ONNX on CPU.
     Returns 24kHz 16-bit PCM WAV audio for direct browser playback.
