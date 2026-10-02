@@ -24,18 +24,42 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
   onSendAnswer,
 }) => {
   const [inputText, setInputText] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const isUserScrolledUp = useRef(false);
+  const prevMsgCountRef = useRef(0);
+  const prevThinkingRef = useRef(false);
 
   // Use only actual current interview messages from session state
   const displayMessages = conversation?.messages || [];
   const questionCount = displayMessages.filter((m) => m.sender === 'Pal').length;
   const messageCount = displayMessages.length;
+  const lastMessageText = displayMessages[displayMessages.length - 1]?.text;
+
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    // Tolerance of ~100px to define 'near bottom'
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    isUserScrolledUp.current = !isNearBottom;
+  };
 
   useEffect(() => {
-    if (isOpen && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    const isNewMsg = displayMessages.length > prevMsgCountRef.current;
+    const isNewThinking = isThinking && !prevThinkingRef.current;
+    
+    prevMsgCountRef.current = displayMessages.length;
+    prevThinkingRef.current = isThinking;
+
+    if (isOpen && scrollContainerRef.current && !isUserScrolledUp.current) {
+      const container = scrollContainerRef.current;
+      if (isNewMsg || isNewThinking) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      } else {
+        // Use instant scroll for streaming updates to avoid jitter
+        container.scrollTop = container.scrollHeight;
+      }
     }
-  }, [displayMessages.length, isOpen, isThinking]);
+  }, [displayMessages.length, lastMessageText, isOpen, isThinking]);
 
   if (!isOpen) return null;
 
@@ -124,7 +148,11 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
       {/* Cream Inner Card matching Image 1 (.cream) */}
       <div className="savi-cream flex-1 min-h-0 flex flex-col overflow-hidden text-[#133020]">
         {/* Messages Transcript Log matching Image 1 */}
-        <div className="flex-1 overflow-y-auto p-3.5 space-y-3 pr-2">
+        <div 
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto p-3.5 space-y-3 pr-2"
+        >
           {(!conversation || conversation.messages.length === 0) ? (
             <div className="flex flex-col items-center justify-center py-12 text-center text-[#133020]/50 font-manrope">
               <MessageSquare className="w-8 h-8 mb-2 opacity-40 text-[#133020]" />
@@ -208,8 +236,6 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
               <span className="text-xs text-[#133020]/70 font-medium ml-1">Savi is formulating a question…</span>
             </div>
           )}
-
-          <div ref={messagesEndRef} />
         </div>
 
         {/* Footer Area: Message count & Download Review Button matching Image 1 */}

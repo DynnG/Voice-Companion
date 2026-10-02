@@ -118,10 +118,19 @@ export const VoiceCompanion: React.FC = () => {
 
       setIsLivePanelOpen(true);
 
+      const formatJobTitle = (title: string) => {
+        return title
+          .trim()
+          .split(/\s+/)
+          .map(word => word ? word.charAt(0).toUpperCase() + word.slice(1) : '')
+          .join(' ');
+      };
+      const displayRole = formatJobTitle(cleanRole);
+
       // 3. Update session state to active with in-memory documents and opening question
       setSession((prev) => ({
         ...prev,
-        jobRole: cleanRole,
+        jobRole: displayRole,
         status: 'active',
         attachedDocuments: docs,
         messages: initialMessages,

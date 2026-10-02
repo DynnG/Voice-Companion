@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { AttachedDocument, DocumentCategory } from '../types/conversation';
-import { extractDocumentText } from '../services/sttService';
+import { extractDocumentText, validateJobTitle } from '../services/sttService';
 import { VoiceCreature } from './VoiceCreature';
 import { ArrowRight, BriefcaseBusiness, FileText, Lightbulb, Mic, UploadCloud } from 'lucide-react';
 
@@ -40,6 +40,7 @@ const POPULAR_ROLES = [
   'Graphic Designer',
   'HR Specialist'
 ];
+
 
 const SAMPLE_TEMPLATES: Record<DocumentCategory, AttachedDocument> = {
   resume: {
@@ -165,6 +166,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
 
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
   const [isStarting, setIsStarting] = useState<boolean>(false);
+  const [jobRoleError, setJobRoleError] = useState<string>('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -361,8 +363,36 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
 
   const handleStartInterview = async () => {
     if (isStarting) return;
+
+    const cleanRole = jobRole.trim();
+
+    if (!cleanRole) {
+      setJobRoleError('Please enter or select a Target Job Title before starting the interview.');
+      return;
+    }
+
     setIsStarting(true);
-    const cleanRole = jobRole.trim() || 'Software Developer';
+    setJobRoleError('');
+
+    const isPopularRole = POPULAR_ROLES.some(
+      (r) => r.toLowerCase() === cleanRole.toLowerCase()
+    );
+
+    if (!isPopularRole) {
+      try {
+        const isValid = await validateJobTitle(cleanRole);
+        if (!isValid) {
+          setJobRoleError('Please enter a valid Target Job Title.');
+          setIsStarting(false);
+          return;
+        }
+      } catch (err) {
+        setJobRoleError('Validation service is temporarily unavailable. Please try again.');
+        setIsStarting(false);
+        return;
+      }
+    }
+
     const readyDocs: AttachedDocument[] = files
       .filter((f) => f.status === 'done')
       .map((f) => ({
@@ -439,10 +469,18 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
               aria-describedby="target-job-description"
               placeholder="Enter your Target Job Title"
               value={jobRole}
-              onChange={(e) => setJobRole(e.target.value)}
+              onChange={(e) => {
+                setJobRole(e.target.value);
+                if (jobRoleError) setJobRoleError('');
+              }}
               className="setup-job-input"
             />
           </div>
+          {jobRoleError && (
+            <p className="text-[#FFB347] text-xs mt-2 ml-1">
+              {jobRoleError}
+            </p>
+          )}
 
           <p className="setup-jlbl" id="popLbl">Or choose from popular roles</p>
           <div className="setup-chips" role="group" aria-labelledby="popLbl">
@@ -454,7 +492,10 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
                   type="button"
                   className="setup-chip"
                   aria-pressed={isSelected}
-                  onClick={() => setJobRole(role)}
+                  onClick={() => {
+                    setJobRole(role);
+                    if (jobRoleError) setJobRoleError('');
+                  }}
                 >
                   {role}
                 </button>

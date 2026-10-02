@@ -139,3 +139,6 @@ temp_audio/
 *.ogg
 *.webm
 *.flac
+
+# Vite cache
+.vite/
