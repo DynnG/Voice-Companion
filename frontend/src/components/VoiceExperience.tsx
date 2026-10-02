@@ -511,6 +511,16 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
         const mimeType = mediaRecorder.mimeType || 'audio/webm';
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        if (import.meta.env.DEV) {
+          console.info('[Audio diagnostic] Recording finalized', {
+            recorderMimeType: mediaRecorder.mimeType,
+            blobType: audioBlob.type,
+            blobBytes: audioBlob.size,
+            chunks: audioChunksRef.current.length,
+            chunkBytes: audioChunksRef.current.map(chunk => chunk.size),
+            recordingMs: Date.now() - recordingStartTimeRef.current,
+          });
+        }
 
         if (audioBlob.size < 100) {
           setState('idle');
@@ -1400,6 +1410,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
               playingAttempt={playingAttempt}
               playbackCurrentTime={playbackCurrentTime}
               playbackProgress={playbackProgress}
+              playbackAudio={replayAudioRef.current}
               onTryAgain={handleTryAgain}
               onCancelRetry={handleCancelRetry}
               onResumeInterview={handleResumeInterview}

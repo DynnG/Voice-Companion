@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Play,
   Pause,
@@ -19,6 +19,7 @@ interface AnswerReplayCardProps {
   playingAttempt?: (1 | 2) | null;
   playbackCurrentTime?: number;
   playbackProgress?: number; // 0 to 1
+  playbackAudio?: HTMLAudioElement | null;
   onTryAgain?: () => void;
   onCancelRetry?: () => void;
   onResumeInterview?: () => void;
@@ -44,38 +45,56 @@ function formatTime(seconds: number): string {
 }
 
 /**
- * Botanical Savi Waveform Visualizer matching Image 1 specification
- * Renders cyan bars on left, yellow/gold in center, and dotted line on right.
+ * Recorded audio amplitude; saffron tracks the audio element's playback clock.
  */
 const WaveformVisualizer: React.FC<{
   progress: number;
   isPlaying: boolean;
+  audioBlob: Blob;
+  playbackAudio?: HTMLAudioElement | null;
   className?: string;
-}> = ({ progress, isPlaying, className }) => {
+}> = ({ progress, isPlaying, audioBlob, playbackAudio, className }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  const peaks = useMemo(() => {
-    const N = 48;
-    return Array.from({ length: N }, (_, i) => {
-      const t = i / N;
-      if (t > 0.75) {
-        return 0.08; // dotted / flat baseline on right
+  const [peaks, setPeaks] = useState<number[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    let context: AudioContext | undefined;
+    setPeaks([]);
+    const analyze = async () => {
+      try {
+        context = new AudioContext();
+        const buffer = await context.decodeAudioData(await audioBlob.arrayBuffer());
+        const values = Array.from({ length: 88 }, (_, index) => {
+          const start = Math.floor(index * buffer.length / 88);
+          const end = Math.floor((index + 1) * buffer.length / 88);
+          let sum = 0;
+          for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+            const samples = buffer.getChannelData(channel);
+            for (let sample = start; sample < end; sample++) sum += samples[sample] ** 2;
+          }
+          return Math.sqrt(sum / Math.max(1, (end - start) * buffer.numberOfChannels));
+        });
+        const maximum = Math.max(...values, 0.001);
+        if (!cancelled) setPeaks(values.map(value => value / maximum));
+      } catch {
+        // A browser decoding limitation must not interrupt audio playback.
+        if (!cancelled) setPeaks([]);
+      } finally {
+        if (context && context.state !== 'closed') await context.close();
       }
-      const envelope = Math.sin((t / 0.75) * Math.PI) ** 0.85;
-      const harmonic = Math.abs(Math.sin(i * 0.74) * Math.cos(i * 0.28));
-      const variation = 0.45 * Math.sin(i * 1.6 + 0.3);
-      const val = 0.22 + 0.78 * Math.max(0.1, envelope * (0.42 + 0.4 * harmonic + 0.18 * variation));
-      return Math.min(1, Math.max(0.18, val));
-    });
-  }, []);
+    };
+    void analyze();
+    return () => { cancelled = true; };
+  }, [audioBlob]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
-    let animId: number;
+    let animation = 0;
+    const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
     const render = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -90,27 +109,21 @@ const WaveformVisualizer: React.FC<{
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
 
-      const n = peaks.length;
+      const currentProgress = playbackAudio && Number.isFinite(playbackAudio.duration) && playbackAudio.duration > 0
+        ? playbackAudio.currentTime / playbackAudio.duration : progress;
+      const ratio = Math.min(1, Math.max(0, currentProgress));
+      const values = peaks.length ? peaks : Array<number>(88).fill(0);
+      const n = values.length;
       const barSpacing = w / n;
-      const barWidth = Math.max(2, barSpacing * 0.52);
-      const pos = Math.min(n, Math.max(0, progress * n));
+      const barWidth = Math.max(1, Math.min(2, barSpacing * 0.34));
+      const pos = ratio * n;
 
-      peaks.forEach((peak, i) => {
-        const t = i / n;
-        const isDotted = t > 0.75;
-        const distanceToCursor = Math.abs(i - pos);
-        const dynamicLift = isPlaying && !isDotted ? Math.exp(-(distanceToCursor ** 2) / 6) * 0.3 : 0;
-        const barHeight = isDotted ? 3 : Math.max(4, peak * (h * 0.85) * (1 + dynamicLift));
+      values.forEach((peak, i) => {
+        const barHeight = Math.max(2, peak * h * 0.8);
         const x = i * barSpacing + (barSpacing - barWidth) / 2;
         const y = (h - barHeight) / 2;
 
-        if (isDotted) {
-          ctx.fillStyle = 'rgba(142, 182, 155, 0.35)';
-        } else if (t < 0.42) {
-          ctx.fillStyle = '#2FE0A8';
-        } else {
-          ctx.fillStyle = '#FFC370';
-        }
+        ctx.fillStyle = i < pos ? '#FFCB72' : 'rgba(106, 174, 134, 0.65)';
 
         ctx.beginPath();
         if (ctx.roundRect) {
@@ -121,21 +134,32 @@ const WaveformVisualizer: React.FC<{
         ctx.fill();
       });
 
-      if (isPlaying) {
-        animId = requestAnimationFrame(render);
-      }
+      const cursorX = Math.max(4, Math.min(w - 4, ratio * w));
+      ctx.fillStyle = '#FFD581';
+      ctx.fillRect(cursorX - 0.75, 4, 1.5, h - 4);
+      ctx.beginPath();
+      ctx.arc(cursorX, 4, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      if (isPlaying && !motion.matches) animation = requestAnimationFrame(render);
+
     };
 
     render();
+    const redraw = () => { cancelAnimationFrame(animation); render(); };
+    const observer = new ResizeObserver(redraw);
+    observer.observe(canvas);
+    motion.addEventListener('change', redraw);
 
     return () => {
-      if (animId) cancelAnimationFrame(animId);
+      observer.disconnect();
+      cancelAnimationFrame(animation);
+      motion.removeEventListener('change', redraw);
     };
-  }, [progress, isPlaying, peaks]);
+  }, [progress, peaks, isPlaying, playbackAudio]);
 
   return (
     <div className={className || 'w-full h-14 relative'}>
-      <canvas ref={canvasRef} className="w-full h-full block cursor-default" />
+      <canvas ref={canvasRef} aria-hidden="true" className="w-full h-full block cursor-default" />
     </div>
   );
 };
@@ -147,6 +171,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
   playingAttempt = null,
   playbackCurrentTime = 0,
   playbackProgress = 0,
+  playbackAudio,
   onTryAgain,
   onCancelRetry,
   onResumeInterview,
@@ -373,6 +398,8 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                 {/* Waveform & Scrubber */}
                 <div className="w-full flex flex-col justify-center">
                   <WaveformVisualizer
+                    audioBlob={attempt1.audioBlob}
+                    playbackAudio={playbackAudio}
                     progress={progressRatio}
                     isPlaying={isPlaying}
                     className="w-full h-10 sm:h-12 relative"
