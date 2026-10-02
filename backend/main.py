@@ -13,6 +13,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
@@ -23,7 +25,7 @@ try:
         GEMINI_API_KEY, GEMINI_MODEL,
         TTS_ENABLED, KOKORO_MODEL, KOKORO_VOICE
     )
-    from .stt_service import STTService
+    from .stt_service import STTService, STTUnavailable, should_preload_stt
     from .gemini_service import (
         GeminiInterviewService, extract_conversational_text,
         classify_gemini_error, get_user_friendly_error_message,
@@ -32,7 +34,7 @@ try:
     )
     from .tts_service import TTSService
     from .document_service import extract_document_text
-    from .database import engine, Base, get_db
+    from .database import engine, Base, get_db, init_db, DatabaseUnavailable, database_failure
     from .models import Interview, Document, Message
     from .schemas import (
         InterviewCreate, InterviewUpdate, InterviewSummaryResponse,
@@ -45,7 +47,7 @@ except ImportError:
         GEMINI_API_KEY, GEMINI_MODEL,
         TTS_ENABLED, KOKORO_MODEL, KOKORO_VOICE
     )
-    from stt_service import STTService
+    from stt_service import STTService, STTUnavailable, should_preload_stt
     from gemini_service import (
         GeminiInterviewService, extract_conversational_text,
         classify_gemini_error, get_user_friendly_error_message,
@@ -54,7 +56,7 @@ except ImportError:
     )
     from tts_service import TTSService
     from document_service import extract_document_text
-    from database import engine, Base, get_db
+    from database import engine, Base, get_db, init_db, DatabaseUnavailable, database_failure
     from models import Interview, Document, Message
     from schemas import (
         InterviewCreate, InterviewUpdate, InterviewSummaryResponse,
@@ -83,11 +85,14 @@ async def lifespan(app: FastAPI):
         f"Initializing STT Service (Model: {MODEL_SIZE}, Device: {DEVICE}, "
         f"Compute: {COMPUTE_TYPE}, Beam: {BEAM_SIZE}, DefaultLang: {DEFAULT_LANGUAGE})..."
     )
-    try:
-        STTService.get_instance().load_model()
-        logger.info("STT Model is preloaded and ready for ultra-low latency transcription.")
-    except Exception as e:
-        logger.error(f"Failed to preload STT model on startup: {e}")
+    if should_preload_stt():
+        try:
+            STTService.get_instance().load_model()
+            logger.info("STT Model is preloaded and ready for ultra-low latency transcription.")
+        except Exception as e:
+            logger.error(f"Failed to preload STT model on startup: {e}")
+    else:
+        logger.info("STT startup preload skipped (external service, Vercel, or STT_PRELOAD=false).")
 
     # Initialize Kokoro-82M ONNX TTS Service (Local CPU)
     if TTS_ENABLED:
@@ -105,12 +110,12 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Kokoro TTS is disabled via configuration (TTS_ENABLED=false).")
 
-    # Initialize SQLite database schema
+    # A failed database startup is retried by get_db and returns HTTP 503.
     try:
-        Base.metadata.create_all(bind=engine)
-        logger.info("SQLite database schema initialized successfully.")
-    except Exception as dbe:
-        logger.error(f"Failed to initialize SQLite database: {dbe}")
+        init_db()
+        logger.info("Database schema initialized successfully.")
+    except DatabaseUnavailable as error:
+        logger.error("%s", error)
 
     # Log Gemini initialization status (without leaking secrets)
     gemini = GeminiInterviewService.get_instance()
@@ -157,6 +162,7 @@ class StageTimings(BaseModel):
 class TranscribeResponse(BaseModel):
     text: str
     transcription: Optional[str] = None
+    raw_text: Optional[str] = None
     ai_response: Optional[str] = None
     should_end: Optional[bool] = False
     reason: Optional[str] = None
@@ -257,15 +263,18 @@ def get_effective_interview_documents(
 ) -> List[Dict[str, Any]]:
     """
     Resolve and load complete extracted document text for an interview.
-    Prioritizes SQLite document records for the specific interview_id,
+    Prioritizes hosted database document records for the specific interview_id,
     and merges with any frontend-attached documents, ensuring extracted_text
     is fully populated for every turn.
     """
     docs_by_key: Dict[str, Dict[str, Any]] = {}
 
-    # 1. Load authoritative document records from SQLite if interview_id is provided
+    # 1. Load authoritative document records; distinguish missing sessions from outages.
     if interview_id and db is not None:
         try:
+            interview = db.query(Interview).filter(Interview.id == interview_id).first()
+            if interview is None:
+                raise HTTPException(status_code=404, detail=f"Interview '{interview_id}' not found. Create or start the session first.")
             db_docs = db.query(Document).filter(Document.interview_id == interview_id).all()
             for d in db_docs:
                 key = (d.filename or "").lower().strip()
@@ -278,8 +287,10 @@ def get_effective_interview_documents(
                     "extracted_text": d.extracted_text or "",
                     "size": d.size or ""
                 }
-        except Exception as e:
-            logger.warning(f"Could not load documents from SQLite for interview {interview_id}: {e}")
+        except HTTPException:
+            raise
+        except Exception as error:
+            raise database_failure('document lookup', error) from None
 
     # 2. Merge with attached_documents from payload
     if attached_documents:
@@ -326,6 +337,52 @@ def get_effective_interview_documents(
     return effective_docs
 
 
+@app.exception_handler(DatabaseUnavailable)
+async def database_unavailable_handler(request, error):
+    return JSONResponse(status_code=503, content={"detail": str(error)})
+
+
+@app.exception_handler(SQLAlchemyError)
+async def database_query_error_handler(request, error):
+    failure = database_failure('query', error)
+    return JSONResponse(status_code=503, content={"detail": str(failure)})
+
+
+def register_initial_session(req, db):
+    """Persist frontend-generated session IDs and supplied extracted document text."""
+    if not req.interview_id or db is None:
+        return
+    interview = db.query(Interview).filter(Interview.id == req.interview_id).first()
+    if interview is None:
+        if not req.interview_id.startswith('session-'):
+            raise HTTPException(status_code=404, detail=f"Interview '{req.interview_id}' not found.")
+        interview = Interview(id=req.interview_id, job_role=req.job_role or 'Software Developer',
+                              title=f"Interview - {req.job_role or 'Software Developer'}", status='active')
+        db.add(interview)
+        try:
+            db.commit()
+        except IntegrityError:
+            # Concurrent retries may have created the same primary key already.
+            db.rollback()
+            interview = db.query(Interview).filter(Interview.id == req.interview_id).first()
+            if interview is None:
+                raise
+    existing = {doc.filename.lower().strip(): doc for doc in interview.documents}
+    for supplied in req.attached_documents or []:
+        filename = supplied.get('filename') or supplied.get('name') or 'Document'
+        content = (supplied.get('content') or supplied.get('extracted_text') or supplied.get('extractedText') or supplied.get('text') or '').strip()
+        key = filename.lower().strip()
+        if key not in existing:
+            document = Document(interview_id=interview.id, filename=filename,
+                                category=supplied.get('category') or 'resume',
+                                size=supplied.get('size') or '', extracted_text=content)
+            db.add(document)
+            existing[key] = document
+        elif len(content) > len(existing[key].extracted_text or ''):
+            existing[key].extracted_text = content
+    db.commit()
+
+
 @app.get("/health", tags=["Health"])
 @app.get("/api/health", tags=["Health"])
 @app.get("/api", tags=["Health"])
@@ -363,9 +420,10 @@ async def initial_question(req: InitialQuestionRequest, db: Session = Depends(ge
     """
     Generate an opening interview question tailored to the job role and attached candidate documents.
     """
+    register_initial_session(req, db)
     effective_docs = get_effective_interview_documents(req.interview_id, req.attached_documents, db)
 
-    # Initialize in-memory session availability tracking (Zero DB persistence)
+    # Initialize warm-instance turn tracking; session/documents are stored in the database
     if req.interview_id:
         ACTIVE_INTERVIEW_SESSIONS[req.interview_id] = {
             "status": "active",
@@ -380,8 +438,8 @@ async def initial_question(req: InitialQuestionRequest, db: Session = Depends(ge
             intv = db.query(Interview).filter(Interview.id == req.interview_id).first()
             if intv and intv.job_role:
                 role = intv.job_role
-        except Exception:
-            pass
+        except Exception as error:
+            raise database_failure("session lookup", error) from None
 
     gemini = GeminiInterviewService.get_instance()
     question = await gemini.generate_initial_question(
@@ -467,8 +525,8 @@ async def generate_followup(req: FollowupRequest, db: Session = Depends(get_db))
             intv = db.query(Interview).filter(Interview.id == req.interview_id).first()
             if intv and intv.job_role:
                 role = intv.job_role
-        except Exception:
-            pass
+        except Exception as error:
+            raise database_failure("session lookup", error) from None
 
     gemini = GeminiInterviewService.get_instance()
     result = await gemini.generate_interview_followup(
@@ -823,6 +881,10 @@ async def transcribe_audio(
 
         return result
 
+    except STTUnavailable as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except (HTTPException, DatabaseUnavailable):
+        raise
     except ValueError as ve:
         # Clear client error when audio is invalid, empty, or corrupted
         logger.warning(f"Invalid audio format rejected: {ve}")
@@ -831,10 +893,10 @@ async def transcribe_audio(
             detail=f"Invalid or corrupted audio payload: {str(ve)}"
         )
     except Exception as e:
-        logger.error(f"Unexpected error during transcription: {e}", exc_info=True)
+        logger.error("Unexpected transcription failure (%s), file=%s", type(e).__name__, getattr(e, "filename", None))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Transcription processing error: {str(e)}"
+            detail="Transcription processing failed. Check backend model storage and configuration."
         )
 
 @app.post("/interview/chat", response_model=InterviewChatResponse, tags=["AI Interviewer"])

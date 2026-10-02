@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 backend_dir = Path(__file__).resolve().parent
 sys.path.insert(0, str(backend_dir))
 
@@ -22,6 +24,41 @@ from fastapi.testclient import TestClient
 from main import app
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def registered_replay_session(request):
+    sessions = {
+        "test_replay_notes_success": ("test-session-01", "Mobile Engineer"),
+        "test_replay_notes_gemini_error_handling": ("test-session-02", "Backend Engineer"),
+        "test_replay_comparison_success": ("test-session-03", "Distributed Systems Engineer"),
+    }
+    record = sessions.get(request.node.name)
+    if record is None:
+        yield
+        return
+    session_id, role = record
+    with SessionLocal() as db:
+        db.add(Interview(id=session_id, job_role=role, status="active"))
+        db.commit()
+    try:
+        yield
+    finally:
+        with SessionLocal() as db:
+            session = db.get(Interview, session_id)
+            if session is not None:
+                db.delete(session)
+                db.commit()
+
+
+def test_replay_missing_session_returns_404():
+    for route, payload in (
+        ("/interview/replay/notes", {"question": "Explain caching.", "user_answer": "I used Redis."}),
+        ("/interview/replay/compare", {"question": "Explain caching.", "attempt1_answer": "Redis.", "attempt2_answer": "Redis with TTL."}),
+    ):
+        response = client.post(route, json={"interview_id": "missing-replay-session", **payload})
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
 
 
 def test_replay_notes_success():
