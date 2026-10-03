@@ -26,6 +26,7 @@ interface AnswerReplayCardProps {
   onToggleMinimize?: () => void;
   onClose?: () => void;
   isCompleted?: boolean;
+  reviewOnly?: boolean;
 }
 
 function formatDuration(seconds: number): string {
@@ -178,6 +179,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
   onToggleMinimize,
   onClose,
   isCompleted = false,
+  reviewOnly = false,
 }) => {
   if (!replayState?.isVisible || !replayState?.attempt1) {
     return null;
@@ -200,7 +202,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
   // View Mode: In-Progress Retry
   if (isRetryMode) {
     return (
-      <div className="w-full max-w-2xl lg:max-w-3xl xl:max-w-5xl mx-auto bg-[rgba(10,32,24,0.55)] backdrop-blur-xl border border-[rgba(255,179,71,0.25)] border-t-[rgba(255,195,112,0.42)] rounded-2xl sm:rounded-3xl shadow-[inset_0_1px_1px_rgba(255,195,112,0.22),0_24px_60px_rgba(0,0,0,0.45)] p-4 sm:p-5 text-[#F5EEDB] font-manrope space-y-3 max-h-[min(54vh, 420px)] overflow-y-auto shrink-0">
+      <div className="w-full max-w-2xl lg:max-w-3xl xl:max-w-5xl mx-auto bg-[rgba(10,32,24,0.55)] backdrop-blur-xl border border-[rgba(255,179,71,0.25)] border-t-[rgba(255,195,112,0.42)] rounded-2xl sm:rounded-3xl shadow-[inset_0_1px_1px_rgba(255,195,112,0.22),0_24px_60px_rgba(0,0,0,0.45)] p-4 sm:p-5 text-[#F5EEDB] font-manrope space-y-3 max-h-[min(54vh,420px)] overflow-y-auto shrink-0">
         <div className="flex items-center justify-between border-b border-[rgba(218,241,222,0.12)] pb-2">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-[#FFB347] animate-pulse" />
@@ -316,7 +318,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
         <div className="border-t border-[rgba(218,241,222,0.10)]">
           {attempt2 && comparison && activeTab === 'comparison' ? (
             /* Comparison Mode */
-            <div className="p-4 sm:p-5 text-[#F5EEDB] font-manrope flex flex-col max-h-[min(54vh, 420px)] overflow-y-auto space-y-3">
+            <div className="p-4 sm:p-5 text-[#F5EEDB] font-manrope flex flex-col max-h-[min(54vh,420px)] overflow-y-auto space-y-3">
               <div className="flex items-center justify-between pb-2 border-b border-[rgba(218,241,222,0.1)]">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-[#FFB347]" />
@@ -352,7 +354,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                 </div>
               )}
 
-              {!isCompleted ? (
+              {!isCompleted && !reviewOnly ? (
                 <div className="flex items-center justify-between pt-2 border-t border-[rgba(218,241,222,0.12)] gap-2 shrink-0">
                   <button
                     onClick={onTryAgain}
@@ -370,7 +372,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              ) : (
+              ) : reviewOnly && !isCompleted ? null : (
                 <div className="pt-2 border-t border-[rgba(218,241,222,0.12)] flex justify-between items-center shrink-0 text-xs text-[#2FE0A8]">
                   <span className="font-semibold">Interview Complete</span>
                   <span className="text-[#8EB69B]">All answers recorded</span>
@@ -379,7 +381,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
             </div>
           ) : (
             /* Split Audio Playback & AI Notes Mode */
-            <div className="grid grid-cols-1 md:grid-cols-2 p-3 sm:p-4 gap-3 sm:gap-4 max-h-[min(34vh, 260px)] sm:max-h-[min(36vh, 280px)] overflow-y-auto">
+            <div className="answer-replay-body grid grid-cols-1 md:grid-cols-2 p-3 sm:p-4 gap-3 sm:gap-4 max-h-[min(34vh,260px)] sm:max-h-[min(36vh,280px)] overflow-y-auto">
               {/* LEFT COLUMN: YOUR ANSWER (Audio Playback + Duration + Actual Transcript) */}
               <div className="flex flex-col justify-between p-3 sm:p-3.5 rounded-2xl bg-[rgba(6,24,18,0.45)] border border-[rgba(218,241,222,0.10)] shadow-inner space-y-2">
                 {/* Header: YOUR ANSWER + Duration badge [13 sec] */}
@@ -546,7 +548,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
 
                 {/* Actions: Try Answer Again */}
                 <div className="pt-2 border-t border-[rgba(218,241,222,0.10)] shrink-0">
-                  {!isCompleted ? (
+                  {!isCompleted && !reviewOnly ? (
                     <button
                       type="button"
                       onClick={onTryAgain}
@@ -556,7 +558,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                       <RotateCcw className="w-3.5 h-3.5 text-[#FFB347]" />
                       <span>Try Answer Again</span>
                     </button>
-                  ) : (
+                  ) : reviewOnly && !isCompleted ? null : (
                     <div className="flex justify-between items-center text-xs text-[#2FE0A8] py-1">
                       <span className="font-semibold">Interview Complete</span>
                       <span className="text-[#8EB69B]">All answers recorded</span>

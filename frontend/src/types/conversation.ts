@@ -15,6 +15,7 @@ export interface AttachedDocument {
 export interface Message {
   id: string;
   sender: 'You' | 'Pal';
+  replayId?: string;
   text: string;
   timestamp: string;
 }

@@ -88,6 +88,9 @@ def decode_audio_bytes(
 
     tmp_path = None
     container = None
+    frame_count = 0
+    raw_buffer = io.BytesIO()
+    dtype = None
     try:
         try:
             container = av.open(io.BytesIO(file_bytes), mode="r", metadata_errors="ignore")
@@ -108,10 +111,6 @@ def decode_audio_bytes(
             layout="mono",
             rate=sampling_rate,
         )
-
-        raw_buffer = io.BytesIO()
-        dtype = None
-        frame_count = 0
 
         for frame in container.decode(audio=0):
             frame.pts = None

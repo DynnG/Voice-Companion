@@ -48,6 +48,7 @@ export const VoiceCompanion: React.FC = () => {
   const [downloadPdfError, setDownloadPdfError] = useState<string | null>(null);
   const [startInterviewError, setStartInterviewError] = useState<string | null>(null);
   const [submitAnswerFn, setSubmitAnswerFn] = useState<((text: string) => Promise<void>) | null>(null);
+  const [replayRequest, setReplayRequest] = useState<{ id: string; request: number } | null>(null);
   const isStartingInterviewRef = useRef<boolean>(false);
   const handleRegisterSubmitAnswer = useCallback((handler: (text: string) => Promise<void>) => {
     setSubmitAnswerFn(() => handler);
@@ -58,6 +59,7 @@ export const VoiceCompanion: React.FC = () => {
     isStartingInterviewRef.current = false;
     stopSpeaking();
     setSession(createInitialSession());
+    setReplayRequest(null);
     setInitialQuestionToSpeak(undefined);
     setIsThinking(false);
     setIsLivePanelOpen(false);
@@ -148,11 +150,12 @@ export const VoiceCompanion: React.FC = () => {
   };
 
   // Step 1: Immediately commit user transcript to session messages in memory
-  const handleUserTranscribed = (transcribedText: string) => {
+  const handleUserTranscribed = (transcribedText: string, replayId?: string) => {
     const userMsg: Message = {
       id: `msg-${Date.now()}-user`,
       sender: 'You',
       text: transcribedText,
+      replayId,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
@@ -345,6 +348,7 @@ export const VoiceCompanion: React.FC = () => {
             <VoiceExperience
               interviewId={session.id}
               onUserTranscribed={handleUserTranscribed}
+              replayRequest={replayRequest}
               onPalResponse={handlePalResponse}
               onThinkingChange={setIsThinking}
               onInterviewCompleted={handleInterviewCompleted}
@@ -382,6 +386,7 @@ export const VoiceCompanion: React.FC = () => {
               onDownloadReview={handleDownloadReviewPdf}
               isDownloadingReview={isDownloadingPdf}
               onSendAnswer={submitAnswerFn || undefined}
+              onOpenAnswerReview={(id) => setReplayRequest((previous) => ({ id, request: (previous?.request || 0) + 1 }))}
             />
           )}
         </div>

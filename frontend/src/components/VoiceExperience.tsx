@@ -6,13 +6,15 @@ import { StateLabel } from './StateLabel';
 import { ResponseCaption } from './ResponseCaption';
 import { CandidateCamera } from './CandidateCamera';
 import { VoiceControls } from './VoiceControls';
+import { updateSpeechEndpoint, SpeechEndpointState } from '../services/speechEndpoint';
 import { AnswerReplayCard } from './AnswerReplayCard';
 import { transcribeAudio, fetchFollowupInterviewQuestion, fetchAnswerAiNotes, fetchAnswerComparison, isQuotaExceededText, isInterviewErrorText, isOffTopicRedirect, isClarificationQuery } from '../services/sttService';
 import { speakText, stopSpeaking, unlockAudio } from '../services/ttsService';
 
 interface VoiceExperienceProps {
   interviewId?: string;
-  onUserTranscribed?: (userText: string) => void;
+  onUserTranscribed?: (userText: string, replayId?: string) => void;
+  replayRequest?: { id: string; request: number } | null;
   onPalResponse?: (palText: string) => void;
   onThinkingChange?: (thinking: boolean) => void;
   onInterviewCompleted?: (reason?: string) => void;
@@ -41,9 +43,6 @@ interface VoiceExperienceProps {
 }
 
 // Silence Detection Configuration
-const SILENCE_THRESHOLD_RMS = 0.018;        // Audio energy threshold to consider as silence vs speech
-const SILENCE_DURATION_MS = 1600;           // 1.6s of continuous silence after speaking triggers auto-finish
-const MIN_SPEECH_DURATION_MS = 800;         // Minimum speech duration (800ms) before silence detector can trigger
 const MAX_RECORDING_DURATION_MS = 60000;    // 60s hard ceiling safeguard
 
 // Hard interview ending limit to conserve Gemini free-tier quota (maximum 8 candidate turns)
@@ -53,6 +52,7 @@ export const INTERVIEW_ENDING_MESSAGE = "That brings us to the end of our interv
 export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   interviewId,
   onUserTranscribed,
+  replayRequest,
   onPalResponse,
   onThinkingChange,
   onInterviewCompleted,
@@ -123,6 +123,22 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     isMinimized: false
   });
   const replayAudioRef = useRef<HTMLAudioElement | null>(null);
+  const replayHistoryRef = useRef(new Map<string, ReplayState>());
+  const displayedReplayIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (displayedReplayIdRef.current && replayState.attempt1) {
+      replayHistoryRef.current.set(displayedReplayIdRef.current, replayState);
+    }
+  }, [replayState]);
+  useEffect(() => {
+    if (!replayRequest) return;
+    const saved = replayHistoryRef.current.get(replayRequest.id);
+    if (!saved) return;
+    stopReplayPlayback();
+    displayedReplayIdRef.current = replayRequest.id;
+    setReplayState({ ...saved, isVisible: true, isMinimized: false, isRetryMode: false });
+  }, [replayRequest]);
+
   const [playingAttempt, setPlayingAttempt] = useState<(1 | 2) | null>(null);
   const [playbackCurrentTime, setPlaybackCurrentTime] = useState<number>(0);
   const [playbackProgress, setPlaybackProgress] = useState<number>(0);
@@ -157,8 +173,6 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const vadAnimationIdRef = useRef<number | null>(null);
   const hasSpokenRef = useRef(false);
-  const speechStartTimeRef = useRef<number>(0);
-  const silenceStartTimeRef = useRef<number | null>(null);
   const maxRecordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const micAudioLevelRef = useRef<number>(0);
   const candidateTurnCountRef = useRef<number>(0);
@@ -208,7 +222,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       }
 
       showCaption(initialQuestionToSpeak);
-      setCustomLabel('Pal (Interviewer)');
+      setCustomLabel('Savi (Interviewer)');
 
       speakText(initialQuestionToSpeak, {
         onStart: () => {
@@ -392,11 +406,13 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
    * Detects when user begins speaking, permits natural short pauses, and triggers
    * auto-stop once the user has finished their response (1.6s of silence after speech).
    */
-  const startSilenceDetection = (stream: MediaStream) => {
+  const startSilenceDetection = async (stream: MediaStream) => {
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       const audioContext = new AudioCtx();
       audioContextRef.current = audioContext;
+      if (audioContext.state === 'suspended') await audioContext.resume();
+      if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') return;
 
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = 512;
@@ -407,10 +423,9 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       source.connect(analyser);
       sourceNodeRef.current = source;
 
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const dataArray = new Uint8Array(analyser.fftSize);
       hasSpokenRef.current = false;
-      speechStartTimeRef.current = 0;
-      silenceStartTimeRef.current = null;
+      const endpoint: SpeechEndpointState = { speechStartedAt: null, silenceStartedAt: null };
 
       const checkAudioLevels = () => {
         if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') {
@@ -433,33 +448,16 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         const saturatedLevel = Math.min(1.0, Math.tanh(rawEnergy * 8.0));
         micAudioLevelRef.current = saturatedLevel;
 
-        const now = Date.now();
-
-        if (rms > SILENCE_THRESHOLD_RMS) {
-          // Voice detected
-          if (!hasSpokenRef.current) {
-            hasSpokenRef.current = true;
-            speechStartTimeRef.current = now;
-            setCustomLabel('listening to your answer…');
-            stopSpeaking();
-          }
-          silenceStartTimeRef.current = null;
-        } else {
-          // Silence or ambient background
-          if (hasSpokenRef.current) {
-            const speechDuration = now - speechStartTimeRef.current;
-
-            if (speechDuration >= MIN_SPEECH_DURATION_MS) {
-              if (silenceStartTimeRef.current === null) {
-                silenceStartTimeRef.current = now;
-              } else if (now - silenceStartTimeRef.current >= SILENCE_DURATION_MS) {
-                // User has finished speaking! Automatically stop recording and process turn
-                console.log(`[VAD] User completed answer (${(now - silenceStartTimeRef.current)}ms silence). Auto-finishing turn.`);
-                stopRecordingAutomatically();
-                return;
-              }
-            }
-          }
+        const now = performance.now();
+        const shouldStop = updateSpeechEndpoint(endpoint, rms, now);
+        if (!hasSpokenRef.current && endpoint.speechStartedAt !== null) {
+          hasSpokenRef.current = true;
+          setCustomLabel('listening to your answer…');
+          stopSpeaking();
+        }
+        if (shouldStop) {
+          stopRecordingAutomatically();
+          return;
         }
 
         vadAnimationIdRef.current = requestAnimationFrame(checkAudioLevels);
@@ -541,7 +539,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       setCustomLabel(replayState.isRetryMode ? 'listening… speak revised answer' : 'listening… speak your answer');
 
       // Start silence / speech endpoint detection
-      startSilenceDetection(stream);
+      await startSilenceDetection(stream);
 
       // Max recording ceiling safeguard (e.g. 60s)
       maxRecordingTimerRef.current = setTimeout(() => {
@@ -640,7 +638,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
       showCaption(`"Attempt 2: ${userText}"`);
       if (onUserTranscribed) {
-        onUserTranscribed(`(Attempt 2) ${userText}`);
+        onUserTranscribed(`(Attempt 2) ${userText}`, currentExchangeIdRef.current || undefined);
       }
 
       const questionToCompare = (replayState.questionText && !isQuotaExceededText(replayState.questionText) && !isInterviewErrorText(replayState.questionText))
@@ -713,12 +711,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     // --- Standard Interview Turn (Attempt 1) ---
     console.log('[Live Interview] 1. User answer:', userText);
 
-    // Revoke previous turn object URLs to keep session memory clean
-    objectUrlsRef.current.forEach((u) => {
-      try { URL.revokeObjectURL(u); } catch {}
-    });
-    objectUrlsRef.current = [];
-
+    // Retain current-session audio for reopening earlier answers; revoke on unmount.
     const audioUrl1 = URL.createObjectURL(audioBlob);
     objectUrlsRef.current.push(audioUrl1);
 
@@ -757,6 +750,8 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
     const exchangeId = `exchange-${interviewId || 'session'}-${currentTurn}`;
     currentExchangeIdRef.current = exchangeId;
+    displayedReplayIdRef.current = exchangeId;
+    replayHistoryRef.current.set(exchangeId, { questionText: questionAnswered, attempt1: attempt1Data, attempt2: null, comparison: null, isRetryMode: false, isVisible: true, isMinimized: false });
 
     // Record complete current-session interview exchange in memory
     const newExchange: InterviewExchangeRecord = {
@@ -788,6 +783,8 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       durationSeconds,
       hesitationEvidence
     }).then((notesRes) => {
+      const saved = replayHistoryRef.current.get(exchangeId);
+      if (saved?.attempt1) replayHistoryRef.current.set(exchangeId, { ...saved, attempt1: { ...saved.attempt1, aiNotes: notesRes.notes || [], aiNotesStatus: notesRes.status === 'success' ? 'success' : 'error', errorMessage: notesRes.error_message } });
       if (notesRes.status === 'success' && notesRes.notes && notesRes.notes.length > 0) {
         onExchangeAiNotesUpdated?.(exchangeId, notesRes.notes);
       }
@@ -807,7 +804,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
     // Step 2: Immediately commit & render user's message as "You"
     if (onUserTranscribed) {
-      onUserTranscribed(userText);
+      onUserTranscribed(userText, exchangeId);
     }
 
     // Show user transcription on caption bubble
@@ -1283,6 +1280,13 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
           isLivePanelOpen ? 'max-w-5xl' : 'max-w-5xl xl:max-w-6xl'
         }`}
       >
+        {isTipVisible && (
+          <aside className="interview-tip-card" aria-label="Interview tip">
+            <div className="interview-tip-heading"><Lightbulb size={18} aria-hidden="true" /><strong>Tip</strong></div>
+            <button type="button" className="interview-tip-dismiss" aria-label="Dismiss interview tip" onClick={() => setIsTipVisible(false)}><X size={14} aria-hidden="true" /></button>
+            <p>Be specific about your experiences, use concrete examples, and highlight the impact you made.</p>
+          </aside>
+        )}
         <div
           className={`interview-visual-pair w-full flex items-center justify-center transition-all duration-300 ${
             isCameraActive
@@ -1318,7 +1322,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             <div className="w-full flex items-center justify-center overflow-visible">
               <VoiceCreature
                 state={state}
-                visualState={state === 'listening' ? 'speaking' : state === 'thinking' && customLabel === 'transcribing answer…' ? 'transcribing' : 'idle'}
+                visualState={state === 'speaking' ? 'speaking' : state === 'thinking' && customLabel === 'transcribing answer…' ? 'transcribing' : 'idle'}
                 respectReducedMotion
                 gesture={creatureGesture}
                 onGestureEnd={() => setCreatureGesture(null)}
@@ -1395,13 +1399,6 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       {/* 4. Dedicated Lower-Middle Zone: Answer Comparison / Replay Panel & Bottom Controls (One Cohesive Lower Section) */}
       {/* Container class invariant: w-full flex-1 min-h-0 flex flex-col items-center justify-center */}
       <div className="relative w-full shrink-0 flex flex-col items-center gap-1.5 sm:gap-2 z-10 mt-auto pb-1 transition-all duration-300 ease-out">
-        {isTipVisible && (
-          <aside className="interview-tip-card" aria-label="Interview tip">
-            <div className="interview-tip-heading"><Lightbulb size={18} aria-hidden="true" /><strong>Tip</strong></div>
-            <button type="button" className="interview-tip-dismiss" aria-label="Dismiss interview tip" onClick={() => setIsTipVisible(false)}><X size={14} aria-hidden="true" /></button>
-            <p>Be specific about your experiences, use concrete examples, and highlight the impact you made.</p>
-          </aside>
-        )}
         {/* Dedicated Lower-Middle Zone: Answer Comparison / Replay Panel */}
         {replayState.isVisible && replayState.attempt1 && (
           <div
@@ -1423,6 +1420,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
               onToggleMinimize={() => setReplayState((prev) => ({ ...prev, isMinimized: !prev.isMinimized }))}
               onClose={() => setReplayState((prev) => ({ ...prev, isVisible: false }))}
               isCompleted={!isMicEnabled || isCompleted}
+              reviewOnly={displayedReplayIdRef.current !== currentExchangeIdRef.current}
             />
           </div>
         )}

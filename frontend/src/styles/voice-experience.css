@@ -472,9 +472,9 @@ mark.f {
 .interview-shell .stage > header > div:last-child { margin-left: auto; }
 .interview-shell .interview-visual-stage { width: 100%; justify-self: center; }
 .interview-shell .voice-footer { width: 100%; }
-/* Floating tip sits above the replay/controls section without consuming a row. */
+/* Reserve space above replay so the dismissible tip cannot cover the header. */
 .interview-tip-card {
-  position: absolute; left: 0; bottom: calc(100% + 12px); width: 250px;
+  position: absolute; top: 8px; left: 0; width: 250px; margin: 0;
   max-width: calc(100vw - 32px); z-index: 20;
   padding: 14px 16px; border-radius: 20px;
   background: rgba(19,48,32,.95); border: 1px solid rgba(218,241,222,.18);
@@ -498,3 +498,20 @@ mark.f {
     width: min(40vw, 26vh, 225px); height: min(40vw, 26vh, 225px);
   }
 }
+
+/* Keep the main stage within the viewport; long transcripts and notes scroll inside their own panels. */
+.interview-shell .stage { overflow: hidden; grid-template-rows: auto minmax(190px, 1fr) auto; }
+.interview-shell .interview-visual-stage { position: relative; container-type: size; }
+.interview-shell .canvas-wrap.interview-orb.canvas-wrap--compact {
+  width: min(46vw, 26vh, calc(100cqh - 76px), 225px);
+  height: min(46vw, 26vh, calc(100cqh - 76px), 225px);
+}
+@media (max-width: 767px) {
+  .interview-tip-card { width: min(250px, 40vw); padding: 10px 12px; font-size: 11px; }
+}
+
+
+.interview-shell .voice-footer { gap: 3px; }
+.interview-shell .voice-footer > div:first-child { margin-bottom: 0; }
+.interview-shell .interview-camera-hint { margin-top: 3px; }
+.interview-shell .answer-replay-body { max-height: min(32vh,280px); }

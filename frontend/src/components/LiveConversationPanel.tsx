@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageSquare, Download, Send, X } from 'lucide-react';
+import { MessageSquare, Download, Send, X, AlertCircle, AudioLines } from 'lucide-react';
 import { Conversation } from '../types/conversation';
+import { transcriptHighlightRanges } from '../services/transcriptHighlights';
+import { isOffTopicRedirect, isClarificationQuery } from '../services/sttService';
 
 interface LiveConversationPanelProps {
   conversation: Conversation | null;
@@ -10,6 +12,7 @@ interface LiveConversationPanelProps {
   canDownloadReview?: boolean;
   onDownloadReview?: () => void;
   isDownloadingReview?: boolean;
+  onOpenAnswerReview?: (replayId: string) => void;
   onSendAnswer?: (text: string) => void;
 }
 
@@ -22,6 +25,7 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
   onDownloadReview,
   isDownloadingReview = false,
   onSendAnswer,
+  onOpenAnswerReview,
 }) => {
   const [inputText, setInputText] = useState('');
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -78,17 +82,16 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
     if (!isUser) {
       return text;
     }
-    const parts = text.split(/(\b(?:basically|like|really|um|uh)\b)/gi);
-    return parts.map((part, idx) => {
-      if (/^(basically|like|really|um|uh)$/i.test(part)) {
-        return (
-          <span key={idx} className="bg-[#FFC370]/65 text-[#133020] rounded-[3px] px-0.5 py-px [box-decoration-break:clone]">
-            {part}
-          </span>
-        );
-      }
-      return part;
+    const ranges = transcriptHighlightRanges(text);
+    const parts: React.ReactNode[] = [];
+    let cursor = 0;
+    ranges.forEach(({ start, end }) => {
+      parts.push(text.slice(cursor, start));
+      parts.push(<span key={start} className="bg-[#FFC370]/65 text-[#133020] rounded-[3px] px-0.5 py-px [box-decoration-break:clone]">{text.slice(start, end)}</span>);
+      cursor = end;
     });
+    parts.push(text.slice(cursor));
+    return parts;
   };
 
   return (
@@ -159,8 +162,10 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
               <p className="text-xs">No messages recorded yet.</p>
             </div>
           ) : (
-            displayMessages.map((msg) => {
+            displayMessages.map((msg, messageIndex) => {
               const isUser = msg.sender === 'You';
+              const nextMessage = displayMessages[messageIndex + 1];
+              const isOffTopic = isUser && !isClarificationQuery(msg.text) && nextMessage?.sender === 'Pal' && isOffTopicRedirect(nextMessage.text);
               return (
                 <div key={msg.id} className={`flex gap-2.5 items-start text-xs sm:text-[13px] max-w-[88%] ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}>
                   {isUser ? (
@@ -190,6 +195,9 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
                       <span className="text-[11px] text-[#133020]/50 font-normal">
                         {msg.timestamp || ''}
                       </span>
+                      {isUser && msg.replayId && onOpenAnswerReview && (
+                        <button type="button" onClick={() => onOpenAnswerReview(msg.replayId!)} className="inline-flex items-center justify-center w-7 h-7 rounded-full text-[#133020] hover:bg-[#133020]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#133020]" aria-label="Open Audio Playback and AI Notes for this answer" title="Audio Playback & AI Notes"><AudioLines className="w-4 h-4" aria-hidden="true" /></button>
+                      )}
                     </div>
                     <div
                       className={`relative p-3 text-xs sm:text-[13px] leading-relaxed shadow-sm ${
@@ -220,6 +228,7 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
                           }}
                         />
                       )}
+                      {isOffTopic && <span className="inline-flex align-middle mr-1.5 text-red-600" role="img" aria-label="Answer is off topic" title="This answer is off topic"><AlertCircle className="w-4 h-4" aria-hidden="true" /></span>}
                       {renderMessageText(msg.text, isUser)}
                     </div>
                   </div>

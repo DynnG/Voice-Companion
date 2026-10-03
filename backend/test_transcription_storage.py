@@ -48,6 +48,40 @@ class TranscriptionStorageTests(unittest.TestCase):
             self.assertEqual(model.call_args.kwargs['download_root'], str(stt_service.TRANSCRIPTION_STORAGE / 'huggingface' / 'hub'))
 
 
+class DecodeFallbackTests(unittest.TestCase):
+    def test_both_open_attempts_fail_without_masking_error_and_remove_temp(self):
+        import stt_service
+        with tempfile.TemporaryDirectory() as directory:
+            with patch('tempfile.gettempdir', return_value=directory), patch.object(stt_service.av, 'open', side_effect=RuntimeError('End of file')) as opener:
+                with self.assertRaisesRegex(ValueError, 'Corrupted or invalid audio stream data: End of file'):
+                    stt_service.decode_audio_bytes(b'x' * 64)
+                self.assertEqual(opener.call_count, 2)
+                self.assertTrue(Path(opener.call_args.args[0]).is_relative_to(directory))
+                self.assertEqual(list(Path(directory).iterdir()), [])
+
+    def test_temp_creation_failure_does_not_mask_original_error(self):
+        import stt_service
+        with patch.object(stt_service.av, 'open', side_effect=RuntimeError('bad audio')), patch('tempfile.mkstemp', side_effect=OSError('temporary storage unavailable')):
+            with self.assertRaisesRegex(ValueError, 'temporary storage unavailable'):
+                stt_service.decode_audio_bytes(b'x' * 64)
+
+    def test_valid_wav_still_decodes_in_memory(self):
+        import io
+        import wave
+        import stt_service
+        output = io.BytesIO()
+        with wave.open(output, 'wb') as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(16000)
+            audio.writeframes(b'\x00\x00' * 1600)
+        with patch('tempfile.mkstemp') as temporary:
+            samples, duration, _ = stt_service.decode_audio_bytes(output.getvalue())
+        self.assertEqual(len(samples), 1600)
+        self.assertAlmostEqual(duration, 0.1)
+        temporary.assert_not_called()
+
+
 class UploadCleanupTests(unittest.IsolatedAsyncioTestCase):
     async def test_document_upload_closes_after_read(self):
         from unittest.mock import AsyncMock

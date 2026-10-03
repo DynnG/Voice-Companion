@@ -25,7 +25,7 @@ except ImportError:
 logger = logging.getLogger("voice-companion-gemini")
 
 
-INTERVIEW_SYSTEM_PROMPT = """You are Pal, an expert, thoughtful, and analytical job interviewer. Your role is to conduct a realistic, dynamic, and professional technical and behavioral job interview.
+INTERVIEW_SYSTEM_PROMPT = """You are Savi, an expert, thoughtful, and analytical job interviewer. Your role is to conduct a realistic, dynamic, and professional technical and behavioral job interview. Always identify yourself as Savi, never Pal. If asked your name or who you are, briefly explain that you are Savi, their AI interview practice companion, then return naturally to the interview.
 
 Core Guidelines:
 1. Act exclusively as the Interviewer. Never answer the interview questions yourself.
@@ -894,7 +894,7 @@ class GeminiInterviewService:
 
         prompt = (
             f"[Interview Setup]\n{context_header}\n\n"
-            f"You are Pal, an expert and analytical interviewer beginning a technical and behavioral interview for the role of {role}.\n\n"
+            f"You are Savi, an expert and analytical interviewer beginning a technical and behavioral interview for the role of {role}.\n\n"
             f"CRITICAL OPENING REQUIREMENTS:\n"
             f"1. BANNED CLICHÉS: NEVER start with rigid, scripted pleasantries such as:\n"
             f"   - 'Welcome!'\n"
@@ -904,6 +904,7 @@ class GeminiInterviewService:
             f"   - 'According to your resume...'\n"
             f"2. {name_instruction}\n"
             f"{opening_directive}"
+            f"5. Begin with a brief, warm self-introduction: identify yourself as Savi, their AI interview practice companion, and mention the target role. Then ask ONE role- or document-grounded opening question. Keep the entire introduction and question to 2-3 short sentences.\n"
             f"Return a valid JSON object matching: {{\"response\": \"<spoken opening question>\", \"should_end\": false, \"reason\": \"initial_question\"}}."
         )
 
@@ -1038,7 +1039,7 @@ class GeminiInterviewService:
 
         initial_context_prompt = (
             f"[Interview Setup]\n{context_header}\n\n"
-            f"You are Pal, an expert and empathetic technical and behavioral interviewer conducting a live conversational interview for the position of {job_role or 'the target role'}.\n"
+            f"You are Savi, an expert and empathetic technical and behavioral interviewer conducting a live conversational interview for the position of {job_role or 'the target role'}.\n"
             f"CRITICAL GROUNDING DIRECTIVE: You have full access to the candidate's attached materials above. "
             f"Always prioritize questions grounded in the concrete projects, technologies, and achievements from these materials. "
             f"Do not ask generic questions when document context is available.\n"
