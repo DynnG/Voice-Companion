@@ -472,23 +472,26 @@ mark.f {
 .interview-shell .stage > header > div:last-child { margin-left: auto; }
 .interview-shell .interview-visual-stage { width: 100%; justify-self: center; }
 .interview-shell .voice-footer { width: 100%; }
+/* Reserve space above replay so the dismissible tip cannot cover the header. */
 .interview-tip-card {
-  position: absolute; left: 0; bottom: 4px; width: 250px;
+  position: absolute; top: 8px; left: 0; width: 250px; margin: 0;
+  max-width: calc(100vw - 32px); z-index: 20;
   padding: 14px 16px; border-radius: 20px;
-  background: rgba(19,48,32,.55); border: 1px solid rgba(218,241,222,.18);
+  background: rgba(19,48,32,.95); border: 1px solid rgba(218,241,222,.18);
   text-align: left; color: #8EB69B; font-size: 12px; line-height: 1.4;
 }
-.interview-tip-card summary {
-  display: flex; gap: 10px; align-items: center; list-style: none; color: #F5EEDB;
+.interview-tip-heading { display: flex; gap: 10px; align-items: center; color: #F5EEDB; }
+.interview-tip-heading svg { color: #FFB347; flex-shrink: 0; }
+.interview-tip-card p { margin: 4px 0 0 28px; }
+.interview-tip-dismiss {
+  position: absolute; top: 8px; right: 8px; width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%; background: transparent; color: #8EB69B; cursor: pointer;
 }
-.interview-tip-card summary::-webkit-details-marker { display: none; }
-.interview-tip-card summary svg { color: #FFB347; flex-shrink: 0; }
-.interview-tip-card p { display: block; margin: 4px 0 0 28px; }
-.interview-tip-card summary:focus-visible { outline: 2px solid #FFB347; outline-offset: 4px; }
-@media (max-width: 1100px) {
-  .interview-tip-card { position: relative; width: auto; max-width: 360px; margin: 0 auto 8px; padding: 8px 12px; }
-  .interview-tip-card summary { cursor: pointer; }
-  .interview-tip-card:not([open]) p { display: none; }
+.interview-tip-dismiss:hover { background: rgba(218,241,222,.1); color: #F5EEDB; }
+.interview-tip-dismiss:focus-visible { outline: 2px solid #FFB347; outline-offset: 2px; }
+.interview-shell .canvas-wrap.interview-orb.canvas-wrap--compact {
+  width: min(46vw, 26vh, 225px); height: min(46vw, 26vh, 225px);
 }
 
 /* Camera feedback stays within the existing interview background and layout. */
@@ -560,7 +563,7 @@ mark.f {
 .interview-shell .stage > header { flex: 0 0 auto; min-width: 0; gap: 12px; }
 .interview-shell .interview-visual-stage {
   flex: 1 1 0; height: auto; min-height: 0; overflow: hidden;
-  container-type: size;
+  container-type: size; position: relative;
 }
 .interview-shell .interview-visual-pair { height: 100%; min-height: 0; gap: clamp(12px, 2vw, 28px); }
 .interview-shell .interview-camera-column,
@@ -582,6 +585,7 @@ mark.f {
 .interview-shell .visual-camera-context { flex: 0 0 auto; }
 .interview-shell .visual-camera-observations { min-height: 0; max-height: none; overflow-y: auto; overscroll-behavior: contain; }
 .interview-shell .visual-camera-row { padding-block: 8px; gap: 12px; }
+.interview-shell .canvas-wrap.interview-orb.canvas-wrap--compact,
 .interview-shell .canvas-wrap,
 .interview-shell .canvas-wrap:not(.canvas-wrap--compact) {
   width: min(100%, 30vw, 380px, max(0px, calc(100cqh - 40px)));
@@ -596,7 +600,7 @@ mark.f {
 .interview-shell .interview-replay-body > div:first-child > div:last-child { padding: 8px 10px; }
 .interview-shell .interview-replay-body > div:last-child { padding-block: 0; }
 .interview-shell .voice-footer { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px 16px; padding: 4px 0; align-items: center; }
-.interview-shell .interview-tip-card { position: static; grid-column: 1; grid-row: 1 / span 3; width: auto; max-width: 250px; margin: 0; padding: 8px 12px; font-size: 11px; }
+.interview-shell .voice-footer .interview-tip-card { position: static; grid-column: 1; grid-row: 1 / span 3; width: auto; max-width: 250px; margin: 0; padding: 8px 12px; font-size: 11px; }
 .interview-shell .voice-footer > div:first-of-type { grid-column: 2; grid-row: 1; margin: 0; }
 .interview-shell .voice-footer .interview-camera-hint,
 .interview-shell .voice-footer .hint { grid-column: 2 / 4; justify-self: start; max-width: 100%; margin: 0; font-size: 11px; }

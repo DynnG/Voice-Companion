@@ -25,7 +25,7 @@ except ImportError:
 logger = logging.getLogger("voice-companion-gemini")
 
 
-INTERVIEW_SYSTEM_PROMPT = """You are Pal, an expert, thoughtful, and analytical job interviewer. Your role is to conduct a realistic, dynamic, and professional technical and behavioral job interview.
+INTERVIEW_SYSTEM_PROMPT = """You are Savi, an expert, thoughtful, and analytical job interviewer. Your role is to conduct a realistic, dynamic, and professional technical and behavioral job interview. Always identify yourself as Savi, never Pal. If asked your name or who you are, briefly explain that you are Savi, their AI interview practice companion, then return naturally to the interview.
 
 Core Guidelines:
 1. Act exclusively as the Interviewer. Never answer the interview questions yourself.
@@ -283,6 +283,8 @@ def classify_gemini_error(err: Exception) -> str:
     if isinstance(err, GeminiConnectionError):
         return "connection_error"
     if isinstance(err, GeminiServiceError):
+        if "401" in str(err) or "403" in str(err) or "api_key_service_blocked" in str(err).lower() or "unauthenticated" in str(err).lower():
+            return "authentication_error"
         return "ai_service_error"
     if isinstance(err, json.JSONDecodeError):
         return "malformed_response"
@@ -320,6 +322,8 @@ def get_user_friendly_error_message(error_type: str) -> str:
         return "AI interviewer is temporarily unavailable because the Gemini API usage limit has been reached. Please try again later."
     elif error_type == "connection_error":
         return "AI interviewer is temporarily unavailable due to a connection error. Please try again in a moment."
+    elif error_type == "authentication_error":
+        return "AI interviewer is temporarily unavailable because the API key is invalid or unauthorized."
     elif error_type == "malformed_response":
         return "AI interviewer is temporarily unavailable due to an unexpected response format. Please try again in a moment."
     else:  # ai_service_error or unclassified
@@ -890,7 +894,7 @@ class GeminiInterviewService:
 
         prompt = (
             f"[Interview Setup]\n{context_header}\n\n"
-            f"You are Pal, an expert and analytical interviewer beginning a technical and behavioral interview for the role of {role}.\n\n"
+            f"You are Savi, an expert and analytical interviewer beginning a technical and behavioral interview for the role of {role}.\n\n"
             f"CRITICAL OPENING REQUIREMENTS:\n"
             f"1. BANNED CLICHÉS: NEVER start with rigid, scripted pleasantries such as:\n"
             f"   - 'Welcome!'\n"
@@ -900,6 +904,7 @@ class GeminiInterviewService:
             f"   - 'According to your resume...'\n"
             f"2. {name_instruction}\n"
             f"{opening_directive}"
+            f"5. Begin with a brief, warm self-introduction: identify yourself as Savi, their AI interview practice companion, and mention the target role. Then ask ONE role- or document-grounded opening question. Keep the entire introduction and question to 2-3 short sentences.\n"
             f"Return a valid JSON object matching: {{\"response\": \"<spoken opening question>\", \"should_end\": false, \"reason\": \"initial_question\"}}."
         )
 
@@ -1034,7 +1039,7 @@ class GeminiInterviewService:
 
         initial_context_prompt = (
             f"[Interview Setup]\n{context_header}\n\n"
-            f"You are Pal, an expert and empathetic technical and behavioral interviewer conducting a live conversational interview for the position of {job_role or 'the target role'}.\n"
+            f"You are Savi, an expert and empathetic technical and behavioral interviewer conducting a live conversational interview for the position of {job_role or 'the target role'}.\n"
             f"CRITICAL GROUNDING DIRECTIVE: You have full access to the candidate's attached materials above. "
             f"Always prioritize questions grounded in the concrete projects, technologies, and achievements from these materials. "
             f"Do not ask generic questions when document context is available.\n"
@@ -1206,8 +1211,15 @@ class GeminiInterviewService:
         instruction_text = system_instruction or INTERVIEW_SYSTEM_PROMPT
 
         for model_name in unique_models:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={effective_key}"
-            gen_config: Dict[str, Any] = {
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+            
+            headers = {"Content-Type": "application/json"}
+            if effective_key and effective_key.startswith("ya29."):
+                headers["Authorization"] = f"Bearer {effective_key}"
+            else:
+                url = f"{url}?key={effective_key}"
+            
+            gen_config = {
                 "maxOutputTokens": 1024,
             }
             if enforce_json:
@@ -1223,6 +1235,8 @@ class GeminiInterviewService:
 
             for attempt in range(2):
                 try:
+                    import httpx
+                    import asyncio
                     async with httpx.AsyncClient(
                         timeout=httpx.Timeout(
                             connect=10.0,
@@ -1234,8 +1248,9 @@ class GeminiInterviewService:
                         response = await client.post(
                             url,
                             json=payload,
-                            headers={"Content-Type": "application/json"}
+                            headers=headers
                         )
+
 
                     if response.status_code == 200:
                         data = response.json()
@@ -1577,4 +1592,55 @@ class GeminiInterviewService:
                 "error_type": err_type,
                 "error_message": "AI notes are unavailable right now."
             }
+
+    async def validate_job_title(self, job_title: str) -> bool:
+        """
+        Validate whether the COMPLETE input is a legitimate job title using Gemini.
+        Returns a simple boolean.
+        """
+        clean_title = job_title.strip()
+        if not clean_title:
+            return False
+
+        api_key = self.get_api_key()
+        if not api_key:
+            return False
+
+        # Explicitly normalize internally so Gemini evaluates exactly the same string regardless of input case
+        normalized_title = clean_title.title()
+
+        prompt = (
+            f"Input: \"{normalized_title}\"\n\n"
+            "Does this input represent a legitimate occupation, profession, trade, job role, or commonly used employment position that a person could reasonably have or apply for?\n"
+            "Return a JSON object with a single boolean field 'isValid'. Do not include any other text or explanation."
+        )
+
+        try:
+            resp_text = await self._call_gemini_api(
+                contents=[{"role": "user", "parts": [{"text": prompt}]}],
+                api_key=api_key,
+                enforce_json=True,
+                system_instruction="You are a validation assistant. Classify the user's input. Respond strictly with JSON."
+            )
+            
+            print(f"[JOB DEBUG] Gemini returned: {resp_text}")
+            
+            import json
+            import re
+            
+            cleaned_text = resp_text.strip()
+            if cleaned_text.startswith("```"):
+                cleaned_text = re.sub(r"^```(?:json)?\s*", "", cleaned_text)
+                cleaned_text = re.sub(r"\s*```$", "", cleaned_text).strip()
+                
+            data = json.loads(cleaned_text)
+            
+            is_valid = data.get("isValid")
+            if is_valid is None:
+                is_valid = data.get("is_valid", False)
+                
+            return bool(is_valid)
+        except Exception as e:
+            logger.warning(f"Failed to validate job title: {e}")
+            return False
 

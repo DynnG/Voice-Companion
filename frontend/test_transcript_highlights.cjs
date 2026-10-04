@@ -1,0 +1,17 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const ts = require('typescript');
+const Module = require('node:module');
+const source = fs.readFileSync(require.resolve('./src/services/transcriptHighlights.ts'), 'utf8');
+const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+const testModule = new Module('transcriptHighlights');
+testModule._compile(compiled, 'transcriptHighlights.js');
+const ranges = testModule.exports.transcriptHighlightRanges;
+const marked = text => ranges(text).map(r => text.slice(r.start, r.end));
+assert.deepEqual(marked('And... and... and... uh... yeah, API.'), ['And', 'and', 'and', 'uh']);
+assert.deepEqual(marked('I... I think it works'), ['I', 'I']);
+assert.deepEqual(marked('The API works and the API scales.'), []);
+assert.deepEqual(marked('and / and'), []);
+assert.deepEqual(marked('um um like'), ['um', 'um', 'like']);
+assert.deepEqual(marked(''), []);
+console.log('6 transcript highlighting regression cases passed');

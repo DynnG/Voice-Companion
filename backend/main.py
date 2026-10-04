@@ -137,10 +137,16 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Enable CORS for local development
+# Allow the deployed Savi frontend and local development origins.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://frontend-fawn-gamma-48.vercel.app"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -453,11 +459,13 @@ async def initial_question(req: InitialQuestionRequest, db: Session = Depends(ge
         err_type = "quota_exceeded"
     elif "connection error" in clean_question:
         err_type = "connection_error"
+    elif "unauthorized" in clean_question or "invalid" in clean_question:
+        err_type = "authentication_error"
     elif is_error:
         err_type = "ai_service_error"
     else:
         err_type = None
-    return {
+    response_data = {
         "job_role": role,
         "question": clean_question,
         "ai_response": clean_question,
@@ -465,6 +473,18 @@ async def initial_question(req: InitialQuestionRequest, db: Session = Depends(ge
         "error_type": err_type,
         "error_message": clean_question if is_error else None
     }
+    
+    if is_error:
+        status_code = 500
+        if err_type == "quota_exceeded":
+            status_code = 429
+        elif err_type == "authentication_error":
+            status_code = 401
+        elif err_type == "connection_error":
+            status_code = 503
+        return JSONResponse(status_code=status_code, content=response_data)
+    
+    return response_data
 
 
 @app.post("/interview/followup", response_model=FollowupResponse, tags=["Interview Brain"])
@@ -556,7 +576,7 @@ async def generate_followup(req: FollowupRequest, db: Session = Depends(get_db))
         if should_end or ACTIVE_INTERVIEW_SESSIONS[session_id]["turns_used"] >= HARD_INTERVIEW_TURN_LIMIT:
             ACTIVE_INTERVIEW_SESSIONS[session_id]["status"] = "completed"
 
-    return {
+    response_data = {
         "transcription": req.user_answer,
         "ai_response": clean_response,
         "should_end": should_end,
@@ -565,6 +585,19 @@ async def generate_followup(req: FollowupRequest, db: Session = Depends(get_db))
         "error_type": result.get("error_type"),
         "error_message": result.get("error_message")
     }
+
+    if response_data["status"] == "error":
+        status_code = 500
+        err_type = response_data.get("error_type", "")
+        if err_type == "quota_exceeded":
+            status_code = 429
+        elif err_type == "authentication_error" or err_type == "api_key_missing":
+            status_code = 401
+        elif err_type == "connection_error":
+            status_code = 503
+        return JSONResponse(status_code=status_code, content=response_data)
+
+    return response_data
 
 
 @app.post("/interview/replay/notes", response_model=AnswerNotesResponse, tags=["Answer Replay"])
@@ -584,12 +617,25 @@ async def get_answer_notes(req: AnswerNotesRequest, db: Session = Depends(get_db
         duration_seconds=req.duration_seconds,
         hesitation_evidence=req.hesitation_evidence
     )
-    return AnswerNotesResponse(
-        status=res.get("status", "success"),
-        notes=res.get("notes", []),
-        error_type=res.get("error_type"),
-        error_message=res.get("error_message")
-    )
+    response_data = {
+        "status": res.get("status", "success"),
+        "notes": res.get("notes", []),
+        "error_type": res.get("error_type"),
+        "error_message": res.get("error_message")
+    }
+    
+    if response_data["status"] == "error":
+        status_code = 500
+        err_type = response_data.get("error_type", "")
+        if err_type == "quota_exceeded":
+            status_code = 429
+        elif err_type == "authentication_error" or err_type == "api_key_missing":
+            status_code = 401
+        elif err_type == "connection_error":
+            status_code = 503
+        return JSONResponse(status_code=status_code, content=response_data)
+        
+    return response_data
 
 
 @app.post("/interview/replay/compare", response_model=AnswerComparisonResponse, tags=["Answer Replay"])
@@ -622,7 +668,8 @@ async def compare_answers(req: AnswerComparisonRequest, db: Session = Depends(ge
 
 @app.post("/tts", tags=["Text-to-Speech"])
 @app.post("/api/tts", tags=["Text-to-Speech"])
-async def text_to_speech(req: TTSRequest):
+# FastAPI runs this CPU-bound handler in its worker pool, keeping the event loop free.
+def text_to_speech(req: TTSRequest):
     """
     Synthesize speech from text using Kokoro-82M ONNX on CPU.
     Returns 24kHz 16-bit PCM WAV audio for direct browser playback.
@@ -879,6 +926,16 @@ async def transcribe_audio(
             f"User: \"{transcribed_text}\" -> AI: \"{ai_response_text}\""
         )
 
+        if result["status"] == "error":
+            status_code = 500
+            err_type = result.get("error_type", "")
+            if err_type == "quota_exceeded":
+                status_code = 429
+            elif err_type == "authentication_error" or err_type == "api_key_missing":
+                status_code = 401
+            elif err_type == "connection_error":
+                status_code = 503
+            return JSONResponse(status_code=status_code, content=result)
         return result
 
     except STTUnavailable as error:
@@ -1100,3 +1157,16 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run("backend.main:app", host=HOST, port=PORT, reload=True)
 
+
+class JobTitleValidationRequest(BaseModel):
+    job_role: str
+
+@app.post("/interview/validate-job-title", tags=["Interview Brain"])
+@app.post("/api/interview/validate-job-title", tags=["Interview Brain"])
+async def validate_job_title_endpoint(req: JobTitleValidationRequest):
+    """
+    Validate whether the manually entered job title is a legitimate job role.
+    """
+    gemini = GeminiInterviewService.get_instance()
+    is_valid = await gemini.validate_job_title(req.job_role)
+    return {"is_valid": is_valid}

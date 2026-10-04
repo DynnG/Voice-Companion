@@ -78,19 +78,29 @@ export function getBestVoice(): SpeechSynthesisVoice | null {
   const voices = cachedVoices.length > 0 ? cachedVoices : window.speechSynthesis.getVoices();
   if (!voices || voices.length === 0) return null;
 
+  // Browser/OS voice names vary; prefer quality markers before legacy voices.
+  const naturalEnglishVoices = voices.filter(
+    (voice) => /^en(?:[-_]|$)/i.test(voice.lang) &&
+      /natural|neural|enhanced|premium/i.test(voice.name)
+  );
+  if (naturalEnglishVoices.length > 0) {
+    return naturalEnglishVoices.find((voice) => /^en[-_]US$/i.test(voice.lang)) ||
+      naturalEnglishVoices.find((voice) => voice.default) ||
+      naturalEnglishVoices[0];
+  }
   // Prioritize high-quality natural voices across Chrome, Edge, Safari, Firefox
   const preferredVoiceNames = [
     'Microsoft Jenny Online (Natural) - English (United States)',
     'Microsoft Guy Online (Natural) - English (United States)',
     'Microsoft Aria Online (Natural) - English (United States)',
     'Google US English',
-    'Microsoft David - English (United States)',
-    'Microsoft Zira - English (United States)',
     'Samantha',
     'Karen',
     'Daniel',
     'Alex',
-    'Victoria'
+    'Victoria',
+    'Microsoft David - English (United States)',
+    'Microsoft Zira - English (United States)'
   ];
 
   for (const preferred of preferredVoiceNames) {
@@ -216,7 +226,7 @@ function speakWithSpeechSynthesis(
     }
 
     utterance.pitch = 1.0;
-    utterance.rate = options?.speed || 1.02;
+    utterance.rate = options?.speed || 0.98;
 
     let hasEnded = false;
     const finalize = () => {
