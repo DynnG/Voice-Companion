@@ -33,6 +33,7 @@ export interface Conversation {
 }
 
 export interface AnswerAttempt {
+  inputMode?: 'audio' | 'chat';
   attemptNumber: 1 | 2;
   audioBlob: Blob;
   audioUrl: string;
