@@ -293,7 +293,7 @@
   gap: 10px;
   font-size: 14px;
   font-weight: 700;
-  box-shadow: 0 4px 18px rgba(255, 179, 71, 0.18);
+  box-shadow: 0 0 18px rgba(255, 179, 71, 0.18);
 }
 .setup-start-button > svg { flex-shrink: 0; }
 .setup-start-button:focus-visible { outline: 2px solid var(--paper); outline-offset: 4px; }
@@ -339,7 +339,7 @@
   color: var(--serpent);
   font-weight: 800;
   border-radius: var(--pill);
-  box-shadow: 0 4px 18px rgba(255, 179, 71, 0.3);
+  box-shadow: 0 0 18px rgba(255, 179, 71, 0.3);
   display: inline-flex;
   gap: 6px;
   align-items: center;
@@ -349,7 +349,7 @@
 }
 
 .btn-saffron-sm:hover {
-  box-shadow: 0 8px 24px rgba(255, 179, 71, 0.45);
+  box-shadow: 0 0 24px rgba(255, 179, 71, 0.45);
   transform: translateY(-1px);
 }
 

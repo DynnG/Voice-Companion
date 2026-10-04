@@ -776,7 +776,8 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         extracted_text: d.content || d.extractedText
       })),
       durationSeconds,
-      hesitationEvidence
+      hesitationEvidence,
+      inputMethod: inputMode
     }).then((notesRes) => {
       const saved = replayHistoryRef.current.get(exchangeId);
       if (saved?.attempt1) replayHistoryRef.current.set(exchangeId, { ...saved, attempt1: { ...saved.attempt1, aiNotes: notesRes.notes || [], aiNotesStatus: notesRes.status === 'success' ? 'success' : 'error', errorMessage: notesRes.error_message } });
