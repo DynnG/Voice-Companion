@@ -1382,7 +1382,8 @@ class GeminiInterviewService:
         attached_docs: Optional[List[Dict[str, Any]]] = None,
         interview_id: Optional[str] = None,
         duration_seconds: Optional[float] = None,
-        hesitation_evidence: Optional[Dict[str, Any]] = None
+        hesitation_evidence: Optional[Dict[str, Any]] = None,
+        input_method: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Use Gemini to analyze the candidate's latest answer and generate SHORT, actionable coaching notes.
@@ -1412,38 +1413,41 @@ class GeminiInterviewService:
         role = (job_role or "Software Developer").strip()
         dur_str = f"{int(round(duration_seconds))} seconds" if duration_seconds else "not specified"
 
+        input_type_str = "typed/written" if input_method == "chat" else "spoken/voice"
+        answer_label = "Candidate's Typed Answer" if input_method == "chat" else "Candidate's Spoken Answer"
+
         # Resolve hesitation evidence from parameter or extract directly from answer
         if hesitation_evidence is None and clean_answer:
             hesitation_evidence = extract_hesitation_evidence(clean_answer, audio_duration=duration_seconds)
 
-        delivery_guidance = build_hesitation_coaching_prompt_section(hesitation_evidence or {})
+        delivery_guidance = ""
+        if input_method != "chat":
+            delivery_guidance = build_hesitation_coaching_prompt_section(hesitation_evidence or {})
 
         prompt = (
             f"[Interview Coaching Setup]\n{context_header}\n\n"
-            f"You are an expert interview coach analyzing a candidate's answer for the role of {role}.\n\n"
+            f"You are an expert interview coach analyzing a candidate's {input_type_str} answer for the role of {role}.\n\n"
             f"Interviewer Question: {clean_question or 'Describe your technical experience.'}\n"
-            f"Candidate's Actual Spoken Answer: {clean_answer}\n"
+            f"{answer_label}: {clean_answer}\n"
             f"Answer Duration: {dur_str}\n\n"
             f"COACHING EVALUATION GUIDELINES:\n"
-            f"Analyze the candidate's actual latest answer, the interviewer question asked, and available document context.\n"
+            f"Provide a natural BALANCE of positive feedback and constructive criticism.\n"
+            f"When the user does something correctly (e.g. clear explanation, good example), explicitly acknowledge it to reinforce good behavior.\n"
+            f"When something could be improved, provide a short, actionable suggestion (e.g. 'briefly mention the result next time').\n"
+            f"Subtly and naturally acknowledge the input method ({input_type_str}) in the notes, but keep the primary focus on answer quality.\n"
+            f"Example phrasing: 'Voice response \u2014 good example. Briefly explain the result next time.' or 'Typed response \u2014 your explanation was clear.'\n"
+            f"Keep notes SHORT, NATURAL, and INTERVIEW-FOCUSED. Avoid overly formal or robotic wording. Do not make every note positive or every note negative.\n\n"
             f"Focus on observable answer quality such as:\n"
             f"- relevance to the question\n"
-            f"- specificity\n"
-            f"- completeness\n"
-            f"- technical/detail quality\n"
-            f"- structure\n"
-            f"- clarity\n"
-            f"- whether claims have supporting details\n"
-            f"- whether the answer gives a concrete result/example\n\n"
+            f"- specificity and completeness\n"
+            f"- structure and clarity\n"
+            f"- concrete results/examples\n\n"
             f"{delivery_guidance}\n\n"
             f"STRICT RULES:\n"
-            f"1. Ground delivery notes in BOTH detected filler words ('um', 'uh', 'so') AND noticeable hesitation pauses ('...') or timing evidence.\n"
-            f"2. Do NOT generate vague praise (e.g., 'Great answer', 'Good job', 'Nice work').\n"
-            f"3. Do NOT use 'confidence' as a metric or numeric score.\n"
-            f"4. Do NOT invent information.\n"
-            f"5. Do NOT criticize pronunciation unless the speech transcript contains clear evidence.\n"
-            f"6. Limit AI Notes to approximately 2 to 4 concise bullet points.\n"
-            f"7. Each bullet point should be a concise phrase (5-14 words max), actionable or descriptive of strength/gap.\n"
+            f"1. Limit AI Notes to approximately 2 to 4 concise bullet points.\n"
+            f"2. Each bullet point should be a concise phrase (5-20 words max), natural and actionable.\n"
+            f"3. Do NOT invent information or use 'confidence' as a metric.\n"
+            f"4. If spoken/voice response, ground delivery notes in detected filler words and noticeable hesitation pauses.\n"
             f"Return a valid JSON object matching this schema:\n"
             f'{{\n  "notes": ["<bullet 1>", "<bullet 2>", "<bullet 3>"]\n}}'
         )

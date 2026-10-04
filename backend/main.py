@@ -234,6 +234,7 @@ class AnswerNotesRequest(BaseModel):
     attached_documents: Optional[List[Dict[str, Any]]] = None
     duration_seconds: Optional[float] = None
     hesitation_evidence: Optional[Dict[str, Any]] = None
+    input_method: Optional[str] = None
 
 class AnswerNotesResponse(BaseModel):
     status: str = "success"
@@ -615,7 +616,8 @@ async def get_answer_notes(req: AnswerNotesRequest, db: Session = Depends(get_db
         attached_docs=effective_docs,
         interview_id=req.interview_id,
         duration_seconds=req.duration_seconds,
-        hesitation_evidence=req.hesitation_evidence
+        hesitation_evidence=req.hesitation_evidence,
+        input_method=req.input_method
     )
     response_data = {
         "status": res.get("status", "success"),

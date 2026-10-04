@@ -446,6 +446,7 @@ export async function fetchAnswerAiNotes(params: {
   attachedDocuments?: AttachedDocumentPayload[];
   durationSeconds?: number;
   hesitationEvidence?: any;
+  inputMethod?: 'audio' | 'chat';
 }): Promise<AnswerAiNotesResult> {
   const baseUrl = getApiBaseUrl();
   const apiUrl = `${baseUrl}/interview/replay/notes`;
@@ -461,7 +462,8 @@ export async function fetchAnswerAiNotes(params: {
         job_role: params.jobRole || 'Software Developer',
         attached_documents: params.attachedDocuments || [],
         duration_seconds: params.durationSeconds,
-        hesitation_evidence: params.hesitationEvidence
+        hesitation_evidence: params.hesitationEvidence,
+        input_method: params.inputMethod
       })
     });
 
