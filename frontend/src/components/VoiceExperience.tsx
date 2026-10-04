@@ -3,7 +3,7 @@ import { VoiceState, AttachedDocument, Message, AnswerAttempt, ReplayState, Inte
 import { Sparkles, MessageSquare, User, Plus, AlertCircle, X, Lightbulb } from 'lucide-react';
 import { VoiceCreature } from './VoiceCreature';
 import { StateLabel } from './StateLabel';
-import { ResponseCaption } from './ResponseCaption';
+
 import { CandidateCamera } from './CandidateCamera';
 import { VoiceControls } from './VoiceControls';
 import { updateSpeechEndpoint, SpeechEndpointState } from '../services/speechEndpoint';
@@ -105,8 +105,8 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   const [customLabel, setCustomLabel] = useState<string | undefined>(
     isCompleted ? 'Interview Complete' : undefined
   );
-  const [captionText, setCaptionText] = useState('');
-  const [captionVisible, setCaptionVisible] = useState(false);
+  const [, setCaptionText] = useState('');
+  const [, setCaptionVisible] = useState(false);
   const [statusHint, setStatusHint] = useState<string | undefined>(
     isCompleted ? 'Interview Complete · Review the full transcript in the side panel' : undefined
   );
@@ -268,48 +268,43 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     setPlaybackProgress(0);
   };
 
-  const playAttempt = (attemptNum: 1 | 2) => {
-    stopSpeaking();
-    stopReplayPlayback();
-
+  const playAttempt = (attemptNum: 1 | 2, seekTo?: number, autoplay = true) => {
     const attempt = attemptNum === 1 ? replayState.attempt1 : replayState.attempt2;
-    if (!attempt || !attempt.audioUrl) return;
-
-    try {
-      const audio = new Audio(attempt.audioUrl);
+    if (!attempt?.audioUrl || attempt.inputMode === 'chat') return;
+    if (autoplay) stopSpeaking();
+    let audio = replayAudioRef.current;
+    if (!audio || audio.getAttribute('src') !== attempt.audioUrl) {
+      stopReplayPlayback();
+      audio = new Audio(attempt.audioUrl);
       replayAudioRef.current = audio;
+    }
+    const player = audio;
+    const duration = () => Number.isFinite(player.duration) && player.duration > 0 ? player.duration : attempt.durationSeconds;
+    const sync = () => {
+      setPlaybackCurrentTime(player.currentTime);
+      setPlaybackProgress(duration() > 0 ? player.currentTime / duration() : 0);
+    };
+    player.ontimeupdate = sync;
+    player.onseeked = sync;
+    player.onended = () => { setPlayingAttempt(null); sync(); };
+    player.onerror = () => { setPlayingAttempt(null); };
+    if (seekTo !== undefined || player.ended) {
+      const target = Math.max(0, Math.min(duration(), seekTo ?? 0));
+      const seek = () => { player.currentTime = target; sync(); };
+      if (player.readyState >= 1) seek(); else player.onloadedmetadata = seek;
+      setPlaybackCurrentTime(target);
+      setPlaybackProgress(duration() > 0 ? target / duration() : 0);
+    }
+    if (autoplay) {
       setPlayingAttempt(attemptNum);
-
-      audio.ontimeupdate = () => {
-        if (audio.duration && audio.duration > 0) {
-          setPlaybackCurrentTime(audio.currentTime);
-          setPlaybackProgress(audio.currentTime / audio.duration);
-        }
-      };
-
-      audio.onended = () => {
-        setPlayingAttempt(null);
-        setPlaybackCurrentTime(0);
-        setPlaybackProgress(0);
-        replayAudioRef.current = null;
-      };
-
-      audio.onerror = (e) => {
-        console.warn('[Answer Replay] Audio playback error:', e);
-        setPlayingAttempt(null);
-        replayAudioRef.current = null;
-      };
-
-      audio.play().catch((playErr) => {
-        console.warn('[Answer Replay] Audio play prevented:', playErr);
-        setPlayingAttempt(null);
-      });
-    } catch (e) {
-      console.warn('[Answer Replay] Could not initialize audio:', e);
-      setPlayingAttempt(null);
+      void player.play().catch(() => setPlayingAttempt(null));
     }
   };
-
+  const seekReplay = (offset: number) => {
+    const current = replayAudioRef.current?.currentTime ?? playbackCurrentTime;
+    playAttempt(1, current + offset, false);
+  };
+  const pauseReplay = () => { replayAudioRef.current?.pause(); setPlayingAttempt(null); };
   const handleTryAgain = () => {
     if (!isMicEnabled || isCompleted) return;
     stopSpeaking();
@@ -605,15 +600,15 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     userText: string,
     audioBlob: Blob,
     durationSeconds: number,
-    hesitationEvidence?: any
+    hesitationEvidence?: any, inputMode: 'audio' | 'chat' = 'audio'
   ) => {
     if (replayState.isRetryMode) {
       console.log('[Live Interview] User Attempt 2 transcription:', userText);
-      const audioUrl2 = URL.createObjectURL(audioBlob);
+      const audioUrl2 = inputMode === 'audio' ? URL.createObjectURL(audioBlob) : '';
       objectUrlsRef.current.push(audioUrl2);
 
       const attempt2Data: AnswerAttempt = {
-        attemptNumber: 2,
+        attemptNumber: 2, inputMode,
         audioBlob,
         audioUrl: audioUrl2,
         transcript: userText,
@@ -711,9 +706,9 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     // --- Standard Interview Turn (Attempt 1) ---
     console.log('[Live Interview] 1. User answer:', userText);
 
-    // Retain current-session audio for reopening earlier answers; revoke on unmount.
-    const audioUrl1 = URL.createObjectURL(audioBlob);
-    objectUrlsRef.current.push(audioUrl1);
+    // Retain session audio for reopening earlier answers; revoke on unmount.
+    const audioUrl1 = inputMode === 'audio' ? URL.createObjectURL(audioBlob) : '';
+    if (audioUrl1) objectUrlsRef.current.push(audioUrl1);
 
     const questionAnswered = (currentQuestionBeingAnsweredRef.current && !isQuotaExceededText(currentQuestionBeingAnsweredRef.current) && !isInterviewErrorText(currentQuestionBeingAnsweredRef.current))
       ? currentQuestionBeingAnsweredRef.current
@@ -722,7 +717,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       : 'Interview Question';
 
     const attempt1Data: AnswerAttempt = {
-      attemptNumber: 1,
+      attemptNumber: 1, inputMode,
       audioBlob,
       audioUrl: audioUrl1,
       transcript: userText,
@@ -789,7 +784,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         onExchangeAiNotesUpdated?.(exchangeId, notesRes.notes);
       }
       setReplayState((prev) => {
-        if (!prev.attempt1 || prev.attempt1.audioUrl !== audioUrl1) return prev;
+        if (!prev.attempt1 || prev.attempt1.audioBlob !== audioBlob) return prev;
         return {
           ...prev,
           attempt1: {
@@ -1095,38 +1090,47 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
    * Process permanent typed answer directly from the transcript sidebar
    */
   const processTypedAnswer = async (typedText: string) => {
-    if (!isMicEnabled || isCompleted || isProcessingRef.current) {
+    if (!isMicEnabled || isCompleted || (isProcessingRef.current && state !== 'speaking')) {
       return;
     }
     const cleanText = typedText.trim();
     if (!cleanText) return;
 
-    // Interrupt any active TTS or recording
+    unlockAudio();
+    isProcessingRef.current = true;
+    // A submitted typed answer replaces an unfinished microphone take.
+    // Detach onstop first so stopping it cannot submit a second answer.
     stopSpeaking();
-    if (state === 'listening') {
+    stopReplayPlayback();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.ondataavailable = null;
       try {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-          mediaRecorderRef.current.stop();
-        }
+        mediaRecorderRef.current.stop();
       } catch {}
     }
+    cleanupAudioResources();
+    audioChunksRef.current = [];
+    micAudioLevelRef.current = 0;
 
     isProcessingRef.current = true;
     setState('thinking');
     setCustomLabel('processing answer…');
 
-    // Create a lightweight audio blob to represent the typed turn in replay cards
-    const syntheticBlob = new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])], { type: 'audio/webm' });
+    // Keep answer identity without creating a fake recording for typed turns.
+    const syntheticBlob = new Blob([]);
     const wordCount = cleanText.split(/\s+/).length;
     const estimatedDuration = Math.max(2, Math.round(wordCount / 2.5));
 
-    await processCandidateAnswer(cleanText, syntheticBlob, estimatedDuration, undefined);
+    await processCandidateAnswer(cleanText, syntheticBlob, estimatedDuration, undefined, 'chat');
   };
 
-  // Register permanent typed answer submission handler with parent VoiceCompanion
+  // The sidebar keeps one callback, which always reads the latest session state.
+  const typedAnswerHandlerRef = useRef(processTypedAnswer);
+  typedAnswerHandlerRef.current = processTypedAnswer;
   useEffect(() => {
-    onRegisterSubmitAnswer?.(processTypedAnswer);
-  }, [onRegisterSubmitAnswer, isMicEnabled, isCompleted]);
+    onRegisterSubmitAnswer?.((text) => typedAnswerHandlerRef.current(text));
+  }, [onRegisterSubmitAnswer]);
 
   const handleToggleFlow = () => {
     unlockAudio();
@@ -1173,7 +1177,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   );
 
   return (
-    <div data-camera-active={isCameraActive} className="stage relative w-full h-full flex flex-col justify-between overflow-hidden select-none px-3 sm:px-6 py-2 sm:py-3">
+    <div data-camera-active={isCameraActive} data-replay-expanded={isCompactVisual} className="stage relative w-full h-full flex flex-col justify-between overflow-hidden select-none px-3 sm:px-6 py-2 sm:py-3">
       {/* 1. Header Bar: Brand Logo, Job Role, In Progress pill, Transcript toggle sitting directly on background */}
       <header className="flex items-center justify-between w-full pb-2 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
@@ -1304,7 +1308,8 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
           >
             <CandidateCamera
               candidateName={candidateName || 'Candidate'}
-              candidateRole="Candidate"
+              candidateRole={jobRole || 'Software Developer'}
+              recordingActive={state === 'listening'}
               compact={isCompactVisual}
               onCameraActiveChange={setIsCameraActive}
               registerToggle={(fn) => { cameraToggleFnRef.current = fn; }}
@@ -1337,13 +1342,6 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             <div className="shrink-0 mt-0.5 sm:mt-1 min-h-[20px] flex items-center justify-center">
               <StateLabel state={state} customLabel={customLabel} />
             </div>
-
-            {/* Interview text is shown in the transcript, without a duplicate below the orb. */}
-            {captionVisible && (
-              <div className="hidden" aria-hidden="true">
-                <ResponseCaption captionText={captionText} visible={captionVisible} />
-              </div>
-            )}
 
             {/* Status & Info Container under the Orb */}
             {isCameraActive ? null : (
@@ -1398,7 +1396,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
       {/* 4. Dedicated Lower-Middle Zone: Answer Comparison / Replay Panel & Bottom Controls (One Cohesive Lower Section) */}
       {/* Container class invariant: w-full flex-1 min-h-0 flex flex-col items-center justify-center */}
-      <div className="relative w-full shrink-0 flex flex-col items-center gap-1.5 sm:gap-2 z-10 mt-auto pb-1 transition-all duration-300 ease-out">
+      <div className="interview-lower-zone relative w-full shrink-0 flex flex-col items-center gap-1.5 sm:gap-2 z-10 mt-auto pb-1 transition-all duration-300 ease-out">
         {/* Dedicated Lower-Middle Zone: Answer Comparison / Replay Panel */}
         {replayState.isVisible && replayState.attempt1 && (
           <div
@@ -1409,7 +1407,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             <AnswerReplayCard
               replayState={replayState}
               onPlayAttempt={playAttempt}
-              onStopPlayback={stopReplayPlayback}
+              onStopPlayback={pauseReplay} onSeekPlayback={seekReplay}
               playingAttempt={playingAttempt}
               playbackCurrentTime={playbackCurrentTime}
               playbackProgress={playbackProgress}

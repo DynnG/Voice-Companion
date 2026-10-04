@@ -16,6 +16,7 @@ interface AnswerReplayCardProps {
   replayState?: ReplayState;
   onPlayAttempt?: (attemptNumber: 1 | 2) => void;
   onStopPlayback?: () => void;
+  onSeekPlayback?: (offset: number) => void;
   playingAttempt?: (1 | 2) | null;
   playbackCurrentTime?: number;
   playbackProgress?: number; // 0 to 1
@@ -169,6 +170,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
   replayState,
   onPlayAttempt,
   onStopPlayback,
+  onSeekPlayback,
   playingAttempt = null,
   playbackCurrentTime = 0,
   playbackProgress = 0,
@@ -181,28 +183,33 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
   isCompleted = false,
   reviewOnly = false,
 }) => {
+  const [localCollapsed, setLocalCollapsed] = useState(false);
+  const [activeTab, setActiveTab] = useState<'notes' | 'comparison'>('notes');
+
+  useEffect(() => {
+    setLocalCollapsed(false);
+    setActiveTab('notes');
+  }, [replayState?.attempt1?.audioBlob]);
+
   if (!replayState?.isVisible || !replayState?.attempt1) {
     return null;
   }
-
-  const [localCollapsed, setLocalCollapsed] = useState(false);
-  const [activeTab, setActiveTab] = useState<'notes' | 'comparison'>('notes');
 
   const attempt1 = replayState.attempt1;
   const attempt2 = replayState.attempt2;
   const comparison = replayState.comparison;
   const isRetryMode = replayState.isRetryMode || false;
-  const isMinimized = Boolean(replayState.isMinimized || localCollapsed);
+  const isMinimized = onToggleMinimize ? Boolean(replayState.isMinimized) : localCollapsed;
 
   const handleToggle = () => {
-    setLocalCollapsed((prev) => !prev);
-    onToggleMinimize?.();
+    if (onToggleMinimize) onToggleMinimize();
+    else setLocalCollapsed((prev) => !prev);
   };
 
   // View Mode: In-Progress Retry
   if (isRetryMode) {
     return (
-      <div className="w-full max-w-2xl lg:max-w-3xl xl:max-w-5xl mx-auto bg-[rgba(10,32,24,0.55)] backdrop-blur-xl border border-[rgba(255,179,71,0.25)] border-t-[rgba(255,195,112,0.42)] rounded-2xl sm:rounded-3xl shadow-[inset_0_1px_1px_rgba(255,195,112,0.22),0_24px_60px_rgba(0,0,0,0.45)] p-4 sm:p-5 text-[#F5EEDB] font-manrope space-y-3 max-h-[min(54vh,420px)] overflow-y-auto shrink-0">
+      <div className="w-full max-w-2xl lg:max-w-3xl xl:max-w-5xl mx-auto bg-[rgba(10,32,24,0.55)] backdrop-blur-xl border border-[rgba(255,179,71,0.25)] border-t-[rgba(255,195,112,0.42)] rounded-2xl sm:rounded-3xl shadow-[inset_0_1px_1px_rgba(255,195,112,0.22),0_24px_60px_rgba(0,0,0,0.45)] p-4 sm:p-5 text-[#F5EEDB] font-manrope space-y-3 max-h-[min(42dvh,380px)] overflow-y-auto shrink-0">
         <div className="flex items-center justify-between border-b border-[rgba(218,241,222,0.12)] pb-2">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-[#FFB347] animate-pulse" />
@@ -236,7 +243,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
     );
   }
 
-  // Canonical Target View: Unified Container for Audio Playback & AI Notes
+  // Canonical Target View: Unified Container for AI Notes
   const isPlaying = playingAttempt === 1;
   const displayDuration = attempt1.durationSeconds || 0;
   const displayCurrentTime = playbackCurrentTime || 0;
@@ -244,13 +251,14 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
     ? Math.min(1, Math.max(0, displayCurrentTime / displayDuration))
     : (playbackProgress || 0);
 
+  const hasAudio = attempt1.inputMode !== 'chat' && attempt1.audioBlob.size > 4 && !!attempt1.audioUrl;
   const displayTranscript = attempt1.transcript || '';
   const displayNotes = attempt1.aiNotes || [];
 
   return (
     <section
       className="w-full max-w-2xl lg:max-w-3xl xl:max-w-5xl mx-auto bg-[rgba(10,32,24,0.55)] backdrop-blur-xl border border-[rgba(218,241,222,0.14)] border-t-[rgba(245,238,219,0.22)] rounded-2xl sm:rounded-3xl shadow-[inset_0_1px_1px_rgba(245,238,219,0.16),0_18px_50px_rgba(0,0,0,0.32)] text-[#F5EEDB] font-manrope overflow-hidden transition-all duration-300 shrink-0"
-      aria-label="Audio Playback & AI Notes"
+      aria-label="AI Notes"
     >
       {/* 1. Unified Header Bar */}
       <button
@@ -258,7 +266,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
         onClick={handleToggle}
         className="w-full flex items-center justify-between px-4 sm:px-6 py-2 sm:py-2.5 hover:bg-[rgba(218,241,222,0.03)] transition-colors text-left cursor-pointer group select-none"
         aria-expanded={!isMinimized}
-        title={isMinimized ? 'Expand Audio Playback & AI Notes' : 'Minimize Audio Playback & AI Notes'}
+        title={isMinimized ? 'Expand AI Notes' : 'Minimize AI Notes'}
       >
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-[rgba(255,179,71,0.12)] border border-[rgba(255,179,71,0.35)] flex items-center justify-center text-[#FFB347] shrink-0 group-hover:scale-105 transition-transform">
@@ -268,9 +276,9 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
           </div>
           <div className="flex items-center gap-3">
             <h3 className="font-semibold text-sm sm:text-base text-[#F5EEDB] tracking-tight">
-              Audio Playback &amp; AI Notes
+              AI Notes
             </h3>
-            {isMinimized && (
+            {isMinimized && hasAudio && (
               <span className="text-[11px] text-[#8EB69B] font-mono hidden sm:inline-block">
                 {formatTime(displayCurrentTime)} / {formatTime(displayDuration)}
               </span>
@@ -318,7 +326,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
         <div className="border-t border-[rgba(218,241,222,0.10)]">
           {attempt2 && comparison && activeTab === 'comparison' ? (
             /* Comparison Mode */
-            <div className="p-4 sm:p-5 text-[#F5EEDB] font-manrope flex flex-col max-h-[min(54vh,420px)] overflow-y-auto space-y-3">
+            <div className="p-4 sm:p-5 text-[#F5EEDB] font-manrope flex flex-col max-h-[min(42dvh,380px)] overflow-y-auto space-y-3">
               <div className="flex items-center justify-between pb-2 border-b border-[rgba(218,241,222,0.1)]">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-[#FFB347]" />
@@ -380,16 +388,16 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
               )}
             </div>
           ) : (
-            /* Split Audio Playback & AI Notes Mode */
-            <div className="answer-replay-body grid grid-cols-1 md:grid-cols-2 p-3 sm:p-4 gap-3 sm:gap-4 max-h-[min(34vh,260px)] sm:max-h-[min(36vh,280px)] overflow-y-auto">
+            /* Split AI Notes Mode */
+            <div className={`answer-replay-body interview-replay-body ${hasAudio ? 'md:grid-cols-2' : ''} grid grid-cols-1 p-3 sm:p-4 gap-3 sm:gap-4 max-h-[min(42dvh,380px)] overflow-y-auto`}>
               {/* LEFT COLUMN: YOUR ANSWER (Audio Playback + Duration + Actual Transcript) */}
-              <div className="flex flex-col justify-between p-3 sm:p-3.5 rounded-2xl bg-[rgba(6,24,18,0.45)] border border-[rgba(218,241,222,0.10)] shadow-inner space-y-2">
+              {hasAudio && <div className="flex flex-col justify-between p-3 sm:p-3.5 rounded-2xl bg-[rgba(6,24,18,0.45)] border border-[rgba(218,241,222,0.10)] shadow-inner space-y-2">
                 {/* Header: YOUR ANSWER + Duration badge [13 sec] */}
                 <div className="flex items-center justify-between pb-1 border-b border-[rgba(218,241,222,0.08)]">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-[#FFB347]" />
                     <span className="text-[11px] font-bold text-[#FFB347] uppercase tracking-wider">
-                      Your Answer
+                      Audio Playback
                     </span>
                   </div>
                   <span className="text-[11px] font-mono font-medium text-[#8EB69B] px-2 py-0.5 rounded-full bg-[rgba(218,241,222,0.06)] border border-[rgba(218,241,222,0.10)]">
@@ -426,11 +434,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                   <div className="flex items-center justify-center gap-6 sm:gap-8 pt-0.5">
                     <button
                       type="button"
-                      onClick={() => {
-                        if (attempt1) {
-                          onPlayAttempt?.(1);
-                        }
-                      }}
+                      onClick={() => onSeekPlayback?.(-15)}
                       className="flex flex-col items-center gap-1 text-[#8EB69B] hover:text-[#F5EEDB] transition-colors active:scale-95 cursor-pointer"
                       title="Back 15s"
                       aria-label="Back 15 seconds"
@@ -463,11 +467,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => {
-                        if (attempt1) {
-                          onPlayAttempt?.(1);
-                        }
-                      }}
+                      onClick={() => onSeekPlayback?.(15)}
                       className="flex flex-col items-center gap-1 text-[#8EB69B] hover:text-[#F5EEDB] transition-colors active:scale-95 cursor-pointer"
                       title="Forward 15s"
                       aria-label="Forward 15 seconds"
@@ -490,7 +490,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                     &ldquo;{displayTranscript}&rdquo;
                   </p>
                 </div>
-              </div>
+              </div>}
 
               {/* RIGHT COLUMN: AI NOTES (Analysis, Observations, Recommendations, Try Again) */}
               <div className="flex flex-col justify-between space-y-3 pl-0 md:pl-2">
