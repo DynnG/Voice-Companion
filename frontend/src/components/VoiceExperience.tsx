@@ -1171,6 +1171,9 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     }
   };
 
+  const showTip = isTipVisible && conversationHistory.length === 0 && !replayState.attempt1 &&
+    !(initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak) && !isInterviewErrorText(initialQuestionToSpeak));
+
   const isCompactVisual = Boolean(
     replayState.isVisible &&
     replayState.attempt1 &&
@@ -1281,11 +1284,11 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
       {/* 3. Main Stage: Candidate Camera (Left, when active) | Savi Orb (Centered or Right) */}
       <div
-        className={`interview-visual-stage w-full mx-auto flex-1 min-h-0 overflow-visible py-1 sm:py-2 transition-all duration-300 flex flex-col justify-center ${
+        className={`interview-visual-stage ${showTip ? 'interview-visual-stage--with-tip' : ''} w-full mx-auto flex-1 min-h-0 overflow-visible py-1 sm:py-2 transition-all duration-300 flex flex-col justify-center ${
           isLivePanelOpen ? 'max-w-5xl' : 'max-w-5xl xl:max-w-6xl'
         }`}
       >
-        {isTipVisible && (
+        {showTip && (
           <aside className="interview-tip-card" aria-label="Interview tip">
             <div className="interview-tip-heading"><Lightbulb size={18} aria-hidden="true" /><strong>Tip</strong></div>
             <button type="button" className="interview-tip-dismiss" aria-label="Dismiss interview tip" onClick={() => setIsTipVisible(false)}><X size={14} aria-hidden="true" /></button>
@@ -1328,7 +1331,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             <div className="w-full flex items-center justify-center overflow-visible">
               <VoiceCreature
                 state={state}
-                visualState={state === 'speaking' ? 'speaking' : state === 'thinking' && customLabel === 'transcribing answer…' ? 'transcribing' : 'idle'}
+                visualState={state === 'speaking' || state === 'listening' ? 'speaking' : state === 'thinking' && customLabel === 'transcribing answer…' ? 'transcribing' : 'idle'}
                 respectReducedMotion
                 gesture={creatureGesture}
                 onGestureEnd={() => setCreatureGesture(null)}

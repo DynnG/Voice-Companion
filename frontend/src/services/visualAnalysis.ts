@@ -1,6 +1,10 @@
 export interface VisualPoint { x: number; y: number; z: number; visibility?: number }
-export type CameraIssue = 'dark' | 'bright' | 'close' | 'far' | 'framing';
+export type CameraIssue = 'dark' | 'bright' | 'close' | 'far' | 'framing' | 'away' | 'expression' | 'shoulders' | 'hand-pose';
 export const cameraGuidance: Record<CameraIssue, string> = {
+  'hand-pose': 'Relax the held hand pose and return to natural interview gestures.',
+  shoulders: 'Adjust your camera so both shoulders are fully visible below your face.',
+  away: 'Bring your face back toward the camera.',
+  expression: 'Relax your mouth and return to a comfortable speaking position.',
   dark: 'It’s too dark for visual analysis. Add light in front of you so your face and shoulders are clear.',
   bright: 'The camera image is too bright. Reduce direct light or move away from the bright window.',
   close: 'Move back a little so your head and shoulders fit in view.',
@@ -8,6 +12,9 @@ export const cameraGuidance: Record<CameraIssue, string> = {
   framing: 'Keep your face and shoulders clearly in view. Check that your camera is uncovered and you are centered.',
 };
 export interface VisualSample {
+  handPose?: 'middle-finger' | 'horns' | 'victory' | 'finger-heart' | null;
+  shouldersVisible?: boolean;
+  mouthOpeningRatio?: number | null;
   timestamp: number;
   facing: boolean | null;
   positioned: boolean | null;
@@ -87,7 +94,8 @@ const visible = (point: VisualPoint | undefined): point is VisualPoint =>
 // These are framing/head-orientation estimates, not eye tracking or posture diagnoses.
 export function measureVisualSample(points: VisualPoint[], timestamp: number): VisualSample {
   const [nose, leftEar, rightEar, leftShoulder, rightShoulder] = [points[0], points[7], points[8], points[11], points[12]];
-  const shoulders = visible(leftShoulder) && visible(rightShoulder);
+  const shoulders = visible(leftShoulder) && visible(rightShoulder) &&
+    [leftShoulder, rightShoulder].every(point => point.x > .04 && point.x < .96 && point.y > .04 && point.y < .92);
   const width = shoulders ? Math.abs(leftShoulder.x - rightShoulder.x) : 0;
   const center = shoulders ? (leftShoulder.x + rightShoulder.x) / 2 : 0.5;
   const ears = visible(leftEar) && visible(rightEar);
@@ -98,6 +106,7 @@ export function measureVisualSample(points: VisualPoint[], timestamp: number): V
     facing: faceVisible ? Math.abs(nose.x - (leftEar.x + rightEar.x) / 2) / earWidth < 0.24 && Math.abs(leftEar.z - rightEar.z) < 0.14 : null,
     positioned: shoulders && width > 0.1 ? Math.abs(leftShoulder.y - rightShoulder.y) / width < 0.18 && Math.abs(center - 0.5) < 0.16 : null,
     head: visible(nose) && shoulders && width > 0.1 ? [(nose.x - center) / width, (nose.y - (leftShoulder.y + rightShoulder.y) / 2) / width] : null,
+    shouldersVisible: shoulders,
     shoulderCenter: shoulders ? center : undefined,
     shoulderTilt: shoulders && width > 0.1 ? Math.abs(leftShoulder.y - rightShoulder.y) / width : undefined,
     shoulderY: shoulders ? (leftShoulder.y + rightShoulder.y) / 2 : undefined,
@@ -108,7 +117,7 @@ export function measureVisualSample(points: VisualPoint[], timestamp: number): V
     }),
     handTracking: 'pose',
     wrists: shoulders && width > 0.1 ? [points[15], points[16]].filter(visible).map(point => [(point.x - center) / width, (point.y - leftShoulder.y) / width]) : [],
-    distance: faceVisible ? (earWidth > 0.34 ? 'close' : earWidth < 0.075 ? 'far' : null) : null,
+    distance: faceVisible ? (earWidth > 0.34 ? 'close' : earWidth < 0.10 ? 'far' : null) : null,
   };
 }
 
@@ -299,4 +308,47 @@ export function evaluateVisualAnswer(samples: VisualSample[]): string[] | null {
     }
   }
   return [engagement, posture, head, gesture];
+}
+
+/** Visible presentation cues only; these do not determine attention or intent. */
+export function cameraWarningIssue(sample: VisualSample): CameraIssue | null {
+  if (sample.issue) return sample.issue;
+  if (sample.distance) return sample.distance;
+  if (sample.shouldersVisible === false) return 'shoulders';
+  if (sample.handPose) return 'hand-pose';
+  if (sample.facing === false) return 'away';
+  if (sample.mouthOpeningRatio != null && sample.mouthOpeningRatio > 0.85) return 'expression';
+  return null;
+}
+
+export function measureMouthOpening(points: VisualPoint[]): number | null {
+  const [left, right, upper, lower] = [points[61], points[291], points[13], points[14]];
+  if (![left, right, upper, lower].every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))) return null;
+  const width = Math.hypot(left.x - right.x, left.y - right.y);
+  return width > 0.025 ? Math.hypot(upper.x - lower.x, upper.y - lower.y) / width : null;
+}
+
+/** Conservative landmark patterns, independent of hand side and screen rotation.
+ * Ambiguous, cropped, and edge-on hands are left unclassified.
+ */
+export function measureHandPose(points: VisualPoint[]): VisualSample['handPose'] {
+  if (points.length !== 21 || points.some(p => !p || ![p.x,p.y,p.z].every(Number.isFinite) || p.x <= .02 || p.x >= .98 || p.y <= .02 || p.y >= .98)) return null;
+  const distance = (a: number, b: number) => Math.hypot(points[a].x-points[b].x, points[a].y-points[b].y, points[a].z-points[b].z);
+  const palm = distance(0,9);
+  if (palm < .035 || Math.hypot(points[5].x-points[17].x,points[5].y-points[17].y) < palm*.3) return null;
+  const finger = (base: number): 'extended' | 'folded' | 'unknown' => {
+    const tip = base+3, pip = base+1;
+    const span = distance(base,tip)/(distance(base,pip)+distance(pip,base+2)+distance(base+2,tip));
+    if (span > .88 && distance(0,tip) > distance(0,pip)*1.12) return 'extended';
+    if (span < .65 && distance(0,tip) < distance(0,pip)*1.05) return 'folded';
+    return 'unknown';
+  };
+  const [index,middle,ring,pinky] = [5,9,13,17].map(finger);
+  if (index==='folded' && middle==='extended' && ring==='folded' && pinky==='folded') return 'middle-finger';
+  if (index==='extended' && middle==='folded' && ring==='folded' && pinky==='extended') return 'horns';
+  if (index==='extended' && middle==='extended' && ring==='folded' && pinky==='folded' && distance(8,12) > palm*.45) return 'victory';
+  // Require a compact thumb/index crossing above the knuckles, not a generic pinch.
+  if (index==='folded' && middle==='folded' && ring==='folded' && pinky==='folded' &&
+      distance(4,8) < palm*.25 && distance(0,8) > distance(0,5)*1.15 && distance(0,4) > distance(0,5)*1.1) return 'finger-heart';
+  return null;
 }

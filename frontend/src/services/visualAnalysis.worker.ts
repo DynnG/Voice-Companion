@@ -1,5 +1,5 @@
 import { FaceLandmarker, FilesetResolver, HandLandmarker, PoseLandmarker } from '@mediapipe/tasks-vision';
-import { measureEyePosition, measureLighting, measureVisualSample } from './visualAnalysis';
+import { measureHandPose, measureEyePosition, measureMouthOpening, measureLighting, measureVisualSample } from './visualAnalysis';
 
 let tracker: PoseLandmarker | undefined;
 let handTracker: HandLandmarker | undefined;
@@ -64,6 +64,7 @@ self.onmessage = (event: MessageEvent<{ frame: ImageBitmap; timestamp: number }>
       try {
         const face = faceTracker.detectForVideo(frame, timestamp).faceLandmarks[0];
         sample.eyePosition = face ? measureEyePosition(face) : null;
+        sample.mouthOpeningRatio = face ? measureMouthOpening(face) : null;
       } catch {
         faceTracker.close(); faceTracker = undefined;
         sample.eyeTrackingAvailable = false;
@@ -78,6 +79,8 @@ self.onmessage = (event: MessageEvent<{ frame: ImageBitmap; timestamp: number }>
           if (!wrist || !identity || identity.score < 0.5 || wrist.x < 0 || wrist.x > 1 || wrist.y < 0 || wrist.y > 1) return [];
           return [{ side: identity.categoryName === 'Left' ? 'left' as const : 'right' as const, point: [wrist.x, wrist.y] as [number, number] }];
         });
+        sample.handPose = hands.landmarks.reduce<ReturnType<typeof measureHandPose>>((pose, points, index) =>
+          pose || (hands.handedness[index]?.[0]?.score >= .8 ? measureHandPose(points) : null), null);
         sample.handTracking = 'dedicated';
       } catch {
         handTracker.close(); handTracker = undefined;
@@ -87,7 +90,7 @@ self.onmessage = (event: MessageEvent<{ frame: ImageBitmap; timestamp: number }>
     // Check the central subject area rather than a dark background around them.
     lightingContext?.drawImage(frame, frame.width * 0.25, frame.height * 0.15, frame.width * 0.5, frame.height * 0.65, 0, 0, 64, 64);
     const lighting = lightingContext ? measureLighting(lightingContext.getImageData(0, 0, 64, 64).data) : null;
-    sample.issue = lighting || sample.distance || (sample.facing === null || sample.positioned === null || !sample.head ? 'framing' : null);
+    sample.issue = lighting || sample.distance || (sample.shouldersVisible === false ? 'shoulders' : null) || (sample.facing === null || sample.positioned === null || !sample.head ? 'framing' : null);
     self.postMessage({ type: 'sample', sample });
   } catch (error) {
     self.postMessage({ type: 'error', reason: error instanceof Error ? error.message : 'Tracking failed' });

@@ -625,3 +625,58 @@ mark.f {
   .interview-shell .visual-camera-row { padding-block: 6px; font-size: 11px; }
   .interview-shell .interview-control { min-height: 40px; padding-block: 8px; }
 }
+
+
+.interview-shell .voice-footer { gap: 3px; }
+.interview-shell .voice-footer > div:first-child { margin-bottom: 0; }
+.interview-shell .interview-camera-hint { margin-top: 3px; }
+.interview-shell .answer-replay-body { max-height: min(32vh,280px); }
+
+/* Give the tip its own column so it never covers the camera feed. */
+.interview-shell .interview-visual-stage--with-tip {
+  display: grid; grid-template-columns: clamp(180px, 24%, 250px) minmax(0, 1fr);
+  column-gap: clamp(12px, 2vw, 24px); align-items: center;
+}
+.interview-visual-stage--with-tip .interview-tip-card {
+  position: relative; top: auto; left: auto; width: 100%; align-self: center;
+}
+.interview-shell .interview-visual-pair { min-width: 0; }
+.interview-shell .stage[data-camera-active="true"] .interview-camera-column { max-width: 390px; }
+.interview-shell .stage[data-camera-active="true"] .canvas-wrap.interview-orb {
+  width: min(100%, 30vh, calc(100cqh - 36px), 270px);
+  height: min(30vh, calc(100cqh - 36px), 270px);
+}
+.interview-shell .voice-footer { margin-top: 12px; }
+@media (max-width: 767px) {
+  .interview-shell .interview-visual-stage--with-tip { grid-template-columns: minmax(0, 1fr); }
+  .interview-visual-stage--with-tip .interview-tip-card { display: none; }
+  .interview-shell .stage[data-camera-active="true"] .canvas-wrap.interview-orb {
+    width: min(38vw, 25vh, calc(100cqh - 36px));
+    height: min(38vw, 25vh, calc(100cqh - 36px));
+  }
+}
+
+.interview-shell .stage[data-camera-active="true"] .interview-camera-card {
+  max-height: calc(100cqh - 16px); min-height: 0;
+}
+.interview-shell .stage[data-camera-active="true"] .interview-camera-video {
+  min-height: 0; flex: 1 1 auto; max-height: min(23vh, calc(100cqh - 78px));
+}
+
+/* Overlay sits above the video so the warning remains visible over its feed. */
+.visual-camera-video--warning::after {
+  content: ''; position: absolute; inset: 0; z-index: 1;
+  border-radius: inherit; pointer-events: none;
+  animation: camera-warning-pulse 1.8s ease-in-out infinite;
+}
+.visual-camera-video--warning .visual-camera-dot { background: #ef4444; box-shadow: 0 0 10px rgba(239,68,68,.7); }
+@keyframes camera-warning-pulse {
+  0%, 100% { background: rgba(255,164,164,.03); box-shadow: inset 0 0 0 2px rgba(255,164,164,.35); }
+  50% { background: rgba(255,164,164,.18); box-shadow: inset 0 0 0 3px rgba(255,164,164,.95); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .visual-camera-video--warning::after {
+    animation: none; background: rgba(255,164,164,.08);
+    box-shadow: inset 0 0 0 3px #ffa4a4;
+  }
+}

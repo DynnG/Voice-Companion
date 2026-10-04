@@ -269,11 +269,6 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
         title={isMinimized ? 'Expand AI Notes' : 'Minimize AI Notes'}
       >
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-[rgba(255,179,71,0.12)] border border-[rgba(255,179,71,0.35)] flex items-center justify-center text-[#FFB347] shrink-0 group-hover:scale-105 transition-transform">
-            <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M4 12v0M8 8v8M12 4v16M16 8v8M20 12v0"/>
-            </svg>
-          </div>
           <div className="flex items-center gap-3">
             <h3 className="font-semibold text-sm sm:text-base text-[#F5EEDB] tracking-tight">
               AI Notes

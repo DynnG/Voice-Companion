@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { cameraGuidance, CameraIssue, evaluateVisualAnswer, visualDimensions, VisualSample } from '../services/visualAnalysis';
+import { cameraGuidance, cameraWarningIssue, CameraIssue, evaluateVisualAnswer, visualDimensions, VisualSample } from '../services/visualAnalysis';
 
 interface CandidateCameraProps {
   candidateName?: string;
@@ -120,10 +120,11 @@ export const CandidateCamera: React.FC<CandidateCameraProps> = ({
         if (samplesRef.current.length > 600) samplesRef.current.shift();
       }
       // Require a sustained framing issue to avoid flashing prompts on small movements.
-      if ((sample.issue ?? null) !== issueCandidate) {
-        issueCandidate = sample.issue ?? null; issueSince = sample.timestamp;
+      const detectedIssue = cameraWarningIssue(sample);
+      if (detectedIssue !== issueCandidate) {
+        issueCandidate = detectedIssue; issueSince = sample.timestamp;
       }
-      if (sample.timestamp - issueSince >= 1600) setIssue(issueCandidate);
+      if (sample.timestamp - issueSince >= (issueCandidate === 'expression' || issueCandidate === 'hand-pose' ? 2400 : 1600)) setIssue(issueCandidate);
     };
     const timer = window.setInterval(async () => {
       if (cancelled || !ready || busy || !video || video.readyState < 2 || document.hidden) return;
@@ -149,7 +150,7 @@ export const CandidateCamera: React.FC<CandidateCameraProps> = ({
   const status = tracking === 'active' ? 'Visual Analysis Active' : tracking === 'loading' ? 'Starting visual analysis…' : 'Visual analysis unavailable';
   return (
     <section className={`interview-camera-card visual-camera-card ${compact ? 'visual-camera-card--compact' : ''}`} data-analysis-expanded={expanded} aria-label="Camera and visual analysis">
-      <div className="interview-camera-video visual-camera-video">
+      <div className={`interview-camera-video visual-camera-video ${tracking === 'active' && issue ? 'visual-camera-video--warning' : ''}`}>
         <video ref={videoRef} autoPlay playsInline muted className="visual-camera-feed" />
         <div className={`visual-camera-status ${badgeCompact && tracking === 'active' ? 'visual-camera-status--compact' : ''}`} title={status} aria-label={status}>
           <span className={`visual-camera-dot ${tracking === 'active' ? 'visual-camera-dot--active' : ''}`} />
