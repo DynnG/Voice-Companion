@@ -225,7 +225,7 @@ export const VoiceCompanion: React.FC = () => {
   };
 
   // Step 3: Handle interview completion when Gemini signals should_end or turn limit reached
-  const handleInterviewCompleted = (reason?: string) => {
+  const handleInterviewCompleted = (reason?: string, immediate = false) => {
     console.log(`[Session Interview] Completed (reason: ${reason})`);
     setSession((prev) => ({
       ...prev,
@@ -233,9 +233,14 @@ export const VoiceCompanion: React.FC = () => {
       endTime: prev.endTime || Date.now(),
       turnsUsed: Math.max(prev.turnsUsed, prev.maxTurns)
     }));
-    setTimeout(() => {
+    
+    if (immediate) {
       setIsCompletionModalOpen(true);
-    }, 1200);
+    } else {
+      setTimeout(() => {
+        setIsCompletionModalOpen(true);
+      }, 1200);
+    }
   };
 
   // Helper to ensure full exchange record integrity for the session
@@ -271,6 +276,15 @@ export const VoiceCompanion: React.FC = () => {
 
   // Active review download handler generating in-browser PDF from fresh session data
   const handleDownloadReviewPdf = async () => {
+    if (isDownloadingPdf) return;
+    
+    // 1. Immediately treat the interview as ended/completed.
+    if (session.status !== 'completed') {
+      handleInterviewCompleted('download_review_early_completion', true);
+    }
+
+
+
     try {
       setIsDownloadingPdf(true);
       setDownloadPdfError(null);
@@ -395,7 +409,7 @@ export const VoiceCompanion: React.FC = () => {
       {/* Post-Interview Completion Modal & Download Review */}
       <PostInterviewCompletionModal
         isOpen={isCompletionModalOpen && session.status === 'completed'}
-        onClose={() => setIsCompletionModalOpen(false)}
+        onClose={handleNewInterview}
         sessionData={{
           id: session.id,
           jobRole: session.jobRole,
