@@ -124,7 +124,7 @@ export const VoiceCompanion: React.FC = () => {
         return title
           .trim()
           .split(/\s+/)
-          .map(word => word ? word.charAt(0).toUpperCase() + word.slice(1) : '')
+          .map(word => word ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase() : '')
           .join(' ');
       };
       const displayRole = formatJobTitle(cleanRole);
