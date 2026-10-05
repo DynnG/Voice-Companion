@@ -98,6 +98,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
   // Candidate camera state and toggle reference
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+  const visualPairRef = useRef<HTMLDivElement | null>(null);
   const cameraToggleFnRef = useRef<(() => void) | null>(null);
 
   // Session completed flag derived from props and local lifecycle
@@ -314,22 +315,6 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     playAttempt(1, current + offset, false);
   };
   const pauseReplay = () => { replayAudioRef.current?.pause(); setPlayingAttempt(null); };
-  const handleTryAgain = () => {
-    if (!isMicEnabled || isCompleted) return;
-    stopSpeaking();
-    stopReplayPlayback();
-    setReplayState((prev) => ({
-      ...prev,
-      isRetryMode: true,
-      isMinimized: false
-    }));
-    setCustomLabel('Attempt 2 · Recording revised answer…');
-    setStatusHint('Attempt 2 · Speak your revised answer · Auto-detects when you finish');
-    if (state === 'idle' || state === 'speaking') {
-      startRecording();
-    }
-  };
-
   const handleCancelRetry = () => {
     setReplayState((prev) => ({
       ...prev,
@@ -1184,6 +1169,23 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     !replayState.isMinimized
   );
 
+  useEffect(() => {
+    const pair = visualPairRef.current;
+    if (!pair || !isCameraActive) return;
+    const camera = pair.querySelector<HTMLElement>('.visual-camera-card');
+    const labels = pair.querySelector<HTMLElement>('.interview-orb-labels');
+    if (!camera || !labels) return;
+    const update = () => {
+      const available = Math.max(0, camera.getBoundingClientRect().height - labels.getBoundingClientRect().height - 8);
+      pair.style.setProperty('--aligned-orb-size', `${available}px`);
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(camera);
+    observer.observe(labels);
+    update();
+    return () => { observer.disconnect(); pair.style.removeProperty('--aligned-orb-size'); };
+  }, [isCameraActive]);
+
   return (
     <div data-camera-active={isCameraActive} data-replay-expanded={isCompactVisual} className="stage relative w-full h-full flex flex-col justify-between overflow-hidden select-none px-3 sm:px-6 py-2 sm:py-3">
       {/* 1. Header Bar: Brand Logo, Job Role, In Progress pill, Transcript toggle sitting directly on background */}
@@ -1245,7 +1247,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             </button>
           )}
 
-          <span className="interview-progress inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[rgba(255,179,71,0.4)] text-[#FFC370] text-xs font-semibold bg-[rgba(255,179,71,0.06)] shadow-sm">
+          <span data-completed={isCompleted} className="interview-progress inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[rgba(255,179,71,0.4)] text-[#FFC370] text-xs font-semibold bg-[rgba(255,179,71,0.06)] shadow-sm">
             <i className="w-1.5 h-1.5 rounded-full bg-[#FFB347] animate-pulse" />
             {isCompleted ? 'Completed' : 'In Progress'}
           </span>
@@ -1308,6 +1310,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
           </aside>
         )}
         <div
+          ref={visualPairRef}
           className={`interview-visual-pair w-full flex items-center justify-center transition-all duration-300 ${
             isCameraActive
               ? 'grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-8 items-center justify-items-center'
@@ -1381,7 +1384,6 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
               playbackCurrentTime={playbackCurrentTime}
               playbackProgress={playbackProgress}
               playbackAudio={replayAudioRef.current}
-              onTryAgain={handleTryAgain}
               onCancelRetry={handleCancelRetry}
               onResumeInterview={handleResumeInterview}
               onToggleMinimize={() => setReplayState((prev) => ({ ...prev, isMinimized: !prev.isMinimized }))}

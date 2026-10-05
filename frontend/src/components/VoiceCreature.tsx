@@ -1,3 +1,4 @@
+import { readSpeechLevel } from '../services/ttsService';
 import React, { useEffect, useRef } from 'react';
 import { VoiceState } from '../types/conversation';
 
@@ -13,8 +14,8 @@ export interface VoiceReactiveConfig {
   micSensitivity?: number;      // Multiplier for microphone amplitude response (default 1.0)
   micExpansionMax?: number;     // Maximum radius expansion ratio during loud speech (default 0.08 = +8% to +10%)
   micLobeDistortionMax?: number;// Maximum organic contour distortion from speech (default 0.05)
-  speechPulseSpeed?: number;    // Frequency of procedural AI speech cadence (default 4.8)
-  speechPulseMax?: number;      // Maximum expansion during AI speech (default 0.06)
+  speechPulseSpeed?: number;    // Frequency of procedural AI speech cadence (default 1.8)
+  speechPulseMax?: number;      // Maximum expansion during AI speech (default 0.025)
   thinkingSpeed?: number;       // Speed of cognitive pulsation (default 1.4)
   idleBreathingAmp?: number;    // Subtle breathing amplitude in idle state (default 0.015)
 }
@@ -23,8 +24,8 @@ const DEFAULT_CONFIG: Required<VoiceReactiveConfig> = {
   micSensitivity: 1.0,
   micExpansionMax: 0.08,        // Subtly bounded: 1.00 -> 1.08 (up to ~1.10 max)
   micLobeDistortionMax: 0.05,   // Gentle contour ripple
-  speechPulseSpeed: 4.8,
-  speechPulseMax: 0.06,         // Subtly bounded for AI voice
+  speechPulseSpeed: 1.8,
+  speechPulseMax: 0.025,         // Subtly bounded for AI voice
   thinkingSpeed: 1.4,
   idleBreathingAmp: 0.015,      // Very gentle organic breathing (+-1.5%)
 };
@@ -46,11 +47,11 @@ export interface VoiceCreatureProps {
 }
 
 const STATE_CONFIG: Record<VoiceState, { colorVar: string; amp: number; speed: number; lobes: number; ring: number }> = {
-  idle:       { colorVar: '--glow-idle', amp: 0.06, speed: 0.25, lobes: 3, ring: 0 },
-  listening:  { colorVar: '--glow-a',    amp: 0.10, speed: 0.45, lobes: 5, ring: 0 },
-  thinking:   { colorVar: '--glow-b',    amp: 0.09, speed: 1.3,  lobes: 7, ring: 0 },
-  speaking:   { colorVar: '--glow-c',    amp: 0.20, speed: 0.9,  lobes: 4, ring: 1 },
-  gesture_no: { colorVar: '--glow-b',    amp: 0.08, speed: 0.6,  lobes: 4, ring: 0 },
+  idle:       { colorVar: '--glow-idle', amp: 0.06,  speed: 0.25, lobes: 3, ring: 0 },
+  listening:  { colorVar: '--glow-a',    amp: 0.055, speed: 0.20, lobes: 7, ring: 0 },
+  thinking:   { colorVar: '--glow-b',    amp: 0.09,  speed: 1.3,  lobes: 7, ring: 0 },
+  speaking:   { colorVar: '--glow-c',    amp: 0.055, speed: 0.20, lobes: 7, ring: 1 },
+  gesture_no: { colorVar: '--glow-b',    amp: 0.08,  speed: 0.6,  lobes: 4, ring: 0 },
 };
 
 export interface RGBColor {
@@ -371,6 +372,32 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
     };
     let colorMix = hexToRgb(visualStateRef.current ? SAVI_PALETTES[visualStateRef.current] : hex(STATE_CONFIG.idle.colorVar));
     let smoothedMicLevel = 0;
+    let speechActivity = 0;
+    let phaseAccumulator = 0;
+    // Voice-reactive surface shared by the two warm-yellow speaking states.
+    let listeningLevel = 0;
+    let speechPulseLevel = 0;
+    let listeningMix = 0;
+    let listeningPhase = 0;
+    let listeningAmplitude = 0.075;
+    const listeningSurface = new Float64Array(84);
+    let lastVoiceRise = -Infinity;
+    let previousVoiceInput = 0;
+    let voiceCadence = 0;
+    let edgeFlowTarget = Math.random() * Math.PI * 2;
+    let edgeFlowPhase = edgeFlowTarget;
+    let userFlowMix = 0;
+
+    interface RippleWave {
+      progress: number;
+      speed: number;
+      maxDistance: number;
+      peakAlpha: number;
+      type: 'candidate' | 'savi';
+    }
+    const activeRipples: RippleWave[] = [];
+    let rippleCadenceCooldown = 0;
+    let rippleSpeechEnergy = 0;
 
     let gestureTime = 0;
     let isGestureRunning = false;
@@ -387,6 +414,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
 
     let t = 0;
     let rot = 0;
+    let angularSpeed = 0.12;
     let lastFrameTime = performance.now();
     const ambientColors = ['#9DBDA4', '#A293C2', '#FFD66B'].map(hexToRgb);
 
@@ -394,13 +422,49 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       return getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#4b5675';
     }
 
-    function blobPoints(baseR: number, amp: number, lobes: number, phase: number, n: number, rotation = rot) {
+    function blobPoints(baseR: number, amp: number, lobes: number, phase: number, n: number = 72, rotation = rot) {
       const pts = [];
+      let listeningMean = 0;
+      if (listeningMix > 0) {
+        const flowPhase = phase + listeningPhase - phaseAccumulator;
+        for (let i = 0; i < n; i++) {
+          const a = i * Math.PI * 2 / n;
+          // Seven rounded swells stretch and relax at different rates, with
+          // smoothly traveling emphasis rather than identical repeated petals.
+          const voiceLift = Math.pow(Math.max(0, speechPulseLevel), 0.65);
+          const flowingAngle = a
+            + 0.035 * Math.sin(2 * a - flowPhase * 0.46)
+            + 0.018 * Math.sin(3 * a + flowPhase * 0.33);
+          const waveAngle = 7 * flowingAngle + flowPhase
+            + userFlowMix * 0.25 * Math.sin(flowPhase * 0.61);
+          const envelope = 0.86
+            + (0.10 + voiceLift * 0.14) * Math.sin(2 * a + edgeFlowPhase)
+            + 0.10 * Math.cos(3 * a - flowPhase * 0.39 + edgeFlowPhase * 0.41);
+          const surface = envelope * Math.sin(waveAngle)
+            + 0.025 * Math.sin(2 * waveAngle + flowPhase * 0.43)
+            + 0.16 * Math.sin(2 * a - flowPhase * 0.61)
+            + 0.12 * Math.sin(3 * a + flowPhase * 0.47 + 0.65);
+          listeningSurface[i] = surface;
+          listeningMean += surface / n;
+        }
+      }
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2;
-        const r = baseR * (1
-          + amp * Math.sin(lobes * a + phase)
-          + amp * 0.35 * Math.sin((lobes + 2) * a - phase * 1.4));
+        // Contained fluid mass: asymmetrical traveling edge waves moving around circumference
+        // Conservation of volume: all harmonic components integrate to 0 over [0, 2pi]
+        // 1. Primary traveling swell packet (flows around the perimeter)
+        const wave1 = Math.sin(lobes * a + phase);
+        // 2. Counter-propagating capillary wave (fluid shear & surface folding)
+        const wave2 = Math.sin((lobes + 2) * a - phase * 1.35 + 0.65);
+        // 3. Harmonic mass redistribution (adjacent stretch and draw)
+        const wave3 = Math.sin((lobes - 2) * a + phase * 0.80 + 1.25);
+        // 4. Asymmetrical traveling wave envelope: one section pushes outward while opposite section pulls inward
+        const wave4 = Math.sin(a + phase * 0.60) * Math.cos(2 * a - phase * 0.70 + 0.45);
+        const originalSurface = 0.60 * wave1 + 0.40 * wave2 + 0.35 * wave3 + 0.50 * wave4;
+        const surface = listeningMix > 0
+          ? originalSurface * (1 - listeningMix) + (listeningSurface[i] - listeningMean) * listeningMix
+          : originalSurface;
+        const r = baseR * (1 + amp * surface);
         pts.push({ x: cx + Math.cos(a + rotation) * r, y: cy + Math.sin(a + rotation) * r });
       }
       return pts;
@@ -429,7 +493,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       const now = performance.now();
       const elapsed = Math.min((now - lastFrameTime) / 1000, 0.05);
       lastFrameTime = now;
-      t += ambientLoop ? (isMotionReduced() ? 0 : elapsed) : 0.016;
+      t += isMotionReduced() ? 0 : elapsed;
       const currentName = currentStateRef.current;
       const visual = ambientLoop ? 'idle' : visualStateRef.current;
       const target = ambientLoop
@@ -441,7 +505,9 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
 
       // 1. Audio amplitude input & smoothing
       let rawMicInput = 0;
-      if (currentName === 'listening') {
+      if (currentName === 'speaking') {
+        rawMicInput = readSpeechLevel();
+      } else if (currentName === 'listening') {
         const fromRef = externalAudioRef.current?.current;
         const fromProp = audioLevelPropRef.current;
         const val = typeof fromRef === 'number' ? fromRef : fromProp;
@@ -451,7 +517,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
         }
       }
 
-      // Asymmetrical attack / decay envelope follower (0.28 attack, 0.10 decay)
+      // Asymmetrical attack (0.28) and decay (0.10) envelope follower prevents jitter and flicker
       if (rawMicInput > smoothedMicLevel) {
         smoothedMicLevel += (rawMicInput - smoothedMicLevel) * 0.28;
       } else {
@@ -460,12 +526,91 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       if (smoothedMicLevel < 0.001) smoothedMicLevel = 0;
       smoothedMicLevel = Math.min(1.0, smoothedMicLevel);
 
+      // Measure active speech signal for User and AI
+      let currentSpeechSignal = 0;
+      if (currentName === 'speaking') {
+        const liveSpeech = readSpeechLevel();
+        const syllabicCadence = Math.sin(t * cfg.speechPulseSpeed);
+        const phraseCadence = Math.sin(t * (cfg.speechPulseSpeed * 0.45) + 0.6);
+        const breathCadence = Math.sin(t * 1.2 + 1.0);
+        const speechEnvelope = Math.max(0, syllabicCadence * 0.45 + phraseCadence * 0.35 + breathCadence * 0.2);
+        currentSpeechSignal = Math.max(speechEnvelope * 0.65, liveSpeech * 1.2, smoothedMicLevel);
+      } else if (currentName === 'listening') {
+        currentSpeechSignal = smoothedMicLevel;
+      }
+
+      // Smooth inertia: speech activity gradually accelerates (~380ms) and gracefully decelerates (~1200ms)
+      if (currentSpeechSignal > speechActivity) {
+        speechActivity += (currentSpeechSignal - speechActivity) * (1 - Math.exp(-elapsed / 0.38));
+      } else {
+        speechActivity += (currentSpeechSignal - speechActivity) * (1 - Math.exp(-elapsed / 1.20));
+      }
+      if (speechActivity < 0.001) speechActivity = 0;
+
       // Lerp baseline state attributes
       cur.amp += (target.amp - cur.amp) * 0.05;
       cur.speed += (target.speed - cur.speed) * 0.05;
-      cur.lobes += (target.lobes - cur.lobes) * 0.08;
+      cur.lobes += (target.lobes - cur.lobes) * (1 - Math.exp(-elapsed / 0.65));
       cur.ring += (target.ring - cur.ring) * 0.06;
-      rot += ambientLoop ? (isMotionReduced() ? 0 : elapsed * 0.32) : 0.0028 * cur.speed;
+
+      const isSpeech = currentName === 'speaking' || currentName === 'listening';
+
+      // Listening turns with the same smoothed voice envelope as its edge pulse.
+      // Keep the turn continuous and bounded; pauses settle without stopping it.
+      const listeningTurn = 0.20
+        + Math.pow(Math.max(0, speechPulseLevel), 0.65) * 0.18;
+      const targetAngularSpeed = visual === 'transcribing'
+        ? 0.35
+        : currentName === 'listening'
+        ? listeningTurn
+        : currentName === 'speaking'
+        ? 0.15 + Math.sqrt(smoothedMicLevel) * 0.17 + voiceCadence * 0.05
+        : cur.speed * 0.75;
+      angularSpeed += (targetAngularSpeed - angularSpeed)
+        * (1 - Math.exp(-elapsed / 0.65));
+      if (!isMotionReduced()) rot += elapsed * angularSpeed;
+
+      // Continuous phase integration: traveling edge waves moving around circumference
+      // Silence: 0.75 rad/s (long, slow traveling edge waves)
+      // Normal speech: ~1.85 rad/s (clearly noticeable flowing edge deformation traveling around circumference)
+      // Fast/energetic speech: ~2.60 rad/s (quicker traveling edge movement)
+      const baseFluidSpeed = isSpeech ? 0.75 + speechActivity * 1.85 : cur.speed;
+      phaseAccumulator += elapsed * baseFluidSpeed * 1.5;
+
+      const listening = isSpeech && !ambientLoop;
+      const listeningInput = listening ? rawMicInput : 0;
+      const userListening = currentName === 'listening' && !ambientLoop;
+      userFlowMix += ((userListening ? 1 : 0) - userFlowMix)
+        * (1 - Math.exp(-elapsed / 0.25));
+      if (!userListening && userFlowMix < 0.001) userFlowMix = 0;
+      // Estimate phrase/syllable activity from spaced rises in the existing signal.
+      // This observes speech rhythm; it does not infer words or capture more audio.
+      if (listeningInput - previousVoiceInput > 0.025 && t - lastVoiceRise > 0.16) {
+        const interval = t - lastVoiceRise;
+        if (interval < 1.4) {
+          const cadence = Math.max(0, Math.min(1, (1 / interval - 1) / 5));
+          voiceCadence += (cadence - voiceCadence) * 0.35;
+        }
+        edgeFlowTarget += Math.PI * (3 - Math.sqrt(5));
+        lastVoiceRise = t;
+      }
+      edgeFlowPhase += (edgeFlowTarget - edgeFlowPhase)
+        * (1 - Math.exp(-elapsed / 0.45));
+      previousVoiceInput = listeningInput;
+      voiceCadence *= Math.exp(-elapsed / 0.8);
+      // Follow each voice rise and relax between syllables without a fixed beat.
+      speechPulseLevel += (listeningInput - speechPulseLevel)
+        * (1 - Math.exp(-elapsed / (listeningInput > speechPulseLevel ? 0.06 : 0.18)));
+      listeningLevel += (listeningInput - listeningLevel)
+        * (1 - Math.exp(-elapsed / (listeningInput > listeningLevel ? 0.075 : 0.35)));
+      listeningMix += ((listening ? 1 : 0) - listeningMix)
+        * (1 - Math.exp(-elapsed / 0.22));
+      if (listening && listeningMix > 0.999) listeningMix = 1;
+      if (!listening && listeningMix < 0.001) listeningMix = 0;
+      if (listeningMix === 0) listeningPhase = phaseAccumulator;
+      else listeningPhase += elapsed * (0.70 + Math.sqrt(listeningLevel) * 1.55 + voiceCadence * 0.65);
+      listeningAmplitude += (0.065 + Math.pow(Math.max(0, speechPulseLevel), 0.65) * 0.12 - listeningAmplitude)
+        * (1 - Math.exp(-elapsed / 0.08));
 
       // Gesture "NO / STAY ON TOPIC" Lifecycle & Emotion Update
       const isGestureRequested = currentName === 'gesture_no' || gesturePropRef.current === 'no';
@@ -575,36 +720,18 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       const maxSafeRadius = Math.min(cx, cy); // Distance from center to closest canvas boundary
       let dynBaseR = baseR;
       let dynAmp = cur.amp;
-      let dynLobes = Math.round(cur.lobes);
-      let dynPhase = t * cur.speed * 1.2;
+      let dynLobes = cur.lobes;
+      let dynPhase = phaseAccumulator;
       let dynRing = cur.ring;
 
       if (currentName === 'listening') {
-        // 2. USER IS SPEAKING:
-        // Subtle, restrained scale range: 1.00 -> ~1.08 / 1.10 max
-        const voiceExpansion = smoothedMicLevel * cfg.micExpansionMax;
-        const voiceMicroPulse = Math.sin(t * 6.5) * (smoothedMicLevel * 0.018);
-        const voiceBreathe = Math.sin(t * cur.speed * 0.9) * 0.012;
-
-        const totalScale = Math.min(1.10, Math.max(0.98, 1 + voiceBreathe + voiceExpansion + voiceMicroPulse));
-        dynBaseR = baseR * totalScale;
-        dynAmp = cur.amp + smoothedMicLevel * cfg.micLobeDistortionMax;
-        dynPhase = t * (cur.speed + smoothedMicLevel * 0.8) * 1.2;
-
-        // In listening state: subtle acoustic ripple triggers when candidate speaks
-        if (smoothedMicLevel > 0.03) {
-          dynRing = Math.max(dynRing, Math.min(1.0, smoothedMicLevel * 2.5));
-        } else {
-          dynRing = Math.max(0, dynRing * 0.90);
-        }
-      } else if (currentName === 'thinking') {
-        // 3. THINKING:
-        // Slower, intelligent dual-harmonic rhythm
-        const cognitivePulse = Math.sin(t * cfg.thinkingSpeed) * 0.035 + Math.sin(t * 0.65) * 0.018;
-        dynBaseR = baseR * (1 + cognitivePulse);
-        dynAmp = cur.amp + Math.sin(t * 1.8) * 0.012;
-        dynPhase = t * cur.speed * 1.1;
-        dynRing = Math.max(0, dynRing * 0.85);
+        // The fluid perimeter and the shared voice pulse follow the same input.
+        dynBaseR = baseR;
+        dynAmp = (0.075 + speechActivity * 0.145) * (1 - listeningMix)
+          + listeningAmplitude * listeningMix;
+        dynPhase = phaseAccumulator;
+        dynRing = 0;
+        // No candidate ripple emissions: the layered liquid edges show activity.
       } else if (currentName === 'speaking') {
         // 4. AI IS SPEAKING:
         // Expressive speech cadence simulating natural vocal prosody
@@ -613,11 +740,45 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
         const breathCadence = Math.sin(t * 1.2 + 1.0);
         const speechEnvelope = Math.max(0, syllabicCadence * 0.45 + phraseCadence * 0.35 + breathCadence * 0.2);
 
+        // Consistent motion: live audio from readSpeechLevel() reinforces prosody
+        const activeEnergy = Math.max(speechEnvelope * 0.6, smoothedMicLevel);
         const speechExpansion = speechEnvelope * cfg.speechPulseMax;
-        dynBaseR = baseR * (1.02 + speechExpansion);
-        dynAmp = cur.amp + speechEnvelope * 0.04;
-        dynPhase = t * (cur.speed + speechEnvelope * 0.25) * 1.2;
-        dynRing = Math.max(dynRing, Math.min(1.0, 0.75 + speechEnvelope * 0.25));
+        const voiceExpansion = smoothedMicLevel * cfg.micExpansionMax;
+        const voiceMicroPulse = 0;
+        const voiceBreathe = 0;
+        const totalScale = Math.min(1.10, Math.max(0.98, 1 + voiceBreathe + Math.max(speechExpansion, voiceExpansion) + voiceMicroPulse));
+        void totalScale;
+
+        // The shared voice pulse below adds smooth expansion to the fluid surface.
+        dynBaseR = baseR;
+        dynAmp = (0.075 + speechActivity * 0.145) * (1 - listeningMix)
+          + listeningAmplitude * listeningMix;
+        dynPhase = phaseAccumulator;
+        dynRing = Math.max(dynRing, Math.min(1.0, 0.75 + Math.max(speechEnvelope * 0.25, smoothedMicLevel * 0.25)));
+
+        // Savi ripples during speech
+        if (activeEnergy > 0.10) {
+          rippleSpeechEnergy += elapsed * (0.8 + speechActivity * 2.8);
+          if (rippleSpeechEnergy >= 0.85 && rippleCadenceCooldown <= 0 && activeRipples.length < 3) {
+            rippleSpeechEnergy = 0;
+            rippleCadenceCooldown = 1.15;
+            activeRipples.push({
+              progress: 0,
+              speed: 0.32,
+              maxDistance: dynBaseR * (0.42 + Math.min(0.28, speechActivity * 0.30)),
+              peakAlpha: 0.28 + Math.min(0.20, speechActivity * 0.22),
+              type: 'savi'
+            });
+          }
+        }
+      } else if (currentName === 'thinking') {
+        // 3. THINKING:
+        // Slower, intelligent dual-harmonic rhythm
+        const cognitivePulse = Math.sin(t * cfg.thinkingSpeed) * 0.035 + Math.sin(t * 0.65) * 0.018;
+        dynBaseR = baseR * (1 + cognitivePulse);
+        dynAmp = cur.amp + Math.sin(t * 1.8) * 0.012;
+        dynPhase = phaseAccumulator;
+        dynRing = Math.max(0, dynRing * 0.85);
       } else {
         // 1. IDLE / GESTURE_NO:
         // Mostly calm, gentle organic breathing with subtle irritated tension pulse during gesture wag
@@ -625,46 +786,57 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
         const irritatedPulse = (Math.sin(t * 7.2) * 0.018 + Math.sin(t * 14.4) * 0.008) * currentEmotion;
         dynBaseR = baseR * (1 + idleBreathing + irritatedPulse);
         dynAmp = cur.amp + currentEmotion * 0.035;
-        dynPhase = t * (cur.speed + currentEmotion * 0.4) * 1.2;
+        dynPhase = phaseAccumulator;
         dynRing = Math.max(0, dynRing * 0.85);
       }
 
-      // Subtle Acoustic Ripple: Only active when someone is actively speaking (User or Savi)
-      const isUserSpeaking = currentName === 'listening' && (smoothedMicLevel > 0.03 || Boolean(externalAudioRef.current?.current && externalAudioRef.current.current > 0.01));
-      const isSaviSpeaking = currentName === 'speaking';
-      const isActivelyTalking = isUserSpeaking || isSaviSpeaking;
+      // Carry only the listening surface into its exit transition, then return
+      // completely to the destination state's existing appearance.
+      if (!isSpeech && listeningMix > 0) {
+        dynAmp = dynAmp * (1 - listeningMix) + listeningAmplitude * listeningMix;
+      }
 
-      if (isActivelyTalking && dynRing > 0.02) {
-        const loops = 2;
-        for (let p = 0; p < loops; p++) {
-          const ph = ((t * 0.32 + p / loops) % 1);
-          // Perfectly circular geometry expanding gently outward from orb
-          const r = dynBaseR * 1.08 + ph * dynBaseR * 0.44;
-          // Extremely subtle opacity: soft bell-curve, fading to 0 at edge
-          const alpha = Math.sin(ph * Math.PI) * 0.18 * dynRing;
-          if (alpha > 0.004) {
-            ctx.strokeStyle = isSaviSpeaking
+      // Update active ripples: progress advances smoothly with elapsed time
+      rippleCadenceCooldown = Math.max(0, rippleCadenceCooldown - elapsed);
+
+      for (let i = activeRipples.length - 1; i >= 0; i--) {
+        const r = activeRipples[i];
+        r.progress += elapsed * r.speed;
+        if (r.progress >= 1.0) {
+          activeRipples.splice(i, 1);
+        }
+      }
+
+      // Thin circular lines / ripples: gently pulsate outward like ripples on calm water
+      // Existing ripples naturally fade away during pauses instead of abruptly stopping
+      if (activeRipples.length > 0 || dynRing > 0.02) {
+        for (let i = 0; i < activeRipples.length; i++) {
+          if (currentName === 'listening') continue;
+          const r = activeRipples[i];
+          const radius = dynBaseR * 1.03 + r.progress * r.maxDistance;
+          // Opacity rises softly near orb boundary, peaks at ~18%, then gradually dissolves to 0
+          const alpha = r.peakAlpha * Math.sin(Math.pow(r.progress, 0.45) * Math.PI) * (1 - r.progress * 0.90);
+          if (alpha > 0.003) {
+            ctx.strokeStyle = r.type === 'savi'
               ? `rgba(255,179,71,${alpha})`   // Soft warm saffron for Savi
-              : `rgba(79,191,131,${alpha})`;  // Soft emerald for Candidate
-            ctx.lineWidth = 0.85;             // Very thin circular line
+              : `rgba(79,191,131,${alpha})`;  // Soft luminous emerald for Candidate
+            ctx.lineWidth = 0.85;             // Thin, delicate, elegant line
             ctx.beginPath();
-            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
             ctx.stroke();
           }
         }
       }
 
-      // Soft halo background
-      // MUST guarantee that halo radius is safely smaller than maxSafeRadius (canvas edge),
-      // and that the radial gradient smoothly fades to 100% transparent before reaching maxSafeRadius.
-      const haloBoost = currentName === 'listening' ? smoothedMicLevel * 0.12 : currentName === 'speaking' ? 0.06 : 0;
+      // Soft halo background: static in listening, no pulsation
+      const haloBoost = currentName === 'speaking' ? 0.06 : 0;
       let haloAlpha = 0.26 + haloBoost + currentEmotion * 0.08;
       if (visual) {
         haloAlpha += Math.sin(t * 0.7) * 0.025;
       }
       // Cap haloR at maxSafeRadius * 0.88 so it NEVER touches or exceeds the canvas boundary
-      const haloR = Math.min(maxSafeRadius * 0.88, dynBaseR * (2.1 + (currentName === 'listening' ? smoothedMicLevel * 0.15 : 0)));
-      
+      const haloR = Math.min(maxSafeRadius * 0.88, dynBaseR * 2.1);
+
       const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloR);
       halo.addColorStop(0,    `rgba(${col},${haloAlpha})`);
       halo.addColorStop(0.30, `rgba(${col},${haloAlpha * 0.55})`);
@@ -766,56 +938,83 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       }
 
 
-      // Layered echoes - multiple overlapping translucent organic layers
+      // Center is completely stationary for listening and speaking (no left/right sway or orbit)
+      const floatX = isSpeech ? 0 : visual ? Math.sin(t * 0.35) * dynBaseR * 0.08 : 0;
+      const floatY = isSpeech ? 0 : visual ? Math.cos(t * 0.28) * dynBaseR * 0.06 : 0;
+      const centerX = cx + floatX;
+      const centerY = cy + floatY;
+
+      // Transparent fluid layers behind the orb (translucent echoes/silhouettes inspired by reference)
       function layer(scaleMult: number, alphaMult: number, phaseOffset: number, lobeOffset: number, tint?: string) {
-        const phase = visual ? t * cur.speed * (1.2 + lobeOffset * 0.14) - phaseOffset : dynPhase - phaseOffset;
-        const rotation = ambientLoop
+        const isSpeech = currentName === 'listening' || currentName === 'speaking';
+        const effLobes = isSpeech ? dynLobes : dynLobes + lobeOffset;
+        const phase = dynPhase * (0.86 + lobeOffset * 0.08) - phaseOffset;
+        // Differential layer rotation: veils circulate at varying rates
+        const layerRot = ambientLoop
           ? rot * (1 + lobeOffset * 0.18) + Math.sin(t * 0.45 + phaseOffset) * 0.22
-          : visual ? rot + Math.sin(t * 0.22 + phaseOffset) * 0.16 : rot;
-        const pts = blobPoints(dynBaseR * scaleMult, dynAmp, dynLobes + lobeOffset, phase, 64, rotation);
+          : visual
+          ? rot + Math.sin(t * 0.22 + phaseOffset) * 0.16
+          : isSpeech
+          ? rot * (1.0 + lobeOffset * 0.12) + phaseOffset * 0.08
+          : rot;
+
+        // Dynamic separation: background layers separate slightly during active speech,
+        // and settle closer to the primary form when speech stops
+        const sepFactor = isSpeech ? 0.60 + listeningLevel * 0.15 : 0.48;
+        const sMult = 1.0 + (scaleMult - 1.0) * sepFactor;
+        const layerAmp = isSpeech ? dynAmp * (0.75 + lobeOffset * 0.08) : dynAmp;
+        const pts = blobPoints(dynBaseR * sMult, layerAmp, effLobes, phase, listeningMix > 0 ? 70 : 64, layerRot);
         smoothPath(pts);
         if (!ctx) return;
-        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, dynBaseR * 1.15 * scaleMult);
+
+        // Original translucent color treatment, shared by every state.
+        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, dynBaseR * 1.15 * sMult);
         const baseColor = tint || col;
-        g.addColorStop(0,   `rgba(${baseColor},${0.85 * alphaMult})`);
+        g.addColorStop(0,    `rgba(${baseColor},${0.85 * alphaMult})`);
         g.addColorStop(0.55, `rgba(${secCol},${0.45 * alphaMult})`);
-        g.addColorStop(1,   `rgba(${baseColor},${0.08 * alphaMult})`);
+        g.addColorStop(1,    `rgba(${baseColor},${0.08 * alphaMult})`);
         ctx.fillStyle = g;
         ctx.fill();
-        ctx.strokeStyle = `rgba(${baseColor},${0.35 * alphaMult})`;
-        ctx.lineWidth = 0.8;
+
+        // Delicate filament boundary contour (soap-bubble / water meniscus sheen)
+        const strokeAlpha = 0.35 * alphaMult;
+        ctx.strokeStyle = `rgba(${baseColor},${strokeAlpha})`;
+        ctx.lineWidth = 0.85;
         ctx.stroke();
       }
-      // Outer translucent botanical/warm layer (adapts smoothly during emotional irritation)
+      // Outer translucent botanical/sage and warm amber layers (inspired by reference image)
       const outerTint = visual
         ? col
         : currentEmotion > 0.01
           ? `${Math.round(4 + (180 - 4) * currentEmotion)},${Math.round(98 + (60 - 98) * currentEmotion)},${Math.round(65 + (40 - 65) * currentEmotion)}`
           : '4,98,65';
-      layer(1.42, 0.22, 0.75, 2, outerTint);
-      layer(1.36, 0.28, 0.55, 1);
-      layer(1.18, 0.45, 0.28, 0);
-      // Warm amber / cream translucent accent layer
-      layer(1.08, visual ? 0.20 : 0.38, -0.42, 1, visual ? col : '255,195,112');
+      layer(1.48, 0.22, 0.85, 2, outerTint);
+      layer(1.36, 0.26, 0.60, 1);
+      layer(1.22, 0.34, 0.35, 0);
+      // Warm amber / honey translucent accent layer (inspired by reference image)
+      layer(1.12, visual ? 0.20 : 0.38, -0.45, 1, visual ? col : '255,195,112');
 
-      // Core blob
-      const pts = blobPoints(dynBaseR, dynAmp, dynLobes, dynPhase, 64);
+      // Core blob - contained mass of luminous water suspended in space
+      const pts = blobPoints(dynBaseR, dynAmp, dynLobes, dynPhase, listeningMix > 0 ? 84 : 72, rot);
       smoothPath(pts);
-      const centerX = cx + (visual ? Math.sin(t * 0.35) * dynBaseR * 0.08 : 0);
-      const centerY = cy + (visual ? Math.cos(t * 0.28) * dynBaseR * 0.06 : 0);
+
+      // Restore the deployed orb's creamy, diffused illumination without
+      // reintroducing the removed inner sphere.
       const fill = ctx.createRadialGradient(centerX, centerY, 0, cx, cy, dynBaseR * 1.15);
-      fill.addColorStop(0,   `rgba(${col},0.92)`);
+      fill.addColorStop(0,    `rgba(${col},0.92)`);
       fill.addColorStop(0.35, `rgba(245,238,219,0.45)`);
       fill.addColorStop(0.70, `rgba(${secCol},0.55)`);
-      fill.addColorStop(1,   `rgba(${col},0.16)`);
+      fill.addColorStop(1,    `rgba(${col},0.16)`);
       ctx.fillStyle = fill;
       ctx.shadowColor = `rgba(${col},${0.45 + currentEmotion * 0.15})`;
       ctx.shadowBlur = 18 + currentEmotion * 8;
       ctx.fill();
       ctx.shadowBlur = 0;
 
-      // Crisp thin rim
-      ctx.strokeStyle = `rgba(${col},0.65)`;
+      // Defined surface tension rim: soft but clearly formed organic boundary
+      smoothPath(pts);
+      const rimAlpha = 0.65;
+      ctx.strokeStyle = `rgba(${col},${rimAlpha})`;
       ctx.lineWidth = 1;
       ctx.stroke();
 
