@@ -438,7 +438,10 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
           <div className="setup-job-heading">
             <span className="setup-job-icon" aria-hidden="true"><BriefcaseBusiness size={24} /></span>
             <div>
-              <h2 id="target-job-heading"><label htmlFor="job">Target job title</label></h2>
+              <div className="setup-doc-title">
+                <h2 id="target-job-heading"><label htmlFor="job">Target job title</label></h2>
+                <span className="setup-optl">Required</span>
+              </div>
               <p className="setup-usub" id="target-job-description">
             Tell us the role you're targeting. This helps us tailor your request and find the most relevant opportunities.
               </p>
@@ -524,7 +527,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
             <div>
               <div className="setup-doc-title">
                 <h2 id="attach-documents-heading">Attach documents</h2>
-                <span className="setup-optl">(Optional)</span>
+                <span className="setup-optl">Optional</span>
               </div>
               <p className="setup-usub">Upload files you want to include with your request. Add your CV, job description, portfolio, or any relevant materials.</p>
             </div>

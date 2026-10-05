@@ -10,6 +10,7 @@ import {
   MessageSquare,
   X,
 } from 'lucide-react';
+import { replayPlaybackTiming } from '../services/replayPlayback';
 import { ReplayState } from '../types/conversation';
 
 interface AnswerReplayCardProps {
@@ -245,11 +246,11 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
 
   // Canonical Target View: Unified Container for AI Notes
   const isPlaying = playingAttempt === 1;
-  const displayDuration = attempt1.durationSeconds || 0;
-  const displayCurrentTime = playbackCurrentTime || 0;
-  const progressRatio = displayDuration > 0
-    ? Math.min(1, Math.max(0, displayCurrentTime / displayDuration))
-    : (playbackProgress || 0);
+  const matchingAudio = playbackAudio?.getAttribute('src') === attempt1.audioUrl ? playbackAudio : null;
+  const timing = replayPlaybackTiming(matchingAudio, attempt1.durationSeconds || 0, playbackCurrentTime || 0);
+  const displayDuration = timing.duration;
+  const displayCurrentTime = timing.time;
+  const progressRatio = displayDuration > 0 || matchingAudio?.ended ? timing.progress : (playbackProgress || 0);
 
   const hasAudio = attempt1.inputMode !== 'chat' && attempt1.audioBlob.size > 4 && !!attempt1.audioUrl;
   const displayTranscript = attempt1.transcript || '';

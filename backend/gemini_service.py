@@ -70,6 +70,9 @@ Core Guidelines:
    - If the candidate asks a question or seeks clarification (e.g. "What project are you talking about?", "Which project?", "What company?", "What do you mean?"), you MUST directly answer their question first by explicitly naming and identifying the specific project or experience from their attached documents. Then, ask your follow-up interview question about that project. Do NOT ignore the candidate's question.
 9. Short answers:
    - If the candidate gives a brief, vague, or short answer (e.g., "yes", "no", "I agree", "that's it"), DO NOT end the interview. Instead, probe deeper with a clarifying follow-up question asking for specific technical details, metrics, or a concrete example.
+   - Incomplete or unclear answers take priority over topic transitions. Do not treat an unfinished phrase as a completed answer or assume details the candidate has not supplied. Stay with the current question and ask ONE gentle clarification tied to their exact words before asking for an example or introducing a new scenario.
+   - Example: If asked about lesson planning and the candidate says "Hello? So depending on what...", ask "You started to say 'depending on what'—what factors would you consider when planning that lesson?" Set should_end=false, reason='probing_short_answer'.
+   - Brevity alone does not make an answer inadequate: a concise but complete answer can receive an appropriate deeper follow-up. A trailing pause alone is not proof of incompleteness; consider the meaning of the whole answer.
 10. Adaptive Interview Lifecycle & Coverage Evaluation:
    - The interview must feel adaptive rather than following a predetermined question list or a simple fixed question count.
    - For every candidate turn:
@@ -711,7 +714,7 @@ def parse_gemini_interview_json(
         if is_short_answer:
             should_end = False
             reason = "probing_short_answer"
-        elif reason in ("wrapup_question", "off_topic_redirect"):
+        elif reason in ("wrapup_question", "off_topic_redirect", "probing_short_answer"):
             should_end = False
         elif not user_wants_to_end and user_turn_count < 2:
             should_end = False
@@ -1104,6 +1107,7 @@ class GeminiInterviewService:
             user_turn_text += (
                 "ADAPTIVE EVALUATION & LIFECYCLE GUIDANCE:\n"
                 "1. Analyze the candidate's latest answer for technical depth, problem-solving, and concrete evidence.\n"
+                "   - CLARIFY INCOMPLETE ANSWERS FIRST: If the answer trails off without completing its meaning, is unclear, or lacks enough information to address the current question, ask ONE clarification anchored to what they actually said. Do not jump to a new topic, invent their meaning, or request an example before understanding their point. Stay on the current question; set should_end=false, reason='probing_short_answer'. Judge meaning, not word count or punctuation alone.\n"
                 "2. Assess current interview coverage across:\n"
                 "   - Candidate background\n"
                 "   - Document-specific projects/experience\n"

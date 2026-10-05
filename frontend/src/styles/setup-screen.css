@@ -846,7 +846,14 @@
 
 /* Document card: shared emerald glass, with accessible upload and file states. */
 .setup-doc-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
-.setup-doc-card .setup-optl { border: 0; padding: 0; font-size: 12px; }
+.setup-doc-card .setup-optl,
+.setup-job-card .setup-optl {
+  display: inline-flex; align-items: center; align-self: center;
+  padding: 3px 10px; border: 1px solid rgba(142, 182, 155, .35);
+  border-radius: 999px; background: rgba(142, 182, 155, .12);
+  color: var(--paper); font-family: 'Manrope', sans-serif;
+  font-size: 11px; font-weight: 600; line-height: 1.5; white-space: nowrap;
+}
 .setup-doc-card .setup-drop {
   flex: none;
   min-height: 180px;
@@ -971,7 +978,7 @@
   .setup-job-heading { margin-bottom: 12px; }
   .setup-job-card .setup-jlbl { margin: 12px 0 8px; }
   .setup-doc-card .setup-drop { padding-block: 12px; }
-  .setup-doc-card .setup-empty-description { max-width: 48ch; }
+  .setup-doc-card .setup-empty-description { max-width: none; }
 }
 
 @media (min-width: 961px) {

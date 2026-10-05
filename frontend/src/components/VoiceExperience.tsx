@@ -5,6 +5,7 @@ import { VoiceCreature } from './VoiceCreature';
 import { StateLabel } from './StateLabel';
 
 import { CandidateCamera } from './CandidateCamera';
+import { replayPlaybackTiming } from '../services/replayPlayback';
 import { VoiceControls } from './VoiceControls';
 import { updateSpeechEndpoint, SpeechEndpointState } from '../services/speechEndpoint';
 import { AnswerReplayCard } from './AnswerReplayCard';
@@ -275,9 +276,12 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     const player = audio;
     const duration = () => Number.isFinite(player.duration) && player.duration > 0 ? player.duration : attempt.durationSeconds;
     const sync = () => {
-      setPlaybackCurrentTime(player.currentTime);
-      setPlaybackProgress(duration() > 0 ? player.currentTime / duration() : 0);
+      const timing = replayPlaybackTiming(player, attempt.durationSeconds, player.currentTime);
+      setPlaybackCurrentTime(timing.time);
+      setPlaybackProgress(timing.progress);
     };
+    player.onloadedmetadata = sync;
+    player.ondurationchange = sync;
     player.ontimeupdate = sync;
     player.onseeked = sync;
     player.onended = () => { setPlayingAttempt(null); sync(); };
