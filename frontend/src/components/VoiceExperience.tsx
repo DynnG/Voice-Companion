@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { VoiceState, AttachedDocument, Message, AnswerAttempt, ReplayState, InterviewExchangeRecord } from '../types/conversation';
-import { Sparkles, MessageSquare, User, Plus, AlertCircle, X, Lightbulb } from 'lucide-react';
+import { MessageSquare, Plus, AlertCircle, X, Lightbulb } from 'lucide-react';
 import { VoiceCreature } from './VoiceCreature';
 import { StateLabel } from './StateLabel';
 
@@ -1148,23 +1148,6 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     }
   };
 
-  // Dynamic status text for Savi status badge
-  const getDynamicSaviStatus = (): string => {
-    if (isCompleted) return 'Interview Complete';
-    if (customLabel) return customLabel;
-    switch (state) {
-      case 'speaking':
-        return 'Speaking';
-      case 'listening':
-        return 'Listening';
-      case 'thinking':
-        return 'Thinking...';
-      case 'idle':
-      default:
-        return 'Ready';
-    }
-  };
-
   const showTip = isTipVisible && conversationHistory.length === 0 && !replayState.attempt1 &&
     !(initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak) && !isInterviewErrorText(initialQuestionToSpeak));
 
@@ -1357,58 +1340,11 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
               />
             </div>
 
-            {/* Dynamic Status & StateLabel under Orb */}
-            <div className="shrink-0 mt-0.5 sm:mt-1 min-h-[20px] flex items-center justify-center">
-              <StateLabel state={state} customLabel={customLabel} />
+            <div className="interview-orb-labels">
+              <span className="interview-savi-name">Savi</span>
+              <StateLabel state={state} customLabel={isCompleted ? 'Interview complete' : customLabel} />
             </div>
 
-            {/* Status & Info Container under the Orb */}
-            {isCameraActive ? null : (
-              /* When camera is OFF: Candidate Info sits BELOW the orb + Savi Status + Camera Prompt */
-              <div className={`flex flex-col items-center transition-all duration-300 ease-out ${
-                isCompactVisual ? 'gap-1.5' : 'gap-2'
-              }`}>
-                <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-2.5">
-                  <div className={`flex items-center rounded-2xl bg-[rgba(10,32,24,0.52)] border border-[rgba(218,241,222,0.14)] backdrop-blur-md shadow-sm transition-all duration-300 ease-out ${
-                    isCompactVisual ? 'gap-2 px-3 py-1' : 'gap-3 px-3.5 py-1.5'
-                  }`}>
-                    <div className={`rounded-full bg-[rgba(218,241,222,0.1)] flex items-center justify-center text-[#F5EEDB] shrink-0 transition-all duration-300 ${
-                      isCompactVisual ? 'w-6 h-6' : 'w-7 h-7'
-                    }`}>
-                      <User className={`${isCompactVisual ? 'w-3 h-3' : 'w-3.5 h-3.5'} transition-all duration-300`} />
-                    </div>
-                    <div className="flex flex-col text-left min-w-0">
-                      <b className={`font-semibold text-white leading-tight truncate transition-all duration-300 ${
-                        isCompactVisual ? 'text-xs' : 'text-sm'
-                      }`}>{candidateName || 'Candidate'}</b>
-                      <small className={`text-[#8EB69B] leading-tight truncate transition-all duration-300 ${
-                        isCompactVisual ? 'text-[10px]' : 'text-xs'
-                      }`}>Candidate</small>
-                    </div>
-                  </div>
-
-                  <div className={`flex items-center rounded-2xl bg-[rgba(10,32,24,0.48)] border border-[rgba(218,241,222,0.14)] backdrop-blur-md shadow-sm transition-all duration-300 ease-out ${
-                    isCompactVisual ? 'gap-2 px-3 py-1' : 'gap-2.5 px-3.5 py-1.5'
-                  }`}>
-                    <div className={`rounded-full bg-[rgba(218,241,222,0.1)] flex items-center justify-center text-[#8EB69B] shrink-0 transition-all duration-300 ${
-                      isCompactVisual ? 'w-6 h-6' : 'w-7 h-7'
-                    }`}>
-                      <Sparkles className={`${isCompactVisual ? 'w-3 h-3' : 'w-3.5 h-3.5'} text-[#FFB347] transition-all duration-300`} />
-                    </div>
-                    <div className="flex flex-col text-left min-w-0">
-                      <b className={`font-semibold text-white leading-tight transition-all duration-300 ${
-                        isCompactVisual ? 'text-xs' : 'text-sm'
-                      }`}>Savi</b>
-                      <small className={`font-semibold text-[#6fd3a0] leading-tight transition-all duration-300 ${
-                        isCompactVisual ? 'text-[10px]' : 'text-xs'
-                      }`}>{getDynamicSaviStatus()}</small>
-                    </div>
-                  </div>
-                </div>
-
-
-              </div>
-            )}
           </div>
         </div>
       </div>

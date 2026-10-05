@@ -91,7 +91,10 @@ export const CandidateCamera: React.FC<CandidateCameraProps> = ({
   useEffect(() => {
     if (!isCameraActive) return;
     const video = videoRef.current;
-    if (video) video.srcObject = streamRef.current;
+    if (video) {
+      video.srcObject = streamRef.current;
+      void video.play().catch(() => {});
+    }
     setTracking('loading'); setBadgeCompact(false); setIssue(null);
 
     let cancelled = false, busy = false, ready = false;
@@ -151,7 +154,7 @@ export const CandidateCamera: React.FC<CandidateCameraProps> = ({
   return (
     <section className={`interview-camera-card visual-camera-card ${compact ? 'visual-camera-card--compact' : ''}`} data-analysis-expanded={expanded} aria-label="Camera and visual analysis">
       <div className={`interview-camera-video visual-camera-video ${tracking === 'active' && issue ? 'visual-camera-video--warning' : ''}`}>
-        <video ref={videoRef} autoPlay playsInline muted className="visual-camera-feed" />
+        <video ref={videoRef} autoPlay playsInline muted disablePictureInPicture disableRemotePlayback controlsList="nofullscreen noremoteplayback" className="visual-camera-feed" />
         <div className={`visual-camera-status ${badgeCompact && tracking === 'active' ? 'visual-camera-status--compact' : ''}`} title={status} aria-label={status}>
           <span className={`visual-camera-dot ${tracking === 'active' ? 'visual-camera-dot--active' : ''}`} />
           <span className="visual-camera-status-text">{status}</span>
