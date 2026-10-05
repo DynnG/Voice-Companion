@@ -425,7 +425,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
             <span className="setup-tag">Voice interview setup</span>
             <h1 id="setup-heading">Practice the interview<br /><span>before it counts.</span></h1>
             <p>
-              Step into a realistic AI interview with Savi. Practice answering role-specific questions and sharpen your responses before the real conversation.
+              Step into a realistic AI interview with Savi. Practice answering <span className="setup-unbroken-term">role-specific</span> questions and sharpen your responses before the real conversation.
             </p>
           </div>
           <div className="hero-orb" aria-hidden="true">

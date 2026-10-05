@@ -896,7 +896,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     );
 
     const aiResponse = followupResult.response;
-    const shouldEnd = followupResult.should_end;
+    const shouldEnd = followupResult.should_end && currentTurn >= effectiveMaxTurns;
     const endReason = followupResult.reason;
 
     console.log('[Live Interview] 2. Gemini follow-up response:', aiResponse, 'should_end:', shouldEnd, 'reason:', endReason);

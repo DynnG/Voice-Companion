@@ -255,11 +255,11 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
               type="button"
               onClick={onDownloadReview}
               disabled={isDownloadingReview}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#133020] text-[#F5EEDB] hover:bg-[#1a442e] transition-all active:scale-95 disabled:opacity-40"
+              className="inline-flex items-center gap-2 rounded-xl border border-[#c9963b]/45 bg-gradient-to-b from-[#ffcf80] to-[#f5b755] px-3 py-2 text-xs font-semibold text-[#133020] shadow-[0_2px_6px_rgba(19,48,32,0.12),inset_0_1px_0_rgba(255,255,255,0.4)] hover:from-[#ffda9b] hover:to-[#ffc370] hover:shadow-[0_3px_10px_rgba(19,48,32,0.18)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#133020] transition-all active:scale-95 disabled:opacity-40 disabled:cursor-wait"
               title="Download Review"
               aria-label="Download Review"
             >
-              <Download className="w-3 h-3 text-[#FFB347]" />
+              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#133020]/10" aria-hidden="true"><Download className="w-3.5 h-3.5" /></span>
               <span>{isDownloadingReview ? 'Downloading…' : 'Download Review'}</span>
             </button>
           )}

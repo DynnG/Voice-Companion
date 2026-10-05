@@ -224,7 +224,7 @@
 .setup-hero p {
   color: var(--g6);
   opacity: 0.85;
-  max-width: 55ch;
+  max-width: 62ch;
   line-height: 1.6;
   font-size: clamp(14px, 1.2vw, 17px);
   margin: 0;
@@ -1033,3 +1033,5 @@
 }
 
 .setup-jin .setup-job-error-icon { color: #ef4444; }
+
+.setup-unbroken-term { white-space: nowrap; }

@@ -174,7 +174,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     doc.setFont('Manrope', 'normal');
     doc.setFontSize(9.5);
     const qLines = doc.splitTextToSize(qText, contentWidth - 28);
-    const qHeight = Math.max(28, qLines.length * 12 + 18);
+    const qHeight = Math.max(28, qLines.length * 15 + 20);
 
     ensureSpace(qHeight + 10);
 
@@ -197,7 +197,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     doc.setFont('Manrope', 'normal');
     doc.setFontSize(9.5);
     doc.setTextColor(30, 41, 59);
-    doc.text(qLines, margin + 12, currentY + 24);
+    doc.text(qLines, margin + 12, currentY + 26, { lineHeightFactor: 15 / 9.5 });
 
     currentY += qHeight + 8;
 
@@ -206,7 +206,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     doc.setFont('Manrope', 'normal');
     doc.setFontSize(9.5);
     const aLines = doc.splitTextToSize(aText, contentWidth - 28);
-    const aHeight = Math.max(30, aLines.length * 12 + 20);
+    const aHeight = Math.max(30, aLines.length * 15 + 22);
 
     ensureSpace(aHeight + 10);
 
@@ -232,7 +232,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     doc.setFont('Manrope', 'normal');
     doc.setFontSize(9.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(aLines, margin + 12, currentY + 24);
+    doc.text(aLines, margin + 12, currentY + 26, { lineHeightFactor: 15 / 9.5 });
 
     currentY += aHeight + 8;
 
