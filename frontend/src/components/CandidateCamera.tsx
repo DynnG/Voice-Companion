@@ -70,7 +70,7 @@ export const CandidateCamera: React.FC<CandidateCameraProps> = ({
       setIsCameraActive(true);
       onCameraActiveChange?.(true);
       stream.getVideoTracks()[0].onended = () => {
-          streamRef.current = null;
+        streamRef.current = null;
         if (mountedRef.current) { setIsCameraActive(false); onCameraActiveChange?.(false); }
       };
     } catch {
@@ -130,7 +130,7 @@ export const CandidateCamera: React.FC<CandidateCameraProps> = ({
       if (sample.timestamp - issueSince >= (issueCandidate === 'expression' || issueCandidate === 'hand-pose' ? 2400 : 1600)) setIssue(issueCandidate);
     };
     const timer = window.setInterval(async () => {
-      if (cancelled || !ready || busy || !video || video.readyState < 1 || document.hidden) return;
+      if (cancelled || !ready || busy || !video || video.readyState < 2 || document.hidden) return;
       busy = true;
       try {
         const frame = await createImageBitmap(video, { resizeWidth: 640, resizeHeight: Math.round(640 * video.videoHeight / video.videoWidth) });
