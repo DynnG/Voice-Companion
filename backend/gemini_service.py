@@ -54,7 +54,8 @@ Core Guidelines:
 7. Response Style & Topic Transitions:
    - Same-Topic Follow-ups (Deep Probing):
      * When continuing on the SAME project, problem, architecture, or topic, keep the question direct, concise, and focused.
-     * Do NOT add artificial acknowledgments, compliments, or conversational filler on every turn.
+     * If the candidate answers well, first give ONE brief, specific compliment grounded in an actual strength of that answer, then ask the follow-up question. Example: "You clearly linked your discovery questions to the customer's priorities. How did you measure whether that approach improved conversions?"
+     * Praise relevant reasoning, concrete examples, clear structure, or supported results only when demonstrated. Do not praise off-topic, empty, or incorrect answers; redirect or clarify instead. Avoid repetitive hollow praise and conversational filler.
      * Example: "You mentioned UI mismatches. How did you diagnose the issue?"
    - Topic Transitions (Moving to a New Project, Skill, or Interview Area):
      * When you have sufficiently covered the current topic and are moving to a DIFFERENT project, skill, experience, or interview competency from their documents, briefly acknowledge the SUBSTANCE of the candidate's answer before transitioning to the next question.
@@ -69,6 +70,9 @@ Core Guidelines:
    - If the candidate asks a question or seeks clarification (e.g. "What project are you talking about?", "Which project?", "What company?", "What do you mean?"), you MUST directly answer their question first by explicitly naming and identifying the specific project or experience from their attached documents. Then, ask your follow-up interview question about that project. Do NOT ignore the candidate's question.
 9. Short answers:
    - If the candidate gives a brief, vague, or short answer (e.g., "yes", "no", "I agree", "that's it"), DO NOT end the interview. Instead, probe deeper with a clarifying follow-up question asking for specific technical details, metrics, or a concrete example.
+   - Incomplete or unclear answers take priority over topic transitions. Do not treat an unfinished phrase as a completed answer or assume details the candidate has not supplied. Stay with the current question and ask ONE gentle clarification tied to their exact words before asking for an example or introducing a new scenario.
+   - Example: If asked about lesson planning and the candidate says "Hello? So depending on what...", ask "You started to say 'depending on what'—what factors would you consider when planning that lesson?" Set should_end=false, reason='probing_short_answer'.
+   - Brevity alone does not make an answer inadequate: a concise but complete answer can receive an appropriate deeper follow-up. A trailing pause alone is not proof of incompleteness; consider the meaning of the whole answer.
 10. Adaptive Interview Lifecycle & Coverage Evaluation:
    - The interview must feel adaptive rather than following a predetermined question list or a simple fixed question count.
    - For every candidate turn:
@@ -133,7 +137,7 @@ Guidelines:
    - Do NOT use "confidence" as a metric.
    - Do NOT invent information.
    - Do NOT criticize pronunciation unless the speech transcript contains clear evidence.
-4. Limit AI Notes to approximately 2 to 4 concise bullet points.
+4. Limit AI Notes to approximately 2 to 4 concise bullet points. Include at least one practical next-step suggestion tailored to this answer, not just a description of its weaknesses. Pair each criticism with how to improve it. When a strength is demonstrated, acknowledge that specific strength without inventing one. For strong answers, offer a way to deepen the answer rather than manufacturing a flaw.
 5. Return valid JSON matching:
    {
      "notes": [
@@ -710,7 +714,7 @@ def parse_gemini_interview_json(
         if is_short_answer:
             should_end = False
             reason = "probing_short_answer"
-        elif reason in ("wrapup_question", "off_topic_redirect"):
+        elif reason in ("wrapup_question", "off_topic_redirect", "probing_short_answer"):
             should_end = False
         elif not user_wants_to_end and user_turn_count < 2:
             should_end = False
@@ -1103,6 +1107,7 @@ class GeminiInterviewService:
             user_turn_text += (
                 "ADAPTIVE EVALUATION & LIFECYCLE GUIDANCE:\n"
                 "1. Analyze the candidate's latest answer for technical depth, problem-solving, and concrete evidence.\n"
+                "   - CLARIFY INCOMPLETE ANSWERS FIRST: If the answer trails off without completing its meaning, is unclear, or lacks enough information to address the current question, ask ONE clarification anchored to what they actually said. Do not jump to a new topic, invent their meaning, or request an example before understanding their point. Stay on the current question; set should_end=false, reason='probing_short_answer'. Judge meaning, not word count or punctuation alone.\n"
                 "2. Assess current interview coverage across:\n"
                 "   - Candidate background\n"
                 "   - Document-specific projects/experience\n"
@@ -1433,6 +1438,7 @@ class GeminiInterviewService:
             f"COACHING EVALUATION GUIDELINES:\n"
             f"Provide a natural BALANCE of positive feedback and constructive criticism.\n"
             f"When the user does something correctly (e.g. clear explanation, good example), explicitly acknowledge it to reinforce good behavior.\n"
+            f"Include at least one concrete next-step suggestion tailored to this answer. Pair every criticism with practical advice. For strong answers, suggest how to deepen the explanation without inventing a weakness.\n"
             f"When something could be improved, provide a short, actionable suggestion (e.g. 'briefly mention the result next time').\n"
             f"Subtly and naturally acknowledge the input method ({input_type_str}) in the notes, but keep the primary focus on answer quality.\n"
             f"Example phrasing: 'Voice response \u2014 good example. Briefly explain the result next time.' or 'Typed response \u2014 your explanation was clear.'\n"

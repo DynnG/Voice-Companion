@@ -10,6 +10,8 @@ import {
   MessageSquare,
   X,
 } from 'lucide-react';
+import { replayPlaybackTiming } from '../services/replayPlayback';
+import { displayCoachingNotes, coachingNoteLabels } from '../services/coachingNoteStyle';
 import { ReplayState } from '../types/conversation';
 
 interface AnswerReplayCardProps {
@@ -245,15 +247,15 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
 
   // Canonical Target View: Unified Container for AI Notes
   const isPlaying = playingAttempt === 1;
-  const displayDuration = attempt1.durationSeconds || 0;
-  const displayCurrentTime = playbackCurrentTime || 0;
-  const progressRatio = displayDuration > 0
-    ? Math.min(1, Math.max(0, displayCurrentTime / displayDuration))
-    : (playbackProgress || 0);
+  const matchingAudio = playbackAudio?.getAttribute('src') === attempt1.audioUrl ? playbackAudio : null;
+  const timing = replayPlaybackTiming(matchingAudio, attempt1.durationSeconds || 0, playbackCurrentTime || 0);
+  const displayDuration = timing.duration;
+  const displayCurrentTime = timing.time;
+  const progressRatio = displayDuration > 0 || matchingAudio?.ended ? timing.progress : (playbackProgress || 0);
 
   const hasAudio = attempt1.inputMode !== 'chat' && attempt1.audioBlob.size > 4 && !!attempt1.audioUrl;
   const displayTranscript = attempt1.transcript || '';
-  const displayNotes = attempt1.aiNotes || [];
+  const displayNotes = displayCoachingNotes(attempt1.aiNotes || []);
 
   return (
     <section
@@ -270,9 +272,9 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
       >
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-3">
-            <h3 className="font-semibold text-sm sm:text-base text-[#F5EEDB] tracking-tight">
-              AI Notes
-            </h3>
+            {isMinimized && (
+              <span className="text-xs text-[#8EB69B]">Tap for more information</span>
+            )}
             {isMinimized && hasAudio && (
               <span className="text-[11px] text-[#8EB69B] font-mono hidden sm:inline-block">
                 {formatTime(displayCurrentTime)} / {formatTime(displayDuration)}
@@ -493,7 +495,6 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                   {/* Header */}
                   <div className="flex items-center justify-between pb-2 border-b border-[rgba(218,241,222,0.08)]">
                     <div className="flex items-center gap-1.5 text-xs font-semibold text-[#FFB347]">
-                      <Sparkles className="w-3.5 h-3.5 text-[#FFB347]" />
                       <span>AI Notes</span>
                     </div>
                     {attempt1?.aiNotesStatus === 'loading' && (
@@ -527,15 +528,14 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                     ) : (
                       /* Specific observations from actual answer analysis */
                       <div className="space-y-2">
-                        {displayNotes.map((noteText, idx) => (
-                          <div
-                            key={idx}
-                            className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[rgba(6,24,18,0.55)] border border-[rgba(218,241,222,0.08)] hover:border-[rgba(255,179,71,0.25)] transition-colors text-xs leading-relaxed"
-                          >
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#FFB347] shrink-0 mt-1.5 shadow-[0_0_6px_rgba(255,179,71,0.6)]" />
-                            <p className="text-[#F5EEDB]/90 flex-1">{noteText}</p>
-                          </div>
-                        ))}
+                        {displayNotes.map(({ text: noteText, kind }, idx) => {
+                          return (
+                            <div key={idx} className={`coaching-note coaching-note--${kind}`}>
+                              <span className="coaching-note-label">{coachingNoteLabels[kind]}</span>
+                              <p className="text-[#F5EEDB]/90">{noteText}</p>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

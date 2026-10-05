@@ -145,7 +145,8 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "https://frontend-fawn-gamma-48.vercel.app"
+        "https://frontend-fawn-gamma-48.vercel.app",
+        "https://savi-interview-review.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],

@@ -1,3 +1,4 @@
+import { displayCoachingNotes, coachingNoteLabels } from '../services/coachingNoteStyle';
 /**
  * PostInterviewCompletionModal
  *
@@ -19,7 +20,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Sparkles,
   MessageSquare
 } from 'lucide-react';
 import { InterviewExchangeRecord } from '../types/conversation';
@@ -34,6 +34,7 @@ export interface PostInterviewCompletionModalProps {
     exchanges: InterviewExchangeRecord[];
     startTime?: number;
     endTime?: number;
+    status?: 'Completed' | 'In Progress';
   };
 }
 
@@ -48,6 +49,7 @@ export const PostInterviewCompletionModal: React.FC<PostInterviewCompletionModal
 
   if (!isOpen) return null;
 
+  const isComplete = sessionData.status === 'Completed';
   // Calculate duration string
   let durationStr = 'N/A';
   if (sessionData.startTime && sessionData.endTime && sessionData.endTime > sessionData.startTime) {
@@ -75,7 +77,7 @@ export const PostInterviewCompletionModal: React.FC<PostInterviewCompletionModal
         startTime: sessionData.startTime,
         endTime: sessionData.endTime || Date.now(),
         interviewId: sessionData.id,
-        status: 'Completed',
+        status: isComplete ? 'Completed' : 'In Progress',
         completedAt: new Date().toLocaleDateString('en-US', {
           month: 'short',
           day: 'numeric',
@@ -116,10 +118,10 @@ export const PostInterviewCompletionModal: React.FC<PostInterviewCompletionModal
                 id="completion-modal-title"
                 className="text-lg sm:text-xl font-fraunces font-medium text-[#F5EEDB] tracking-tight"
               >
-                Interview complete
+                {isComplete ? 'Interview complete' : 'Interview review'}
               </h2>
               <p className="text-xs sm:text-sm text-[#8EB69B] mt-0.5 font-manrope">
-                Your interview session is complete. Review your answers and feedback below.
+                {isComplete ? 'Your interview session is complete. Review your answers and feedback below.' : 'Review your conversation so far. Close this review to continue your remaining questions.'}
               </p>
             </div>
           </div>
@@ -155,8 +157,8 @@ export const PostInterviewCompletionModal: React.FC<PostInterviewCompletionModal
             <span className="text-[10px] font-manrope uppercase tracking-wider text-[#8EB69B]">
               Session Status
             </span>
-            <span className="text-lg sm:text-xl font-manrope font-semibold text-[#2FE0A8] flex items-center gap-1.5 mt-0.5">
-              Completed
+            <span className="text-lg sm:text-xl font-manrope font-semibold text-[#FFC370] flex items-center gap-1.5 mt-0.5">
+              {isComplete ? 'Completed' : 'In Progress'}
             </span>
           </div>
         </div>
@@ -204,18 +206,17 @@ export const PostInterviewCompletionModal: React.FC<PostInterviewCompletionModal
                 {/* AI Coaching Notes Preview */}
                 {exchange.aiNotes && exchange.aiNotes.length > 0 && (
                   <div className="space-y-1 pt-1 border-t border-[rgba(218,241,222,0.1)]">
-                    <span className="text-[10px] uppercase font-manrope tracking-wider text-[#FFB347] flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-[#FFB347]" />
+                    <span className="text-xs font-semibold uppercase font-manrope tracking-wider text-[#FFB347]">
                       AI Notes
                     </span>
-                    <ul className="space-y-1 text-xs text-[#F5EEDB]/80 pl-1 font-manrope">
-                      {exchange.aiNotes.map((note, nIdx) => (
-                        <li key={nIdx} className="flex items-start gap-1.5">
-                          <span className="text-[#FFB347] text-xs leading-tight">•</span>
-                          <span>{note.replace(/^[•\-\*]\s*/, '')}</span>
-                        </li>
+                    <div className="space-y-2 font-manrope">
+                      {displayCoachingNotes(exchange.aiNotes).map(({ text, kind }, nIdx) => (
+                        <div key={nIdx} className={`coaching-note coaching-note--${kind}`}>
+                          <span className="coaching-note-label">{coachingNoteLabels[kind]}</span>
+                          <p>{text.replace(/^[�\-\*]\s*/, '')}</p>
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   </div>
                 )}
               </div>

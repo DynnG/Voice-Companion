@@ -1,0 +1,15 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const ts = require('typescript');
+const Module = require('node:module');
+const mod = new Module('replayPlayback');
+mod._compile(ts.transpileModule(fs.readFileSync(require.resolve('./src/services/replayPlayback.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,'replayPlayback.js');
+const { replayPlaybackTiming: timing } = mod.exports;
+assert.deepEqual(timing({duration:4.4,currentTime:4.4,ended:true},5,4.4),{duration:4.4,time:4.4,progress:1});
+assert.deepEqual(timing({duration:Infinity,currentTime:4.4,ended:true},5,4.4),{duration:4.4,time:4.4,progress:1});
+assert.equal(timing({duration:4,currentTime:2,ended:false},5,2).progress,.5);
+assert.equal(timing({duration:4,currentTime:1,ended:false},5,1).progress,.25);
+assert.deepEqual(timing(null,5,0),{duration:5,time:0,progress:0});
+assert.equal(timing({duration:NaN,currentTime:2,ended:false},5,2).progress,.4);
+assert.equal(timing({duration:4,currentTime:0,ended:false},5,0).progress,0);
+console.log('7 replay timing checks passed');

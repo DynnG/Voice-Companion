@@ -1,3 +1,4 @@
+import { displayCoachingNotes, coachingNoteLabels } from './coachingNoteStyle';
 /**
  * Savi Session-Only PDF Review Generator
  *
@@ -69,11 +70,11 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
   doc.setFont('Fraunces', 'normal');
   doc.setFontSize(26);
   doc.setTextColor(19, 48, 32);
-  doc.text('Savi', margin, currentY + 27);
+  doc.text('Savi', margin, currentY + 40);
   currentY += 64;
 
   doc.setFont('Fraunces', 'normal');
-  doc.setFontSize(18);
+  doc.setFontSize(12);
   doc.setTextColor(19, 48, 32);
   doc.text('Interview Review', margin, currentY);
   const titleY = currentY;
@@ -104,7 +105,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
   currentY += 12;
 
   // ---------------------------------------------------------------------------
-  // 2. Quiet, unboxed session summary
+  // 2. Centered session summary
   // ---------------------------------------------------------------------------
   let durationStr = 'N/A';
   if (data.startTime && data.endTime && data.endTime > data.startTime) {
@@ -121,51 +122,33 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     }
   }
 
-  const summaryBoxHeight = 38;
+  const summaryBoxHeight = 56;
   const colWidth = contentWidth / 3;
-
-  // Summary Item 1: Questions Answered
-  doc.setFont('Manrope', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('QUESTIONS ANSWERED', margin, currentY + 8);
-  doc.setFontSize(11);
-  doc.setTextColor(15, 23, 42);
-  doc.text(`${data.exchanges.length} ${data.exchanges.length === 1 ? 'Question' : 'Questions'}`, margin, currentY + 25);
-
-  // Summary Item 2: Total Duration
-  doc.setFont('Manrope', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('TOTAL DURATION', margin + colWidth, currentY + 8);
-  doc.setFontSize(11);
-  doc.setTextColor(15, 23, 42);
-  doc.text(durationStr, margin + colWidth, currentY + 25);
-
-  // Summary Item 3: Session Status
   const sessionStatusText = data.status || 'Completed';
-  doc.setFont('Manrope', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('SESSION STATUS', margin + colWidth * 2, currentY + 8);
-  doc.setFontSize(11);
-  if (sessionStatusText === 'In Progress') {
-    doc.setTextColor(217, 119, 6); // amber-600
-  } else {
-    doc.setTextColor(4, 98, 65); // forest emerald (#046241)
-  }
-  doc.text(sessionStatusText, margin + colWidth * 2, currentY + 25);
-
-  currentY += summaryBoxHeight + 20;
-
-  // ---------------------------------------------------------------------------
-  // 4. Questions & Answers Section Header
-  // ---------------------------------------------------------------------------
-  doc.setFont('Manrope', 'bold');
-  doc.setFontSize(12);
-  doc.setTextColor(19, 48, 32);
-  doc.text('Interview Questions & Candidate Answers', margin, currentY);
-  currentY += 12;
+  doc.setFillColor(246, 250, 247);
+  doc.setDrawColor(213, 226, 218);
+  doc.roundedRect(margin, currentY, contentWidth, summaryBoxHeight, 6, 6, 'FD');
+  const summaryItems = [
+    ['QUESTIONS ANSWERED', `${data.exchanges.length} ${data.exchanges.length === 1 ? 'Question' : 'Questions'}`],
+    ['TOTAL DURATION', durationStr],
+    ['SESSION STATUS', sessionStatusText],
+  ];
+  summaryItems.forEach(([label, value], index) => {
+    const centerX = margin + colWidth * (index + 0.5);
+    if (index > 0) doc.line(margin + colWidth * index, currentY + 12, margin + colWidth * index, currentY + summaryBoxHeight - 12);
+    doc.setFont('Manrope', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(0, 0, 0);
+    doc.text(label, centerX, currentY + 19, { align: 'center' });
+    doc.setFont('Manrope', 'bold');
+    doc.setFontSize(11);
+    if (index === 2 && sessionStatusText === 'In Progress') doc.setTextColor(217, 119, 6);
+    else if (index === 2) doc.setTextColor(4, 98, 65);
+    else doc.setTextColor(15, 23, 42);
+    const valueLines = doc.splitTextToSize(value, colWidth - 20);
+    doc.text(valueLines, centerX, currentY + 38, { align: 'center' });
+  });
+  currentY += summaryBoxHeight + 30;
 
   // ---------------------------------------------------------------------------
   // 5. Render Each Question / Answer / AI Notes Exchange
@@ -186,12 +169,12 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     doc.text(`Question ${orderNum}`, margin, currentY);
     currentY += 8;
 
-    // --- A. PAL (Interviewer Question) Block ---
+    // --- A. Savi (Interviewer Question) Block ---
     const qText = ex.question ? `"${ex.question.trim()}"` : '"[Interview Question]"';
     doc.setFont('Manrope', 'normal');
     doc.setFontSize(9.5);
     const qLines = doc.splitTextToSize(qText, contentWidth - 28);
-    const qHeight = Math.max(28, qLines.length * 12 + 18);
+    const qHeight = Math.max(28, qLines.length * 15 + 20);
 
     ensureSpace(qHeight + 10);
 
@@ -208,13 +191,13 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     doc.setFont('Manrope', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(4, 98, 65);
-    doc.text('PAL (INTERVIEWER):', margin + 12, currentY + 12);
+    doc.text('SAVI (INTERVIEWER):', margin + 12, currentY + 12);
 
     // Question Text
     doc.setFont('Manrope', 'normal');
     doc.setFontSize(9.5);
     doc.setTextColor(30, 41, 59);
-    doc.text(qLines, margin + 12, currentY + 24);
+    doc.text(qLines, margin + 12, currentY + 26, { lineHeightFactor: 15 / 9.5 });
 
     currentY += qHeight + 8;
 
@@ -223,7 +206,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     doc.setFont('Manrope', 'normal');
     doc.setFontSize(9.5);
     const aLines = doc.splitTextToSize(aText, contentWidth - 28);
-    const aHeight = Math.max(30, aLines.length * 12 + 20);
+    const aHeight = Math.max(30, aLines.length * 15 + 22);
 
     ensureSpace(aHeight + 10);
 
@@ -249,7 +232,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     doc.setFont('Manrope', 'normal');
     doc.setFontSize(9.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(aLines, margin + 12, currentY + 24);
+    doc.text(aLines, margin + 12, currentY + 26, { lineHeightFactor: 15 / 9.5 });
 
     currentY += aHeight + 8;
 
@@ -258,50 +241,41 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
       ? ex.aiNotes
       : ['AI notes are unavailable right now.'];
 
-    // Calculate AI Notes height
-    doc.setFont('Manrope', 'normal');
-    doc.setFontSize(9);
-    let totalNotesLines = 0;
-    const splitNotes: string[][] = [];
-
-    notes.forEach((note) => {
-      const cleanNote = note.replace(/^[•\-\*]\s*/, '').trim();
-      const lines = doc.splitTextToSize(`•  ${cleanNote}`, contentWidth - 28);
-      splitNotes.push(lines);
-      totalNotesLines += lines.length;
-    });
-
-    const notesHeight = Math.max(28, totalNotesLines * 11.5 + 20);
-
-    ensureSpace(notesHeight + 14);
-
-    // Notes Box Background (warm amber tint)
-    doc.setFillColor(255, 251, 235); // amber-50
-    doc.setDrawColor(254, 243, 199); // amber-200
-    doc.roundedRect(margin, currentY, contentWidth, notesHeight, 4, 4, 'FD');
-
-    // Left Accent Bar (warm amber)
-    doc.setFillColor(217, 119, 6); // amber-600
-    doc.rect(margin, currentY, 3.5, notesHeight, 'F');
-
-    // Label
     doc.setFont('Manrope', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(180, 83, 9); // amber-700
-    doc.text('AI NOTES:', margin + 12, currentY + 12);
-
-    // Bullet Points
-    doc.setFont('Manrope', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(30, 41, 59);
-
-    let noteY = currentY + 24;
-    splitNotes.forEach((lines) => {
-      doc.text(lines, margin + 12, noteY);
-      noteY += lines.length * 11.5;
-    });
-
-    currentY += notesHeight + 16;
+    doc.setFontSize(8);
+    ensureSpace(58);
+    doc.setTextColor(19, 48, 32);
+    doc.text('AI NOTES', margin, currentY + 10);
+    currentY += 18;
+    for (const { text, kind } of displayCoachingNotes(notes)) {
+      const colors = {
+        strength: { background: [240, 253, 244], accent: [4, 98, 65] },
+        improvement: { background: [255, 248, 232], accent: [180, 83, 9] },
+        advice: { background: [239, 246, 255], accent: [48, 89, 145] },
+        feedback: { background: [246, 250, 247], accent: [71, 101, 84] },
+      }[kind];
+      doc.setFont('Manrope', 'normal');
+      doc.setFontSize(9);
+      const lines = doc.splitTextToSize(text.replace(/^[�\-\*]\s*/, '').trim(), contentWidth - 28);
+      const height = lines.length * 13 + 30;
+      ensureSpace(height + 8);
+      doc.setFillColor(colors.background[0], colors.background[1], colors.background[2]);
+      doc.setDrawColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+      doc.setLineWidth(0.5);
+      doc.roundedRect(margin, currentY, contentWidth, height, 6, 6, 'FD');
+      doc.setFillColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+      doc.rect(margin, currentY + 6, 2.5, height - 12, 'F');
+      doc.setTextColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+      doc.setFont('Manrope', 'bold');
+      doc.setFontSize(8);
+      doc.text(coachingNoteLabels[kind], margin + 12, currentY + 14);
+      doc.setFont('Manrope', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(30, 41, 59);
+      doc.text(lines, margin + 12, currentY + 29, { lineHeightFactor: 13 / 9 });
+      currentY += height + 8;
+    }
+    currentY += 8;
 
     // Divider between exchanges (except last)
     if (idx < exchanges.length - 1) {

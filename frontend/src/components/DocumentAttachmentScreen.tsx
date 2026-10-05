@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { AttachedDocument, DocumentCategory } from '../types/conversation';
 import { extractDocumentText, validateJobTitle } from '../services/sttService';
 import { VoiceCreature } from './VoiceCreature';
-import { ArrowRight, BriefcaseBusiness, FileText, Lightbulb, Mic, UploadCloud, AlertCircle } from 'lucide-react';
+import { ArrowRight, FileText, Lightbulb, Mic, UploadCloud, AlertCircle } from 'lucide-react';
 
 interface DocumentAttachmentScreenProps {
   initialJobRole?: string;
@@ -425,7 +425,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
             <span className="setup-tag">Voice interview setup</span>
             <h1 id="setup-heading">Practice the interview<br /><span>before it counts.</span></h1>
             <p>
-              Step into a realistic AI interview with Savi. Practice answering role-specific questions and sharpen your responses before the real conversation.
+              Step into a realistic AI interview with Savi. Practice answering <span className="setup-unbroken-term">role-specific</span> questions and sharpen your responses before the real conversation.
             </p>
           </div>
           <div className="hero-orb" aria-hidden="true">
@@ -436,9 +436,11 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
         {/* 2. Target Job Title Card */}
         <section className="setup-card setup-job-card" aria-labelledby="target-job-heading">
           <div className="setup-job-heading">
-            <span className="setup-job-icon" aria-hidden="true"><BriefcaseBusiness size={24} /></span>
             <div>
-              <h2 id="target-job-heading"><label htmlFor="job">Target job title</label></h2>
+              <div className="setup-doc-title">
+                <h2 id="target-job-heading"><label htmlFor="job">Target job title</label></h2>
+                <span className="setup-optl">Required</span>
+              </div>
               <p className="setup-usub" id="target-job-description">
             Tell us the role you're targeting. This helps us tailor your request and find the most relevant opportunities.
               </p>
@@ -480,7 +482,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
             {jobRoleError && (
               <AlertCircle
                 style={{ left: 'auto', right: '16px', transform: 'translateY(-50%)' }}
-                className="absolute top-1/2 text-red-500"
+                className="setup-job-error-icon absolute top-1/2"
                 size={18}
                 aria-hidden="true"
               />
@@ -520,11 +522,10 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
         {/* 3. Attach Documents Card */}
         <section className="setup-card setup-doc-card" aria-labelledby="attach-documents-heading">
           <div className="setup-job-heading">
-            <span className="setup-job-icon" aria-hidden="true"><FileText size={24} /></span>
             <div>
               <div className="setup-doc-title">
                 <h2 id="attach-documents-heading">Attach documents</h2>
-                <span className="setup-optl">(Optional)</span>
+                <span className="setup-optl">Optional</span>
               </div>
               <p className="setup-usub">Upload files you want to include with your request. Add your CV, job description, portfolio, or any relevant materials.</p>
             </div>

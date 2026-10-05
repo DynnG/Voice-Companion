@@ -768,3 +768,25 @@ mark.f {
   width: min(100%, var(--aligned-orb-size, var(--visual-size)));
   height: auto; aspect-ratio: 1 / 1;
 }
+/* Keep the microphone guidance clear of the controls and their focus rings. */
+.interview-shell .voice-footer .hint { grid-row: 2; margin-top: 12px; line-height: 1.5; }
+
+/* Coaching categories use text labels as well as restrained color accents. */
+.coaching-note { --note-accent: #aec8b7; --note-rgb: 174,200,183; padding: 10px 12px; border: 1px solid rgba(var(--note-rgb),.22); border-left: 3px solid var(--note-accent); border-radius: 12px; background: rgba(var(--note-rgb),.06); font-size: 12px; line-height: 1.5; }
+.coaching-note--strength { --note-accent: #8edbb2; --note-rgb: 142,219,178; }
+.coaching-note--improvement { --note-accent: #ffc370; --note-rgb: 255,195,112; }
+.coaching-note--advice { --note-accent: #a8c8ee; --note-rgb: 168,200,238; }
+.coaching-note-label { display: block; color: var(--note-accent); font-size: 10px; font-weight: 700; margin-bottom: 4px; }
+.coaching-note p { margin: 0; }
+
+.interview-header { gap: 16px; padding-bottom: 14px; }
+.interview-new-session {
+  color: #ffc370;
+  background: linear-gradient(135deg, rgba(255,179,71,.18), rgba(255,179,71,.06));
+  border: 1px solid rgba(255,179,71,.38);
+  box-shadow: inset 0 1px 0 rgba(255,230,185,.12), 0 4px 14px rgba(0,0,0,.12);
+}
+.interview-new-session:hover { background: rgba(255,179,71,.24); border-color: rgba(255,179,71,.65); }
+.interview-new-session:focus-visible { outline: 2px solid #ffc370; outline-offset: 3px; }
+
+.interview-shell .interview-header .interview-transcript-toggle { width: 40px; height: 40px; padding: 0; flex-shrink: 0; }

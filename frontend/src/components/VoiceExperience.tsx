@@ -5,6 +5,7 @@ import { VoiceCreature } from './VoiceCreature';
 import { StateLabel } from './StateLabel';
 
 import { CandidateCamera } from './CandidateCamera';
+import { replayPlaybackTiming } from '../services/replayPlayback';
 import { VoiceControls } from './VoiceControls';
 import { updateSpeechEndpoint, SpeechEndpointState } from '../services/speechEndpoint';
 import { AnswerReplayCard } from './AnswerReplayCard';
@@ -79,6 +80,17 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   onNewInterview
 }) => {
   const [isErrorDismissed, setIsErrorDismissed] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
+  const [isRetryingReply, setIsRetryingReply] = useState(false);
+  const pendingReplyRef = useRef<(() => Promise<void>) | null>(null);
+  useEffect(() => { setReplyError(null); pendingReplyRef.current = null; }, [interviewId]);
+  const retryFailedReply = async () => {
+    if (!pendingReplyRef.current || isRetryingReply) return;
+    setIsRetryingReply(true);
+    try { await pendingReplyRef.current(); }
+    finally { setIsRetryingReply(false); }
+  };
+
   const [isTipVisible, setIsTipVisible] = useState(true);
   useEffect(() => {
     setIsErrorDismissed(false);
@@ -276,9 +288,12 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     const player = audio;
     const duration = () => Number.isFinite(player.duration) && player.duration > 0 ? player.duration : attempt.durationSeconds;
     const sync = () => {
-      setPlaybackCurrentTime(player.currentTime);
-      setPlaybackProgress(duration() > 0 ? player.currentTime / duration() : 0);
+      const timing = replayPlaybackTiming(player, attempt.durationSeconds, player.currentTime);
+      setPlaybackCurrentTime(timing.time);
+      setPlaybackProgress(timing.progress);
     };
+    player.onloadedmetadata = sync;
+    player.ondurationchange = sync;
     player.ontimeupdate = sync;
     player.onseeked = sync;
     player.onended = () => { setPlayingAttempt(null); sync(); };
@@ -850,6 +865,11 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     setState('thinking');
     setCustomLabel('Interviewer is thinkingâ€¦');
 
+    const requestReply = async () => {
+    isProcessingRef.current = true;
+    setReplyError(null);
+    onThinkingChange?.(true);
+    setState('thinking');
     // Step 5: Format updated conversation history including the user's latest response
     const updatedHistory = [
       ...conversationHistory.map((m) => ({
@@ -877,7 +897,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     );
 
     const aiResponse = followupResult.response;
-    const shouldEnd = followupResult.should_end;
+    const shouldEnd = followupResult.should_end && currentTurn >= effectiveMaxTurns;
     const endReason = followupResult.reason;
 
     console.log('[Live Interview] 2. Gemini follow-up response:', aiResponse, 'should_end:', shouldEnd, 'reason:', endReason);
@@ -892,35 +912,18 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       (Boolean(aiResponse) && (aiResponse.includes('usage limit') || aiResponse.includes('quota')))
     );
 
-    if (isQuota) {
-      console.warn('[Live Interview] Gemini quota reached. Silently keeping session intact and awaiting next user turn.');
+    if (isErrorState || !aiResponse?.trim()) {
+      const message = isQuota
+        ? "Savi couldn't reply because the AI service's free quota is temporarily exhausted. Wait a little, then retry."
+        : "Savi couldn't reply because the AI service is unavailable. Please retry your last answer.";
+      setReplyError(message);
       setState('idle');
-      setCustomLabel(undefined);
-      hideCaption();
+      setCustomLabel('Reply unavailable');
+      setStatusHint('Your answer is saved · Retry the reply');
       isProcessingRef.current = false;
       return;
     }
-
-    // For non-quota errors, preserve genuine error handling
-    if (isErrorState) {
-      const isConnection = followupResult.error_type === 'connection_error' || (Boolean(aiResponse) && aiResponse.includes('connection error'));
-      const errorMsg = isConnection
-        ? 'Connection error Â· Tap the mic to try speaking again'
-        : 'AI service error Â· Tap the mic to try speaking again';
-
-      setCustomLabel(isConnection ? 'connection error' : 'service error');
-      setStatusHint(errorMsg);
-      showCaption(aiResponse || errorMsg);
-
-      // Reset creature to idle ready for retry, keeping interview active
-      setTimeout(() => {
-        hideCaption();
-        setCustomLabel(undefined);
-        setState('idle');
-        isProcessingRef.current = false;
-      }, 4000);
-      return;
-    }
+    pendingReplyRef.current = null;
 
     // Step 6: Commit AI follow-up response to conversation history
     if (onPalResponse && aiResponse) {
@@ -1004,6 +1007,9 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       setCustomLabel(undefined);
       isProcessingRef.current = false;
     }
+    };
+    pendingReplyRef.current = requestReply;
+    await requestReply();
   };
 
   /**
@@ -1183,7 +1189,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   return (
     <div data-camera-active={isCameraActive} data-replay-expanded={isCompactVisual} className="stage relative w-full h-full flex flex-col justify-between overflow-hidden select-none px-3 sm:px-6 py-2 sm:py-3">
       {/* 1. Header Bar: Brand Logo, Job Role, In Progress pill, Transcript toggle sitting directly on background */}
-      <header className="flex items-center justify-between w-full pb-2 shrink-0">
+      <header className="interview-header flex items-center justify-between w-full pb-2 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           {/* Savi Logo */}
 {/* Savi Brand Logo & Title */}
@@ -1218,7 +1224,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
               <button
                 type="button"
                 onClick={onNewInterview}
-                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[rgba(9,32,23,0.55)] hover:bg-[rgba(9,32,23,0.80)] text-[#F5EEDB] border border-[rgba(218,241,222,0.14)] active:scale-95 transition-all"
+                className="interview-new-session hidden sm:inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold active:scale-95 transition-all"
                 title="Start a new interview session"
               >
                 <Plus className="w-3.5 h-3.5 text-[#FFB347]" />
@@ -1246,23 +1252,31 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             {isCompleted ? 'Completed' : 'In Progress'}
           </span>
 
-          <button
-            type="button"
-            onClick={onToggleLivePanel}
-            className={`interview-transcript-toggle inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all active:scale-95 border ${
-              isLivePanelOpen
-                ? 'bg-[rgba(255,179,71,0.16)] text-[#FFC370] border-[rgba(255,179,71,0.35)] shadow-sm'
-                : 'bg-[rgba(9,32,23,0.55)] hover:bg-[rgba(9,32,23,0.8)] text-[#F5EEDB] border-[rgba(218,241,222,0.14)]'
-            }`}
-            title="Toggle Transcript Panel"
-            aria-expanded={isLivePanelOpen}
-          >
-            <MessageSquare className="w-3.5 h-3.5 text-[#FFB347]" />
-            <span>Transcript</span>
-          </button>
+          {!isLivePanelOpen && (
+            <button
+              type="button"
+              onClick={onToggleLivePanel}
+              className="interview-transcript-toggle inline-flex items-center justify-center w-10 h-10 rounded-full border border-[rgba(255,179,71,0.4)] bg-[rgba(255,179,71,0.1)] text-[#FFC370] hover:bg-[rgba(255,179,71,0.2)] transition-all active:scale-95"
+              title="Open interview chat"
+              aria-label="Open interview chat"
+              aria-expanded={false}
+            >
+              <MessageSquare className="w-4 h-4" aria-hidden="true" />
+            </button>
+          )}
         </div>
 
       </header>
+
+      {replyError && (
+        <div role="alert" className="w-full max-w-xl mx-auto my-2 px-4 py-3 rounded-2xl border border-[#FFC370]/40 bg-[#183426] text-[#F5EEDB] text-xs flex items-center gap-3 shrink-0 z-20">
+          <AlertCircle className="w-4 h-4 text-[#FFC370] shrink-0" aria-hidden="true" />
+          <span className="flex-1">{replyError}</span>
+          <button type="button" onClick={retryFailedReply} disabled={isRetryingReply} className="px-3 py-2 rounded-lg bg-[#FFC370] text-[#133020] font-semibold disabled:opacity-50">
+            {isRetryingReply ? 'Retrying…' : 'Retry reply'}
+          </button>
+        </div>
+      )}
 
       {startInterviewError && !isErrorDismissed && (
         <div role="alert" className="w-full max-w-xl mx-auto my-2 px-3 py-2 rounded-2xl bg-[rgba(220,38,38,0.15)] border border-[rgba(248,113,113,0.35)] backdrop-blur-md flex items-center justify-between gap-3 text-red-200 text-xs shadow-lg shrink-0 z-20">

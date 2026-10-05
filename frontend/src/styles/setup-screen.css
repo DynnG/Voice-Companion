@@ -224,7 +224,7 @@
 .setup-hero p {
   color: var(--g6);
   opacity: 0.85;
-  max-width: 55ch;
+  max-width: 62ch;
   line-height: 1.6;
   font-size: clamp(14px, 1.2vw, 17px);
   margin: 0;
@@ -846,7 +846,14 @@
 
 /* Document card: shared emerald glass, with accessible upload and file states. */
 .setup-doc-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
-.setup-doc-card .setup-optl { border: 0; padding: 0; font-size: 12px; }
+.setup-doc-card .setup-optl,
+.setup-job-card .setup-optl {
+  display: inline-flex; align-items: center; align-self: center;
+  padding: 3px 10px; border: 1px solid rgba(255, 179, 71, .45);
+  border-radius: 999px; background: rgba(255, 179, 71, .14);
+  color: var(--saffron); font-family: 'Manrope', sans-serif;
+  font-size: 11px; font-weight: 600; line-height: 1.5; white-space: nowrap;
+}
 .setup-doc-card .setup-drop {
   flex: none;
   min-height: 180px;
@@ -971,7 +978,7 @@
   .setup-job-heading { margin-bottom: 12px; }
   .setup-job-card .setup-jlbl { margin: 12px 0 8px; }
   .setup-doc-card .setup-drop { padding-block: 12px; }
-  .setup-doc-card .setup-empty-description { max-width: 48ch; }
+  .setup-doc-card .setup-empty-description { max-width: none; }
 }
 
 @media (min-width: 961px) {
@@ -1024,3 +1031,7 @@
   .setup-card.setup-job-card, .setup-card.setup-doc-card { padding-block: 12px; }
   .setup-start-action { padding-block: 8px; margin-top: 8px; }
 }
+
+.setup-jin .setup-job-error-icon { color: #ef4444; }
+
+.setup-unbroken-term { white-space: nowrap; }

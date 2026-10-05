@@ -20,3 +20,20 @@ def test_opening_introduces_savi_before_grounded_question(monkeypatch, documents
 def test_identity_instruction_names_savi():
     assert "Always identify yourself as Savi, never Pal" in INTERVIEW_SYSTEM_PROMPT
     assert "If asked your name or who you are" in INTERVIEW_SYSTEM_PROMPT
+
+
+def test_incomplete_answer_requests_clarification_before_topic_change(monkeypatch):
+    service = GeminiInterviewService()
+    monkeypatch.setattr(service, "get_api_key", lambda: "test-placeholder")
+    call = AsyncMock(return_value='{"response":"What factors did you mean when you said depending on what?","should_end":false,"reason":"probing_short_answer"}')
+    monkeypatch.setattr(service, "_call_gemini_api", call)
+    result = asyncio.run(service.generate_interview_followup(
+        "Hello? So depending on what...",
+        conversation_history=[{"role":"assistant","content":"How would you plan a lesson for different learning styles?"}],
+        job_role="Teacher", attached_docs=[]))
+    prompt = str(call.call_args)
+    assert "CLARIFY INCOMPLETE ANSWERS FIRST" in prompt
+    assert "Judge meaning, not word count or punctuation alone" in prompt
+    assert "Hello? So depending on what..." in prompt
+    assert result["should_end"] is False
+    assert result["reason"] == "probing_short_answer"

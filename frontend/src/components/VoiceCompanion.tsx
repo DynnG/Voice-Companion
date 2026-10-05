@@ -7,7 +7,6 @@ import { DocumentAttachmentScreen } from './DocumentAttachmentScreen';
 import { PostInterviewCompletionModal } from './PostInterviewCompletionModal';
 import { fetchInitialInterviewQuestion, isQuotaExceededText, isInterviewErrorText } from '../services/sttService';
 import { stopSpeaking, unlockAudio } from '../services/ttsService';
-import { generateInterviewReviewPdf, InterviewReviewPdfData } from '../services/pdfService';
 
 interface InterviewSession {
   id: string;
@@ -226,6 +225,7 @@ export const VoiceCompanion: React.FC = () => {
 
   // Step 3: Handle interview completion when Gemini signals should_end or turn limit reached
   const handleInterviewCompleted = (reason?: string, immediate = false) => {
+    if (session.turnsUsed < session.maxTurns && reason !== 'turn_limit_reached') return;
     console.log(`[Session Interview] Completed (reason: ${reason})`);
     setSession((prev) => ({
       ...prev,
@@ -274,45 +274,9 @@ export const VoiceCompanion: React.FC = () => {
     return pairs;
   };
 
-  // Active review download handler generating in-browser PDF from fresh session data
-  const handleDownloadReviewPdf = async () => {
-    if (isDownloadingPdf) return;
-    
-    // 1. Immediately treat the interview as ended/completed.
-    if (session.status !== 'completed') {
-      handleInterviewCompleted('download_review_early_completion', true);
-    }
-
-
-
-    try {
-      setIsDownloadingPdf(true);
-      setDownloadPdfError(null);
-
-      const exchanges = getCompleteSessionExchanges();
-      const pdfPayload: InterviewReviewPdfData = {
-        jobRole: session.jobRole,
-        exchanges,
-        startTime: session.startTime,
-        endTime: session.endTime || (session.status === 'completed' ? Date.now() : undefined),
-        interviewId: session.id,
-        status: session.status === 'completed' ? 'Completed' : 'In Progress',
-        completedAt: new Date().toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        })
-      };
-
-      await generateInterviewReviewPdf(pdfPayload);
-    } catch (err: any) {
-      console.error('[VoiceCompanion] Failed to generate PDF review:', err);
-      setDownloadPdfError(err?.message || 'Failed to generate PDF review. Please try again.');
-    } finally {
-      setIsDownloadingPdf(false);
-    }
+  // Reviewing or downloading a snapshot never changes interview progress.
+  const handleDownloadReviewPdf = () => {
+    setIsCompletionModalOpen(true);
   };
 
   const completedAnswersCount = getCompleteSessionExchanges().length;
@@ -408,14 +372,15 @@ export const VoiceCompanion: React.FC = () => {
 
       {/* Post-Interview Completion Modal & Download Review */}
       <PostInterviewCompletionModal
-        isOpen={isCompletionModalOpen && session.status === 'completed'}
-        onClose={handleNewInterview}
+        isOpen={isCompletionModalOpen}
+        onClose={() => setIsCompletionModalOpen(false)}
         sessionData={{
           id: session.id,
           jobRole: session.jobRole,
           exchanges: getCompleteSessionExchanges(),
           startTime: session.startTime,
-          endTime: session.endTime
+          endTime: session.endTime,
+          status: session.status === 'completed' ? 'Completed' : 'In Progress'
         }}
       />
     </AppShell>
