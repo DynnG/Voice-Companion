@@ -154,13 +154,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     }
   }, [initialQuestionToSpeak]);
 
-  useEffect(() => {
-    if (isCompleted) {
-      setCustomLabel('Interview Complete');
-      setStatusHint('Interview Complete · Review the full transcript in the side panel');
-      setState('idle');
-    }
-  }, [isCompleted]);
+
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -1173,6 +1167,27 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
   const showTip = isTipVisible && conversationHistory.length === 0 && !replayState.attempt1 &&
     !(initialQuestionToSpeak && !isQuotaExceededText(initialQuestionToSpeak) && !isInterviewErrorText(initialQuestionToSpeak));
+
+  useEffect(() => {
+    if (isCompleted) {
+      setCustomLabel('Interview Complete');
+      setStatusHint('Interview Complete · Review the full transcript in the side panel');
+      setState('idle');
+      
+      stopSpeaking();
+      stopReplayPlayback();
+      cleanupAudioResources();
+      
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.onstop = null;
+        mediaRecorderRef.current.ondataavailable = null;
+        try {
+          mediaRecorderRef.current.stop();
+        } catch {}
+      }
+      isProcessingRef.current = false;
+    }
+  }, [isCompleted]);
 
   const isCompactVisual = Boolean(
     replayState.isVisible &&
