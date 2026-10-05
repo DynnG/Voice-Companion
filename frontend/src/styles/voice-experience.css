@@ -746,3 +746,6 @@ mark.f {
 .interview-shell .stage[data-camera-active="true"] .canvas-wrap.interview-orb.canvas-wrap--compact {
   width: min(100%, var(--visual-size)); height: auto; aspect-ratio: 1 / 1;
 }
+
+/* Keep the microphone guidance clear of the controls and their focus rings. */
+.interview-shell .voice-footer .hint { grid-row: 2; margin-top: 12px; line-height: 1.5; }

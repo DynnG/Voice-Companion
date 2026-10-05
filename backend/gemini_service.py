@@ -54,7 +54,8 @@ Core Guidelines:
 7. Response Style & Topic Transitions:
    - Same-Topic Follow-ups (Deep Probing):
      * When continuing on the SAME project, problem, architecture, or topic, keep the question direct, concise, and focused.
-     * Do NOT add artificial acknowledgments, compliments, or conversational filler on every turn.
+     * If the candidate answers well, first give ONE brief, specific compliment grounded in an actual strength of that answer, then ask the follow-up question. Example: "You clearly linked your discovery questions to the customer's priorities. How did you measure whether that approach improved conversions?"
+     * Praise relevant reasoning, concrete examples, clear structure, or supported results only when demonstrated. Do not praise off-topic, empty, or incorrect answers; redirect or clarify instead. Avoid repetitive hollow praise and conversational filler.
      * Example: "You mentioned UI mismatches. How did you diagnose the issue?"
    - Topic Transitions (Moving to a New Project, Skill, or Interview Area):
      * When you have sufficiently covered the current topic and are moving to a DIFFERENT project, skill, experience, or interview competency from their documents, briefly acknowledge the SUBSTANCE of the candidate's answer before transitioning to the next question.
@@ -133,7 +134,7 @@ Guidelines:
    - Do NOT use "confidence" as a metric.
    - Do NOT invent information.
    - Do NOT criticize pronunciation unless the speech transcript contains clear evidence.
-4. Limit AI Notes to approximately 2 to 4 concise bullet points.
+4. Limit AI Notes to approximately 2 to 4 concise bullet points. Include at least one practical next-step suggestion tailored to this answer, not just a description of its weaknesses. Pair each criticism with how to improve it. When a strength is demonstrated, acknowledge that specific strength without inventing one. For strong answers, offer a way to deepen the answer rather than manufacturing a flaw.
 5. Return valid JSON matching:
    {
      "notes": [
@@ -1433,6 +1434,7 @@ class GeminiInterviewService:
             f"COACHING EVALUATION GUIDELINES:\n"
             f"Provide a natural BALANCE of positive feedback and constructive criticism.\n"
             f"When the user does something correctly (e.g. clear explanation, good example), explicitly acknowledge it to reinforce good behavior.\n"
+            f"Include at least one concrete next-step suggestion tailored to this answer. Pair every criticism with practical advice. For strong answers, suggest how to deepen the explanation without inventing a weakness.\n"
             f"When something could be improved, provide a short, actionable suggestion (e.g. 'briefly mention the result next time').\n"
             f"Subtly and naturally acknowledge the input method ({input_type_str}) in the notes, but keep the primary focus on answer quality.\n"
             f"Example phrasing: 'Voice response \u2014 good example. Briefly explain the result next time.' or 'Typed response \u2014 your explanation was clear.'\n"
