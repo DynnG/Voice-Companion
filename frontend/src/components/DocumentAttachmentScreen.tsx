@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { AttachedDocument, DocumentCategory } from '../types/conversation';
 import { extractDocumentText, validateJobTitle } from '../services/sttService';
 import { VoiceCreature } from './VoiceCreature';
-import { ArrowRight, BriefcaseBusiness, FileText, Lightbulb, Mic, UploadCloud, AlertCircle } from 'lucide-react';
+import { ArrowRight, FileText, Lightbulb, Mic, UploadCloud, AlertCircle } from 'lucide-react';
 
 interface DocumentAttachmentScreenProps {
   initialJobRole?: string;
@@ -436,7 +436,6 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
         {/* 2. Target Job Title Card */}
         <section className="setup-card setup-job-card" aria-labelledby="target-job-heading">
           <div className="setup-job-heading">
-            <span className="setup-job-icon" aria-hidden="true"><BriefcaseBusiness size={24} /></span>
             <div>
               <div className="setup-doc-title">
                 <h2 id="target-job-heading"><label htmlFor="job">Target job title</label></h2>
@@ -483,7 +482,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
             {jobRoleError && (
               <AlertCircle
                 style={{ left: 'auto', right: '16px', transform: 'translateY(-50%)' }}
-                className="absolute top-1/2 text-red-500"
+                className="setup-job-error-icon absolute top-1/2"
                 size={18}
                 aria-hidden="true"
               />
@@ -523,7 +522,6 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
         {/* 3. Attach Documents Card */}
         <section className="setup-card setup-doc-card" aria-labelledby="attach-documents-heading">
           <div className="setup-job-heading">
-            <span className="setup-job-icon" aria-hidden="true"><FileText size={24} /></span>
             <div>
               <div className="setup-doc-title">
                 <h2 id="attach-documents-heading">Attach documents</h2>

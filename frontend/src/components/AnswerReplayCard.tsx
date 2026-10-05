@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { replayPlaybackTiming } from '../services/replayPlayback';
+import { coachingNoteKind, coachingNoteLabels } from '../services/coachingNoteStyle';
 import { ReplayState } from '../types/conversation';
 
 interface AnswerReplayCardProps {
@@ -528,15 +529,15 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                     ) : (
                       /* Specific observations from actual answer analysis */
                       <div className="space-y-2">
-                        {displayNotes.map((noteText, idx) => (
-                          <div
-                            key={idx}
-                            className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[rgba(6,24,18,0.55)] border border-[rgba(218,241,222,0.08)] hover:border-[rgba(255,179,71,0.25)] transition-colors text-xs leading-relaxed"
-                          >
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#FFB347] shrink-0 mt-1.5 shadow-[0_0_6px_rgba(255,179,71,0.6)]" />
-                            <p className="text-[#F5EEDB]/90 flex-1">{noteText}</p>
-                          </div>
-                        ))}
+                        {displayNotes.map((noteText, idx) => {
+                          const kind = coachingNoteKind(noteText);
+                          return (
+                            <div key={idx} className={`coaching-note coaching-note--${kind}`}>
+                              <span className="coaching-note-label">{coachingNoteLabels[kind]}</span>
+                              <p className="text-[#F5EEDB]/90">{noteText}</p>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

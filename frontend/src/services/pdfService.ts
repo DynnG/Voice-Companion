@@ -73,7 +73,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
   currentY += 64;
 
   doc.setFont('Fraunces', 'normal');
-  doc.setFontSize(18);
+  doc.setFontSize(12);
   doc.setTextColor(19, 48, 32);
   doc.text('Interview Review', margin, currentY);
   const titleY = currentY;
@@ -104,7 +104,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
   currentY += 12;
 
   // ---------------------------------------------------------------------------
-  // 2. Quiet, unboxed session summary
+  // 2. Centered session summary
   // ---------------------------------------------------------------------------
   let durationStr = 'N/A';
   if (data.startTime && data.endTime && data.endTime > data.startTime) {
@@ -121,51 +121,32 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     }
   }
 
-  const summaryBoxHeight = 38;
+  const summaryBoxHeight = 56;
   const colWidth = contentWidth / 3;
-
-  // Summary Item 1: Questions Answered
-  doc.setFont('Manrope', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('QUESTIONS ANSWERED', margin, currentY + 8);
-  doc.setFontSize(11);
-  doc.setTextColor(15, 23, 42);
-  doc.text(`${data.exchanges.length} ${data.exchanges.length === 1 ? 'Question' : 'Questions'}`, margin, currentY + 25);
-
-  // Summary Item 2: Total Duration
-  doc.setFont('Manrope', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('TOTAL DURATION', margin + colWidth, currentY + 8);
-  doc.setFontSize(11);
-  doc.setTextColor(15, 23, 42);
-  doc.text(durationStr, margin + colWidth, currentY + 25);
-
-  // Summary Item 3: Session Status
   const sessionStatusText = data.status || 'Completed';
-  doc.setFont('Manrope', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('SESSION STATUS', margin + colWidth * 2, currentY + 8);
-  doc.setFontSize(11);
-  if (sessionStatusText === 'In Progress') {
-    doc.setTextColor(217, 119, 6); // amber-600
-  } else {
-    doc.setTextColor(4, 98, 65); // forest emerald (#046241)
-  }
-  doc.text(sessionStatusText, margin + colWidth * 2, currentY + 25);
-
-  currentY += summaryBoxHeight + 20;
-
-  // ---------------------------------------------------------------------------
-  // 4. Questions & Answers Section Header
-  // ---------------------------------------------------------------------------
-  doc.setFont('Manrope', 'bold');
-  doc.setFontSize(12);
-  doc.setTextColor(19, 48, 32);
-  doc.text('Interview Questions & Candidate Answers', margin, currentY);
-  currentY += 12;
+  doc.setFillColor(246, 250, 247);
+  doc.setDrawColor(213, 226, 218);
+  doc.roundedRect(margin, currentY, contentWidth, summaryBoxHeight, 6, 6, 'FD');
+  const summaryItems = [
+    ['QUESTIONS ANSWERED', `${data.exchanges.length} ${data.exchanges.length === 1 ? 'Question' : 'Questions'}`],
+    ['TOTAL DURATION', durationStr],
+    ['SESSION STATUS', sessionStatusText],
+  ];
+  summaryItems.forEach(([label, value], index) => {
+    const centerX = margin + colWidth * (index + 0.5);
+    if (index > 0) doc.line(margin + colWidth * index, currentY + 12, margin + colWidth * index, currentY + summaryBoxHeight - 12);
+    doc.setFont('Manrope', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(label, centerX, currentY + 19, { align: 'center' });
+    doc.setFontSize(11);
+    if (index === 2 && sessionStatusText === 'In Progress') doc.setTextColor(217, 119, 6);
+    else if (index === 2) doc.setTextColor(4, 98, 65);
+    else doc.setTextColor(15, 23, 42);
+    const valueLines = doc.splitTextToSize(value, colWidth - 20);
+    doc.text(valueLines, centerX, currentY + 38, { align: 'center' });
+  });
+  currentY += summaryBoxHeight + 30;
 
   // ---------------------------------------------------------------------------
   // 5. Render Each Question / Answer / AI Notes Exchange
@@ -271,7 +252,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
       totalNotesLines += lines.length;
     });
 
-    const notesHeight = Math.max(28, totalNotesLines * 11.5 + 20);
+    const notesHeight = Math.max(28, totalNotesLines * 13 + Math.max(0, splitNotes.length - 1) * 8 + 22);
 
     ensureSpace(notesHeight + 14);
 
@@ -297,8 +278,8 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
 
     let noteY = currentY + 24;
     splitNotes.forEach((lines) => {
-      doc.text(lines, margin + 12, noteY);
-      noteY += lines.length * 11.5;
+      doc.text(lines, margin + 12, noteY, { lineHeightFactor: 13 / 9 });
+      noteY += lines.length * 13 + 8;
     });
 
     currentY += notesHeight + 16;

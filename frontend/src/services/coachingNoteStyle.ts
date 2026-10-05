@@ -1,0 +1,15 @@
+export type CoachingNoteKind = 'strength' | 'improvement' | 'advice' | 'feedback';
+/** Conservative presentation hints for existing plain-text coaching notes.
+ * Mixed or ambiguous wording never receives an unqualified strength label.
+ */
+export function coachingNoteKind(text: string): CoachingNoteKind {
+  const note = text.toLowerCase();
+  if (/\b(next time|try|consider|aim to|you could|you should|remember to)\b/.test(note)) return 'advice';
+  if (/\b(not|never|no concrete|no specific|lacked?|missing|failed|unclear|incomplete|too brief|cut off|did not|didn't|does not|doesn't|not enough|need to|needs|could be improved|but|however|hesitation moments)\b/.test(note)) return 'improvement';
+  if (/\b(explain|address|provide|include|mention|add|describe|clarify|structure|name|focus on)\b/.test(note)) return 'advice';
+  if (/\b(was clear|were clear|clear and|clear explanation|clearly explained|fluent|steady|well structured|well-structured|specific example|concrete example|strong example|effectively|direct and|crisp)\b/.test(note)) return 'strength';
+  return 'feedback';
+}
+export const coachingNoteLabels: Record<CoachingNoteKind, string> = {
+  strength: 'What went well', improvement: 'To improve', advice: 'Next step', feedback: 'Feedback',
+};

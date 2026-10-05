@@ -849,9 +849,9 @@
 .setup-doc-card .setup-optl,
 .setup-job-card .setup-optl {
   display: inline-flex; align-items: center; align-self: center;
-  padding: 3px 10px; border: 1px solid rgba(142, 182, 155, .35);
-  border-radius: 999px; background: rgba(142, 182, 155, .12);
-  color: var(--paper); font-family: 'Manrope', sans-serif;
+  padding: 3px 10px; border: 1px solid rgba(255, 179, 71, .45);
+  border-radius: 999px; background: rgba(255, 179, 71, .14);
+  color: var(--saffron); font-family: 'Manrope', sans-serif;
   font-size: 11px; font-weight: 600; line-height: 1.5; white-space: nowrap;
 }
 .setup-doc-card .setup-drop {
@@ -1031,3 +1031,5 @@
   .setup-card.setup-job-card, .setup-card.setup-doc-card { padding-block: 12px; }
   .setup-start-action { padding-block: 8px; margin-top: 8px; }
 }
+
+.setup-jin .setup-job-error-icon { color: #ef4444; }
