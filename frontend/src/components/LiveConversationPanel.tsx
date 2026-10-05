@@ -255,11 +255,11 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
               type="button"
               onClick={onDownloadReview}
               disabled={isDownloadingReview}
-              className="inline-flex items-center gap-2 rounded-xl border border-[#74b393]/50 bg-gradient-to-b from-[#2e654d] to-[#173e2c] px-3 py-2 text-xs font-semibold text-[#F5EEDB] shadow-[0_2px_6px_rgba(19,48,32,0.18),inset_0_1px_0_rgba(190,235,207,0.2)] hover:from-[#38795b] hover:to-[#205239] hover:shadow-[0_3px_10px_rgba(19,48,32,0.18)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#133020] transition-all active:scale-95 disabled:opacity-40 disabled:cursor-wait"
+              className="inline-flex items-center gap-2 rounded-xl border border-[#74b393]/50 bg-gradient-to-b from-[#2e654d] to-[#173e2c] px-3 py-1 text-xs font-semibold text-[#F5EEDB] shadow-[0_2px_6px_rgba(19,48,32,0.18),inset_0_1px_0_rgba(190,235,207,0.2)] hover:from-[#38795b] hover:to-[#205239] hover:shadow-[0_3px_10px_rgba(19,48,32,0.18)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#133020] transition-all active:scale-95 disabled:opacity-40 disabled:cursor-wait"
               title="Download Review"
               aria-label="Download Review"
             >
-              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#b9e2ca]/15 text-[#b9e2ca]" aria-hidden="true"><Download className="w-3.5 h-3.5" /></span>
+              <span className="flex h-5 w-5 items-center justify-center rounded-md bg-[#b9e2ca]/15 text-[#b9e2ca]" aria-hidden="true"><Download className="w-3.5 h-3.5" /></span>
               <span>{isDownloadingReview ? 'Downloading…' : 'Download Review'}</span>
             </button>
           )}
