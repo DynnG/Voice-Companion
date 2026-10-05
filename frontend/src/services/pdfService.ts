@@ -138,8 +138,9 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     if (index > 0) doc.line(margin + colWidth * index, currentY + 12, margin + colWidth * index, currentY + summaryBoxHeight - 12);
     doc.setFont('Manrope', 'normal');
     doc.setFontSize(7.5);
-    doc.setTextColor(100, 116, 139);
+    doc.setTextColor(0, 0, 0);
     doc.text(label, centerX, currentY + 19, { align: 'center' });
+    doc.setFont('Manrope', 'bold');
     doc.setFontSize(11);
     if (index === 2 && sessionStatusText === 'In Progress') doc.setTextColor(217, 119, 6);
     else if (index === 2) doc.setTextColor(4, 98, 65);

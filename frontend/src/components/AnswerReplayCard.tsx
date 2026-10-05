@@ -272,9 +272,9 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
       >
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-3">
-            <h3 className="font-semibold text-sm sm:text-base text-[#F5EEDB] tracking-tight">
-              AI Notes
-            </h3>
+            {isMinimized && (
+              <span className="text-xs text-[#8EB69B]">Tap for more information</span>
+            )}
             {isMinimized && hasAudio && (
               <span className="text-[11px] text-[#8EB69B] font-mono hidden sm:inline-block">
                 {formatTime(displayCurrentTime)} / {formatTime(displayDuration)}
@@ -495,7 +495,6 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                   {/* Header */}
                   <div className="flex items-center justify-between pb-2 border-b border-[rgba(218,241,222,0.08)]">
                     <div className="flex items-center gap-1.5 text-xs font-semibold text-[#FFB347]">
-                      <Sparkles className="w-3.5 h-3.5 text-[#FFB347]" />
                       <span>AI Notes</span>
                     </div>
                     {attempt1?.aiNotesStatus === 'loading' && (

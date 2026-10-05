@@ -1185,7 +1185,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   return (
     <div data-camera-active={isCameraActive} data-replay-expanded={isCompactVisual} className="stage relative w-full h-full flex flex-col justify-between overflow-hidden select-none px-3 sm:px-6 py-2 sm:py-3">
       {/* 1. Header Bar: Brand Logo, Job Role, In Progress pill, Transcript toggle sitting directly on background */}
-      <header className="flex items-center justify-between w-full pb-2 shrink-0">
+      <header className="interview-header flex items-center justify-between w-full pb-2 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           {/* Savi Logo */}
 {/* Savi Brand Logo & Title */}
@@ -1220,7 +1220,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
               <button
                 type="button"
                 onClick={onNewInterview}
-                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[rgba(9,32,23,0.55)] hover:bg-[rgba(9,32,23,0.80)] text-[#F5EEDB] border border-[rgba(218,241,222,0.14)] active:scale-95 transition-all"
+                className="interview-new-session hidden sm:inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold active:scale-95 transition-all"
                 title="Start a new interview session"
               >
                 <Plus className="w-3.5 h-3.5 text-[#FFB347]" />
@@ -1248,20 +1248,18 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             {isCompleted ? 'Completed' : 'In Progress'}
           </span>
 
-          <button
-            type="button"
-            onClick={onToggleLivePanel}
-            className={`interview-transcript-toggle inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all active:scale-95 border ${
-              isLivePanelOpen
-                ? 'bg-[rgba(255,179,71,0.16)] text-[#FFC370] border-[rgba(255,179,71,0.35)] shadow-sm'
-                : 'bg-[rgba(9,32,23,0.55)] hover:bg-[rgba(9,32,23,0.8)] text-[#F5EEDB] border-[rgba(218,241,222,0.14)]'
-            }`}
-            title="Toggle Transcript Panel"
-            aria-expanded={isLivePanelOpen}
-          >
-            <MessageSquare className="w-3.5 h-3.5 text-[#FFB347]" />
-            <span>Transcript</span>
-          </button>
+          {!isLivePanelOpen && (
+            <button
+              type="button"
+              onClick={onToggleLivePanel}
+              className="interview-transcript-toggle inline-flex items-center justify-center w-10 h-10 rounded-full border border-[rgba(255,179,71,0.4)] bg-[rgba(255,179,71,0.1)] text-[#FFC370] hover:bg-[rgba(255,179,71,0.2)] transition-all active:scale-95"
+              title="Open interview chat"
+              aria-label="Open interview chat"
+              aria-expanded={false}
+            >
+              <MessageSquare className="w-4 h-4" aria-hidden="true" />
+            </button>
+          )}
         </div>
 
       </header>
