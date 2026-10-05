@@ -80,6 +80,17 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   onNewInterview
 }) => {
   const [isErrorDismissed, setIsErrorDismissed] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
+  const [isRetryingReply, setIsRetryingReply] = useState(false);
+  const pendingReplyRef = useRef<(() => Promise<void>) | null>(null);
+  useEffect(() => { setReplyError(null); pendingReplyRef.current = null; }, [interviewId]);
+  const retryFailedReply = async () => {
+    if (!pendingReplyRef.current || isRetryingReply) return;
+    setIsRetryingReply(true);
+    try { await pendingReplyRef.current(); }
+    finally { setIsRetryingReply(false); }
+  };
+
   const [isTipVisible, setIsTipVisible] = useState(true);
   useEffect(() => {
     setIsErrorDismissed(false);
@@ -869,6 +880,11 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     setState('thinking');
     setCustomLabel('Interviewer is thinkingâ€¦');
 
+    const requestReply = async () => {
+    isProcessingRef.current = true;
+    setReplyError(null);
+    onThinkingChange?.(true);
+    setState('thinking');
     // Step 5: Format updated conversation history including the user's latest response
     const updatedHistory = [
       ...conversationHistory.map((m) => ({
@@ -911,35 +927,18 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       (Boolean(aiResponse) && (aiResponse.includes('usage limit') || aiResponse.includes('quota')))
     );
 
-    if (isQuota) {
-      console.warn('[Live Interview] Gemini quota reached. Silently keeping session intact and awaiting next user turn.');
+    if (isErrorState || !aiResponse?.trim()) {
+      const message = isQuota
+        ? "Savi couldn't reply because the AI service's free quota is temporarily exhausted. Wait a little, then retry."
+        : "Savi couldn't reply because the AI service is unavailable. Please retry your last answer.";
+      setReplyError(message);
       setState('idle');
-      setCustomLabel(undefined);
-      hideCaption();
+      setCustomLabel('Reply unavailable');
+      setStatusHint('Your answer is saved · Retry the reply');
       isProcessingRef.current = false;
       return;
     }
-
-    // For non-quota errors, preserve genuine error handling
-    if (isErrorState) {
-      const isConnection = followupResult.error_type === 'connection_error' || (Boolean(aiResponse) && aiResponse.includes('connection error'));
-      const errorMsg = isConnection
-        ? 'Connection error Â· Tap the mic to try speaking again'
-        : 'AI service error Â· Tap the mic to try speaking again';
-
-      setCustomLabel(isConnection ? 'connection error' : 'service error');
-      setStatusHint(errorMsg);
-      showCaption(aiResponse || errorMsg);
-
-      // Reset creature to idle ready for retry, keeping interview active
-      setTimeout(() => {
-        hideCaption();
-        setCustomLabel(undefined);
-        setState('idle');
-        isProcessingRef.current = false;
-      }, 4000);
-      return;
-    }
+    pendingReplyRef.current = null;
 
     // Step 6: Commit AI follow-up response to conversation history
     if (onPalResponse && aiResponse) {
@@ -1023,6 +1022,9 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       setCustomLabel(undefined);
       isProcessingRef.current = false;
     }
+    };
+    pendingReplyRef.current = requestReply;
+    await requestReply();
   };
 
   /**
@@ -1263,6 +1265,16 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         </div>
 
       </header>
+
+      {replyError && (
+        <div role="alert" className="w-full max-w-xl mx-auto my-2 px-4 py-3 rounded-2xl border border-[#FFC370]/40 bg-[#183426] text-[#F5EEDB] text-xs flex items-center gap-3 shrink-0 z-20">
+          <AlertCircle className="w-4 h-4 text-[#FFC370] shrink-0" aria-hidden="true" />
+          <span className="flex-1">{replyError}</span>
+          <button type="button" onClick={retryFailedReply} disabled={isRetryingReply} className="px-3 py-2 rounded-lg bg-[#FFC370] text-[#133020] font-semibold disabled:opacity-50">
+            {isRetryingReply ? 'Retrying…' : 'Retry reply'}
+          </button>
+        </div>
+      )}
 
       {startInterviewError && !isErrorDismissed && (
         <div role="alert" className="w-full max-w-xl mx-auto my-2 px-3 py-2 rounded-2xl bg-[rgba(220,38,38,0.15)] border border-[rgba(248,113,113,0.35)] backdrop-blur-md flex items-center justify-between gap-3 text-red-200 text-xs shadow-lg shrink-0 z-20">
