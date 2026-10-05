@@ -680,3 +680,69 @@ mark.f {
     box-shadow: inset 0 0 0 3px #ffa4a4;
   }
 }
+
+/* Shared bottom edge stays aligned as replay changes the available height. */
+.interview-shell .stage[data-camera-active="true"] .interview-visual-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  align-items: end;
+  align-content: center;
+}
+.interview-shell .interview-camera-column,
+.interview-shell .interview-orb-column { height: auto; align-self: end; }
+.interview-shell .stage[data-camera-active="false"] .interview-orb-column { align-self: center; }
+.interview-shell .interview-orb-column { gap: 8px; }
+.interview-shell .interview-orb-column > div:first-child { min-height: 0; }
+.interview-shell .canvas-wrap.interview-orb,
+.interview-shell .canvas-wrap.interview-orb.canvas-wrap--compact {
+  width: min(100%, 30vw, 380px, max(0px, calc(100cqh - 80px)));
+  height: auto;
+  aspect-ratio: 1 / 1;
+}
+.interview-orb-labels {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 4px; flex: 0 0 auto; text-align: center; max-width: 100%;
+}
+.interview-savi-name {
+  font-family: 'Fraunces', Georgia, serif; font-weight: 400;
+  font-size: clamp(20px, 1.8vw, 28px); line-height: 1.15; color: #F5EEDB;
+}
+.interview-orb-labels .state-label { line-height: 1.35; min-height: 0; }
+@media (max-width: 767px) {
+  .interview-shell .stage[data-camera-active="true"] .interview-visual-pair {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+  .interview-shell .interview-camera-column { order: 1; }
+  .interview-shell .interview-orb-column { order: 2; }
+}
+
+/* Keep the camera preview free of browser media-control overlays. */
+.visual-camera-feed::-webkit-media-controls,
+.visual-camera-feed::-webkit-media-controls-enclosure {
+  display: none !important;
+}
+
+/* Camera and orb share one responsive scale when the camera is active. */
+.interview-shell .stage[data-camera-active="true"] .interview-visual-pair {
+  container-type: inline-size;
+  --visual-size: max(0px, min(36cqw, calc(100cqh - 90px), 440px));
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+}
+.interview-shell .stage[data-camera-active="true"] .interview-camera-column,
+.interview-shell .stage[data-camera-active="true"] .interview-orb-column {
+  max-width: none;
+}
+.interview-shell .stage[data-camera-active="true"] .visual-camera-card {
+  width: min(100%, calc(var(--visual-size) * 1.55 + 20px));
+  max-height: calc(100cqh - 8px);
+}
+.interview-shell .stage[data-camera-active="true"] .visual-camera-card[data-analysis-expanded="true"] {
+  width: min(100%, calc(var(--visual-size) * 1.55 + 20px), calc(97.778cqh + 20px));
+}
+.interview-shell .stage[data-camera-active="true"] .interview-camera-video {
+  flex: 0 0 auto; height: auto; max-height: none; aspect-ratio: 16 / 9;
+}
+.interview-shell .stage[data-camera-active="true"] .canvas-wrap.interview-orb,
+.interview-shell .stage[data-camera-active="true"] .canvas-wrap.interview-orb.canvas-wrap--compact {
+  width: min(100%, var(--visual-size)); height: auto; aspect-ratio: 1 / 1;
+}
