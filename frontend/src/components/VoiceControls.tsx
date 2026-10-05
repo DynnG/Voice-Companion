@@ -71,7 +71,6 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
             type="button"
             className={`interview-control interview-control--camera ${compact ? 'interview-control--compact' : ''}`}
             aria-pressed={isCameraActive}
-            aria-describedby={!isCameraActive ? 'camera-analysis-hint' : undefined}
             id="camBtn"
             aria-label={isCameraActive ? 'Turn camera off' : 'Turn camera on'}
             onClick={onToggleCamera}
@@ -89,12 +88,6 @@ export const VoiceControls: React.FC<VoiceControlsProps> = ({
 
         </div>
       </div>
-
-      {!isCameraActive && (
-        <p id="camera-analysis-hint" className="interview-camera-hint">
-          Turn on camera to enable Visual Analysis
-        </p>
-      )}
 
       <div className={`hint text-center max-w-sm flex flex-col items-center gap-1 font-manrope transition-all duration-300 ${compact ? 'mt-1 text-[11px]' : 'mt-1.5 sm:mt-2 text-xs'}`}>
         <span>{statusHint || 'Tap microphone to speak · faster-whisper STT backend connected'}</span>

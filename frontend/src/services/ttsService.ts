@@ -18,6 +18,40 @@ let activeAbortController: AbortController | null = null;
 let activeObjectUrl: string | null = null;
 let speakingTimeout: ReturnType<typeof setTimeout> | null = null;
 let isAudioPlaying = false;
+let lastSpeechBoundary = -Infinity;
+let speechSamples: { audio: HTMLAudioElement; buffer: AudioBuffer } | null = null;
+
+// Browser speech has word-boundary events rather than a readable audio stream.
+export function readSpeechLevel(): number {
+  if (!isAudioPlaying) return 0;
+  if (speechSamples && speechSamples.audio === activeAudio) {
+    const { audio, buffer } = speechSamples;
+    const start = Math.floor(audio.currentTime * buffer.sampleRate);
+    const end = Math.min(buffer.length, start + Math.floor(buffer.sampleRate * 0.025));
+    if (end <= start) return 0;
+    let energy = 0;
+    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+      const samples = buffer.getChannelData(channel);
+      for (let i = start; i < end; i++) energy += samples[i] * samples[i];
+    }
+    return Math.min(1, Math.sqrt(energy / ((end - start) * buffer.numberOfChannels)) * 4);
+  }
+  return 0.025 + 0.8 * Math.exp(-(performance.now() - lastSpeechBoundary) / 120);
+}
+
+// Decode a separate copy for visual metering without rerouting audible playback.
+async function prepareSpeechSamples(audio: HTMLAudioElement, blob: Blob): Promise<void> {
+  let context: AudioContext | null = null;
+  try {
+    context = new AudioContext();
+    const buffer = await context.decodeAudioData(await blob.arrayBuffer());
+    if (activeAudio === audio) speechSamples = { audio, buffer };
+  } catch {
+    // Visual metering must never interrupt speech when decoding is unavailable.
+  } finally {
+    if (context) await context.close().catch(() => {});
+  }
+}
 let cachedVoices: SpeechSynthesisVoice[] = [];
 
 // Initialize voices eagerly if Web Speech API is present
@@ -139,6 +173,7 @@ export function unlockAudio(): void {
  * Prevents overlapping audio streams and frees resources.
  */
 export function stopSpeaking(): void {
+  speechSamples = null;
   // 1. Cancel browser-native speech synthesis if currently active or pending
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     try {
@@ -243,7 +278,9 @@ function speakWithSpeechSynthesis(
       options?.onEnd?.();
     };
 
+    utterance.onboundary = () => { lastSpeechBoundary = performance.now(); };
     utterance.onstart = () => {
+      lastSpeechBoundary = performance.now();
       isAudioPlaying = true;
       options?.onStart?.();
     };
@@ -329,12 +366,14 @@ async function speakWithKokoroBackend(
 
     const audio = new Audio(objectUrl);
     activeAudio = audio;
+    void prepareSpeechSamples(audio, audioBlob);
 
     let hasCleanedUp = false;
     const finalize = (triggerEnd: boolean) => {
       if (hasCleanedUp) return;
       hasCleanedUp = true;
       isAudioPlaying = false;
+      if (speechSamples?.audio === audio) speechSamples = null;
       if (activeObjectUrl === objectUrl) {
         URL.revokeObjectURL(objectUrl);
         activeObjectUrl = null;

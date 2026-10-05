@@ -357,7 +357,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                 </div>
               )}
 
-              {!isCompleted && !reviewOnly ? (
+              {!isCompleted && !reviewOnly && onTryAgain ? (
                 <div className="flex items-center justify-between pt-2 border-t border-[rgba(218,241,222,0.12)] gap-2 shrink-0">
                   <button
                     onClick={onTryAgain}
@@ -375,7 +375,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              ) : reviewOnly && !isCompleted ? null : (
+              ) : !isCompleted ? null : (
                 <div className="pt-2 border-t border-[rgba(218,241,222,0.12)] flex justify-between items-center shrink-0 text-xs text-[#2FE0A8]">
                   <span className="font-semibold">Interview Complete</span>
                   <span className="text-[#8EB69B]">All answers recorded</span>
@@ -429,15 +429,15 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                   <div className="flex items-center justify-center gap-6 sm:gap-8 pt-0.5">
                     <button
                       type="button"
-                      onClick={() => onSeekPlayback?.(-15)}
+                      onClick={() => onSeekPlayback?.(-5)}
                       className="flex flex-col items-center gap-1 text-[#8EB69B] hover:text-[#F5EEDB] transition-colors active:scale-95 cursor-pointer"
-                      title="Back 15s"
-                      aria-label="Back 15 seconds"
+                      title="Back 5s"
+                      aria-label="Back 5 seconds"
                     >
                       <div className="w-8 h-8 rounded-full border border-[rgba(218,241,222,0.16)] flex items-center justify-center">
                         <RotateCcw className="w-3.5 h-3.5" />
                       </div>
-                      <span className="text-[10px] font-medium text-[#8EB69B]">15s</span>
+                      <span className="text-[10px] font-medium text-[#8EB69B]">5s</span>
                     </button>
 
                     <button
@@ -462,15 +462,15 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => onSeekPlayback?.(15)}
+                      onClick={() => onSeekPlayback?.(5)}
                       className="flex flex-col items-center gap-1 text-[#8EB69B] hover:text-[#F5EEDB] transition-colors active:scale-95 cursor-pointer"
-                      title="Forward 15s"
-                      aria-label="Forward 15 seconds"
+                      title="Forward 5s"
+                      aria-label="Forward 5 seconds"
                     >
                       <div className="w-8 h-8 rounded-full border border-[rgba(218,241,222,0.16)] flex items-center justify-center">
                         <RotateCw className="w-3.5 h-3.5" />
                       </div>
-                      <span className="text-[10px] font-medium text-[#8EB69B]">15s</span>
+                      <span className="text-[10px] font-medium text-[#8EB69B]">5s</span>
                     </button>
                   </div>
                 </div>
@@ -543,7 +543,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
 
                 {/* Actions: Try Answer Again */}
                 <div className="pt-2 border-t border-[rgba(218,241,222,0.10)] shrink-0">
-                  {!isCompleted && !reviewOnly ? (
+                  {!isCompleted && !reviewOnly && onTryAgain ? (
                     <button
                       type="button"
                       onClick={onTryAgain}
@@ -553,7 +553,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                       <RotateCcw className="w-3.5 h-3.5 text-[#FFB347]" />
                       <span>Try Answer Again</span>
                     </button>
-                  ) : reviewOnly && !isCompleted ? null : (
+                  ) : !isCompleted ? null : (
                     <div className="flex justify-between items-center text-xs text-[#2FE0A8] py-1">
                       <span className="font-semibold">Interview Complete</span>
                       <span className="text-[#8EB69B]">All answers recorded</span>

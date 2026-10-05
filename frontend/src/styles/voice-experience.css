@@ -20,7 +20,7 @@
   --glass-border: rgba(218, 241, 222, 0.14);
 
   /* Dynamic creature / voice states */
-  --glow-a: #2FE0A8; /* botanical emerald - listening */
+  --glow-a: #3A8E6E; /* muted botanical sage/emerald - listening */
   --glow-b: #FFC370; /* warm earth gold - thinking */
   --glow-c: #FFB347; /* amber saffron - speaking */
   --glow-idle: #8EB69B; /* muted botanical green - idle */
@@ -116,6 +116,9 @@
   font-weight: 500;
 }
 .interview-shell .interview-progress i { animation: none; background: #8EB69B; }
+.interview-shell .interview-progress[data-completed="false"] { color: #62F6A0; }
+.interview-shell .interview-progress[data-completed="false"] i { background: #62F6A0; }
+
 .interview-shell .interview-transcript-toggle {
   background: #F5EEDB;
   color: #133020;
@@ -745,4 +748,23 @@ mark.f {
 .interview-shell .stage[data-camera-active="true"] .canvas-wrap.interview-orb,
 .interview-shell .stage[data-camera-active="true"] .canvas-wrap.interview-orb.canvas-wrap--compact {
   width: min(100%, var(--visual-size)); height: auto; aspect-ratio: 1 / 1;
+}
+
+.interview-shell .voice-footer .hint {
+  grid-column: 1 / -1; justify-self: center; width: 100%; max-width: none;
+  text-align: center; align-items: center;
+}
+.interview-shell .interview-progress[data-completed="false"] {
+  animation: interview-ongoing-pulse 2.8s ease-in-out infinite;
+}
+@keyframes interview-ongoing-pulse { 0%,100% { opacity: 1; } 50% { opacity: .65; } }
+@media (prefers-reduced-motion: reduce) {
+  .interview-shell .interview-progress[data-completed="false"] { animation: none; }
+}
+
+/* Fit the orb and its labels to the camera panel's measured height. */
+.interview-shell .stage[data-camera-active="true"] .canvas-wrap.interview-orb,
+.interview-shell .stage[data-camera-active="true"] .canvas-wrap.interview-orb.canvas-wrap--compact {
+  width: min(100%, var(--aligned-orb-size, var(--visual-size)));
+  height: auto; aspect-ratio: 1 / 1;
 }
