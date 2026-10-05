@@ -1,3 +1,4 @@
+import { displayCoachingNotes, coachingNoteLabels } from './coachingNoteStyle';
 /**
  * Savi Session-Only PDF Review Generator
  *
@@ -69,7 +70,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
   doc.setFont('Fraunces', 'normal');
   doc.setFontSize(26);
   doc.setTextColor(19, 48, 32);
-  doc.text('Savi', margin, currentY + 27);
+  doc.text('Savi', margin, currentY + 40);
   currentY += 64;
 
   doc.setFont('Fraunces', 'normal');
@@ -167,7 +168,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     doc.text(`Question ${orderNum}`, margin, currentY);
     currentY += 8;
 
-    // --- A. PAL (Interviewer Question) Block ---
+    // --- A. Savi (Interviewer Question) Block ---
     const qText = ex.question ? `"${ex.question.trim()}"` : '"[Interview Question]"';
     doc.setFont('Manrope', 'normal');
     doc.setFontSize(9.5);
@@ -189,7 +190,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
     doc.setFont('Manrope', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(4, 98, 65);
-    doc.text('PAL (INTERVIEWER):', margin + 12, currentY + 12);
+    doc.text('SAVI (INTERVIEWER):', margin + 12, currentY + 12);
 
     // Question Text
     doc.setFont('Manrope', 'normal');
@@ -239,50 +240,41 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
       ? ex.aiNotes
       : ['AI notes are unavailable right now.'];
 
-    // Calculate AI Notes height
-    doc.setFont('Manrope', 'normal');
-    doc.setFontSize(9);
-    let totalNotesLines = 0;
-    const splitNotes: string[][] = [];
-
-    notes.forEach((note) => {
-      const cleanNote = note.replace(/^[•\-\*]\s*/, '').trim();
-      const lines = doc.splitTextToSize(`•  ${cleanNote}`, contentWidth - 28);
-      splitNotes.push(lines);
-      totalNotesLines += lines.length;
-    });
-
-    const notesHeight = Math.max(28, totalNotesLines * 13 + Math.max(0, splitNotes.length - 1) * 8 + 22);
-
-    ensureSpace(notesHeight + 14);
-
-    // Notes Box Background (warm amber tint)
-    doc.setFillColor(255, 251, 235); // amber-50
-    doc.setDrawColor(254, 243, 199); // amber-200
-    doc.roundedRect(margin, currentY, contentWidth, notesHeight, 4, 4, 'FD');
-
-    // Left Accent Bar (warm amber)
-    doc.setFillColor(217, 119, 6); // amber-600
-    doc.rect(margin, currentY, 3.5, notesHeight, 'F');
-
-    // Label
     doc.setFont('Manrope', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(180, 83, 9); // amber-700
-    doc.text('AI NOTES:', margin + 12, currentY + 12);
-
-    // Bullet Points
-    doc.setFont('Manrope', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(30, 41, 59);
-
-    let noteY = currentY + 24;
-    splitNotes.forEach((lines) => {
-      doc.text(lines, margin + 12, noteY, { lineHeightFactor: 13 / 9 });
-      noteY += lines.length * 13 + 8;
-    });
-
-    currentY += notesHeight + 16;
+    doc.setFontSize(8);
+    ensureSpace(58);
+    doc.setTextColor(19, 48, 32);
+    doc.text('AI NOTES', margin, currentY + 10);
+    currentY += 18;
+    for (const { text, kind } of displayCoachingNotes(notes)) {
+      const colors = {
+        strength: { background: [240, 253, 244], accent: [4, 98, 65] },
+        improvement: { background: [255, 248, 232], accent: [180, 83, 9] },
+        advice: { background: [239, 246, 255], accent: [48, 89, 145] },
+        feedback: { background: [246, 250, 247], accent: [71, 101, 84] },
+      }[kind];
+      doc.setFont('Manrope', 'normal');
+      doc.setFontSize(9);
+      const lines = doc.splitTextToSize(text.replace(/^[�\-\*]\s*/, '').trim(), contentWidth - 28);
+      const height = lines.length * 13 + 30;
+      ensureSpace(height + 8);
+      doc.setFillColor(colors.background[0], colors.background[1], colors.background[2]);
+      doc.setDrawColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+      doc.setLineWidth(0.5);
+      doc.roundedRect(margin, currentY, contentWidth, height, 6, 6, 'FD');
+      doc.setFillColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+      doc.rect(margin, currentY + 6, 2.5, height - 12, 'F');
+      doc.setTextColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+      doc.setFont('Manrope', 'bold');
+      doc.setFontSize(8);
+      doc.text(coachingNoteLabels[kind], margin + 12, currentY + 14);
+      doc.setFont('Manrope', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(30, 41, 59);
+      doc.text(lines, margin + 12, currentY + 29, { lineHeightFactor: 13 / 9 });
+      currentY += height + 8;
+    }
+    currentY += 8;
 
     // Divider between exchanges (except last)
     if (idx < exchanges.length - 1) {

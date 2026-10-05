@@ -1,3 +1,4 @@
+import { displayCoachingNotes, coachingNoteLabels } from '../services/coachingNoteStyle';
 /**
  * PostInterviewCompletionModal
  *
@@ -208,14 +209,14 @@ export const PostInterviewCompletionModal: React.FC<PostInterviewCompletionModal
                       <Sparkles className="w-3 h-3 text-[#FFB347]" />
                       AI Notes
                     </span>
-                    <ul className="space-y-1 text-xs text-[#F5EEDB]/80 pl-1 font-manrope">
-                      {exchange.aiNotes.map((note, nIdx) => (
-                        <li key={nIdx} className="flex items-start gap-1.5">
-                          <span className="text-[#FFB347] text-xs leading-tight">•</span>
-                          <span>{note.replace(/^[•\-\*]\s*/, '')}</span>
-                        </li>
+                    <div className="space-y-2 font-manrope">
+                      {displayCoachingNotes(exchange.aiNotes).map(({ text, kind }, nIdx) => (
+                        <div key={nIdx} className={`coaching-note coaching-note--${kind}`}>
+                          <span className="coaching-note-label">{coachingNoteLabels[kind]}</span>
+                          <p>{text.replace(/^[�\-\*]\s*/, '')}</p>
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   </div>
                 )}
               </div>

@@ -11,7 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { replayPlaybackTiming } from '../services/replayPlayback';
-import { coachingNoteKind, coachingNoteLabels } from '../services/coachingNoteStyle';
+import { displayCoachingNotes, coachingNoteLabels } from '../services/coachingNoteStyle';
 import { ReplayState } from '../types/conversation';
 
 interface AnswerReplayCardProps {
@@ -255,7 +255,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
 
   const hasAudio = attempt1.inputMode !== 'chat' && attempt1.audioBlob.size > 4 && !!attempt1.audioUrl;
   const displayTranscript = attempt1.transcript || '';
-  const displayNotes = attempt1.aiNotes || [];
+  const displayNotes = displayCoachingNotes(attempt1.aiNotes || []);
 
   return (
     <section
@@ -529,8 +529,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                     ) : (
                       /* Specific observations from actual answer analysis */
                       <div className="space-y-2">
-                        {displayNotes.map((noteText, idx) => {
-                          const kind = coachingNoteKind(noteText);
+                        {displayNotes.map(({ text: noteText, kind }, idx) => {
                           return (
                             <div key={idx} className={`coaching-note coaching-note--${kind}`}>
                               <span className="coaching-note-label">{coachingNoteLabels[kind]}</span>

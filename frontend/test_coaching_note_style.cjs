@@ -13,3 +13,13 @@ assert.equal(kind('You discussed your classroom experience.'),'feedback');
 assert.equal(kind('Your delivery was not fluent.'),'improvement');
 assert.equal(kind('Your answer had no concrete example.'),'improvement');
 console.log('10 coaching note style checks passed');
+
+const {displayCoachingNotes:display}=mod.exports;
+const offTopic=['Your answer was completely off-topic and did not address follow-up strategies.', 'Your delivery was fluent and steady.', 'Next time, provide a relevant example.'];
+assert.deepEqual(display(offTopic),[{text:offTopic[0],kind:'improvement'}]);
+assert.equal(display(['Your answer did not address every detail.', 'Next time, give an example.']).length,2);
+assert.deepEqual(display([]),[]);
+console.log('Off-topic filtering checks passed');
+
+assert.deepEqual(display(['Next time, provide an example.', 'You discussed your classroom experience.', 'Your delivery was fluent and steady.']).map(note=>note.kind), ['feedback', 'advice', 'strength']);
+console.log('Feedback-first ordering check passed');

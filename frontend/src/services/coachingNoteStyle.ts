@@ -13,3 +13,12 @@ export function coachingNoteKind(text: string): CoachingNoteKind {
 export const coachingNoteLabels: Record<CoachingNoteKind, string> = {
   strength: 'What went well', improvement: 'To improve', advice: 'Next step', feedback: 'Feedback',
 };
+
+/** Keep relevance feedback focused when the analysis explicitly identifies an off-topic answer. */
+export function displayCoachingNotes(notes: string[]): { text: string; kind: CoachingNoteKind }[] {
+  const isOffTopic = (text: string) => /\b(off[- ]topic|unrelated|irrelevant|lacks relevance|lacked relevance|not relevant|not connected|completely avoided)\b/i.test(text);
+  const relevanceNotes = notes.filter(isOffTopic);
+  if (relevanceNotes.length) return relevanceNotes.map(text => ({ text, kind: 'improvement' }));
+  return notes.map(text => ({ text, kind: coachingNoteKind(text) }))
+    .sort((a, b) => Number(b.kind === 'feedback') - Number(a.kind === 'feedback'));
+}
