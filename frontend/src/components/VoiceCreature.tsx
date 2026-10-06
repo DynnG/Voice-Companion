@@ -609,7 +609,9 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       if (!listening && listeningMix < 0.001) listeningMix = 0;
       if (listeningMix === 0) listeningPhase = phaseAccumulator;
       else listeningPhase += elapsed * (0.70 + Math.sqrt(listeningLevel) * 1.55 + voiceCadence * 0.65);
-      listeningAmplitude += (0.065 + Math.pow(Math.max(0, speechPulseLevel), 0.65) * 0.12 - listeningAmplitude)
+      // Boost only Savi's perimeter response; keep the microphone gain intact.
+      const edgePulseGain = currentName === 'speaking' ? 0.20 : 0.12;
+      listeningAmplitude += (0.065 + Math.pow(Math.max(0, speechPulseLevel), 0.65) * edgePulseGain - listeningAmplitude)
         * (1 - Math.exp(-elapsed / 0.08));
 
       // Gesture "NO / STAY ON TOPIC" Lifecycle & Emotion Update
