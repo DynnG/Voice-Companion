@@ -18,6 +18,7 @@ interface VoiceExperienceProps {
   replayRequest?: { id: string; request: number } | null;
   onPalResponse?: (palText: string) => void;
   onThinkingChange?: (thinking: boolean) => void;
+  onTranscribingChange?: (transcribing: boolean) => void;
   onInterviewCompleted?: (reason?: string) => void;
   interviewStatus?: 'setup' | 'active' | 'ending' | 'completed';
   turnsUsed?: number;
@@ -56,6 +57,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   replayRequest,
   onPalResponse,
   onThinkingChange,
+  onTranscribingChange,
   onInterviewCompleted,
   interviewStatus = 'active',
   turnsUsed: turnsUsedProp,
@@ -229,7 +231,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       }
 
       showCaption(initialQuestionToSpeak);
-      setCustomLabel('Savi (Interviewer)');
+      setCustomLabel('Interviewer');
 
       speakText(initialQuestionToSpeak, {
         onStart: () => {
@@ -566,6 +568,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       // Keep voice sphere indicator active internally, but DO NOT show chat thinking bubble yet
       setState('thinking');
       setCustomLabel('transcribing answer…');
+      onTranscribingChange?.(true);
       isProcessingRef.current = true;
     }
   };
@@ -914,12 +917,12 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
     if (isErrorState || !aiResponse?.trim()) {
       const message = isQuota
-        ? "Savi couldn't reply because the AI service's free quota is temporarily exhausted. Wait a little, then retry."
+        ? "Savi’s usage limit has been reached. Please try again later."
         : "Savi couldn't reply because the AI service is unavailable. Please retry your last answer.";
       setReplyError(message);
       setState('idle');
       setCustomLabel('Reply unavailable');
-      setStatusHint('Your answer is saved � Retry the reply');
+      setStatusHint('Your answer is saved · Retry the reply');
       isProcessingRef.current = false;
       return;
     }
@@ -1018,6 +1021,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   const processAudioTranscriptionAndInterview = async (audioBlob: Blob) => {
     if (!isMicEnabled || isCompleted) {
       console.warn('[Live Interview] Session has ended or turn limit reached. Ignoring audio transcription.');
+      onTranscribingChange?.(false);
       setState('idle');
       setCustomLabel('Interview Complete');
       isProcessingRef.current = false;
@@ -1027,6 +1031,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     isProcessingRef.current = true;
     setState('thinking');
     setCustomLabel('transcribing answer…');
+    onTranscribingChange?.(true);
 
     try {
       // Step 1: Faster-whisper Speech-to-Text transcription ONLY
@@ -1035,6 +1040,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         generateAiResponse: false
       });
 
+      onTranscribingChange?.(false);
       const userText = (result.transcription || result.text || '').trim();
       const durationSeconds = result.duration && result.duration > 0
         ? Math.round(result.duration)
@@ -1056,6 +1062,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         }, 2600);
       }
     } catch (apiError: any) {
+      onTranscribingChange?.(false);
       console.error('Interview STT / Gemini API error:', apiError);
       onThinkingChange?.(false);
       setState('idle');
@@ -1207,10 +1214,10 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
           <span className="w-px h-6 bg-[rgba(218,241,222,0.14)] shrink-0" />
 
-          {/* AI Mock Interview & Job Role */}
+          {/* Practice interview & Job Role */}
           <div className="flex flex-col justify-center min-w-0">
             <span className="font-semibold text-xs sm:text-[13px] text-[#F5EEDB] leading-tight truncate">
-              AI Mock Interview
+              Practice interview
             </span>
             <span className="text-[11px] text-[#8EB69B] leading-tight truncate">
               {jobRole || 'Software Developer'}
@@ -1273,7 +1280,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
           <AlertCircle className="w-4 h-4 text-[#FFC370] shrink-0" aria-hidden="true" />
           <span className="flex-1">{replyError}</span>
           <button type="button" onClick={retryFailedReply} disabled={isRetryingReply} className="px-3 py-2 rounded-lg bg-[#FFC370] text-[#133020] font-semibold disabled:opacity-50">
-            {isRetryingReply ? 'Retrying�' : 'Retry reply'}
+            {isRetryingReply ? 'Retrying…' : 'Retry reply'}
           </button>
         </div>
       )}

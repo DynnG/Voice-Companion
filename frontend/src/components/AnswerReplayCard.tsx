@@ -1,3 +1,4 @@
+import { LoadingSkeleton } from './LoadingSkeleton';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Play,
@@ -273,7 +274,7 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-3">
             {isMinimized && (
-              <span className="text-xs text-[#8EB69B]">Tap for more information</span>
+              <span className="text-xs text-[#8EB69B]">View feedback</span>
             )}
             {isMinimized && hasAudio && (
               <span className="text-[11px] text-[#8EB69B] font-mono hidden sm:inline-block">
@@ -502,20 +503,13 @@ export const AnswerReplayCard: React.FC<AnswerReplayCardProps> = ({
                         Analyzing response…
                       </span>
                     )}
-                    {attempt1?.aiNotesStatus === 'success' && (
-                      <span className="text-[10px] text-[#2FE0A8] font-medium">
-                        Grounded in your answer
-                      </span>
-                    )}
+
                   </div>
 
                   {/* Actionable Notes & Observations */}
                   <div className="space-y-2 mt-2.5 overflow-y-auto pr-1">
                     {attempt1?.aiNotesStatus === 'loading' ? (
-                      <div className="p-4 rounded-xl bg-[rgba(6,24,18,0.45)] border border-[rgba(218,241,222,0.08)] flex flex-col items-center justify-center py-6 text-center space-y-2">
-                        <div className="w-6 h-6 border-2 border-[#FFB347] border-t-transparent rounded-full animate-spin" />
-                        <p className="text-xs text-[#8EB69B]">Analyzing your actual response with Gemini…</p>
-                      </div>
+                      <LoadingSkeleton label="Analyzing your answer and loading coaching notes" cards={3} />
                     ) : attempt1?.aiNotesStatus === 'error' ? (
                       <div className="p-3 rounded-xl bg-[rgba(30,12,12,0.45)] border border-[rgba(255,100,100,0.2)] text-xs text-[#F5EEDB]/80">
                         <p className="font-semibold text-[#FF8585] mb-1">AI notes unavailable</p>

@@ -23,3 +23,9 @@ console.log('Off-topic filtering checks passed');
 
 assert.deepEqual(display(['Next time, provide an example.', 'You discussed your classroom experience.', 'Your delivery was fluent and steady.']).map(note=>note.kind), ['feedback', 'advice', 'strength']);
 console.log('Feedback-first ordering check passed');
+
+assert.equal(kind('Prepare a specific example detailing how you grouped your target audience and the exact KPIs used to measure success.'), 'improvement');
+assert.equal(kind('A specific example is important.'), 'feedback');
+assert.equal(kind('Your answer provided a specific example of audience segmentation.'), 'strength');
+assert.deepEqual(display(['Your answer was incomplete and did not address segmentation.', 'Prepare a specific example detailing your KPIs.', 'Structure future answers using STAR.']).map(note=>note.kind), ['improvement', 'improvement', 'advice']);
+console.log('Advice-versus-praise regression checks passed');

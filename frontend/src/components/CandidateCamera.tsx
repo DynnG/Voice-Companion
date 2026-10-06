@@ -167,7 +167,7 @@ export const CandidateCamera: React.FC<CandidateCameraProps> = ({
           <span>Visual Analysis</span><ChevronDown aria-hidden="true" size={17} className={expanded ? 'visual-camera-chevron--open' : ''} />
         </button>
         {expanded && <div id={panelId} className="visual-camera-analysis-body">
-          <p className="visual-camera-context">Most recent answer · camera-based estimates</p>
+          <p className="visual-camera-context">Most recent answer Â· camera-based estimates</p>
           {feedback && !recordingActive && !issue && tracking === 'active' && <dl className="visual-camera-observations">
             {visualDimensions.map((dimension, index) => <div key={dimension} className="visual-camera-row">
               <dt>{dimension}</dt><dd>{feedback?.[index] || 'Waiting for a recorded answer.'}</dd>

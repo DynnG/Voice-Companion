@@ -213,7 +213,7 @@ export const PostInterviewCompletionModal: React.FC<PostInterviewCompletionModal
                       {displayCoachingNotes(exchange.aiNotes).map(({ text, kind }, nIdx) => (
                         <div key={nIdx} className={`coaching-note coaching-note--${kind}`}>
                           <span className="coaching-note-label">{coachingNoteLabels[kind]}</span>
-                          <p>{text.replace(/^[•\-\*]\s*/, '')}</p>
+                          <p>{text.replace(/^[â€¢\-\*]\s*/, '')}</p>
                         </div>
                       ))}
                     </div>
@@ -245,7 +245,7 @@ export const PostInterviewCompletionModal: React.FC<PostInterviewCompletionModal
         <div className="p-4 sm:p-5 border-t border-[rgba(245,238,219,0.12)] bg-[#0D2017] flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <div className="text-[11px] text-[#8EB69B] flex items-center gap-1.5 text-center sm:text-left font-manrope">
             <span className="w-1.5 h-1.5 rounded-full bg-[#2FE0A8] inline-block" />
-            <span>PDF is generated client-side from memory. Zero data is uploaded.</span>
+            <span>Your PDF is created on this device.</span>
           </div>
 
           <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">

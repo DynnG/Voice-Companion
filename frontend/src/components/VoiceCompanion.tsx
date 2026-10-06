@@ -41,6 +41,7 @@ export const VoiceCompanion: React.FC = () => {
   const [session, setSession] = useState<InterviewSession>(createInitialSession);
   const [isLivePanelOpen, setIsLivePanelOpen] = useState<boolean>(false);
   const [initialQuestionToSpeak, setInitialQuestionToSpeak] = useState<string | undefined>(undefined);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [isThinking, setIsThinking] = useState<boolean>(false);
   const [isCompletionModalOpen, setIsCompletionModalOpen] = useState<boolean>(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState<boolean>(false);
@@ -61,6 +62,7 @@ export const VoiceCompanion: React.FC = () => {
     setReplayRequest(null);
     setInitialQuestionToSpeak(undefined);
     setIsThinking(false);
+    setIsTranscribing(false);
     setIsLivePanelOpen(false);
     setIsCompletionModalOpen(false);
     setIsDownloadingPdf(false);
@@ -329,6 +331,7 @@ export const VoiceCompanion: React.FC = () => {
               replayRequest={replayRequest}
               onPalResponse={handlePalResponse}
               onThinkingChange={setIsThinking}
+              onTranscribingChange={setIsTranscribing}
               onInterviewCompleted={handleInterviewCompleted}
               interviewStatus={session.status}
               turnsUsed={session.turnsUsed}
@@ -360,6 +363,7 @@ export const VoiceCompanion: React.FC = () => {
               isOpen={isLivePanelOpen}
               onClose={() => setIsLivePanelOpen(false)}
               isThinking={isThinking}
+              isTranscribing={isTranscribing}
               canDownloadReview={canDownloadReview}
               onDownloadReview={handleDownloadReviewPdf}
               isDownloadingReview={isDownloadingPdf}

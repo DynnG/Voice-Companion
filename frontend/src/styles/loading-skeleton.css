@@ -1,0 +1,27 @@
+.savi-skeleton { --skeleton-color: 174, 200, 183; width: 100%; }
+.savi-skeleton--light { --skeleton-color: 19, 48, 32; }
+.savi-skeleton-stack { display: grid; gap: 8px; }
+.savi-skeleton-card { padding: 12px; border: 1px solid rgba(var(--skeleton-color), .12); border-radius: 12px; background: rgba(var(--skeleton-color), .04); }
+.savi-skeleton-line { height: 10px; margin-top: 9px; border-radius: 6px; background: rgba(var(--skeleton-color), .15); animation: savi-skeleton-pulse 1.6s ease-in-out infinite; }
+.savi-skeleton-line--label { width: 28%; height: 8px; margin-top: 0; }
+.savi-skeleton-line--short { width: 72%; }
+@keyframes savi-skeleton-pulse { 50% { opacity: .4; } }
+@media (prefers-reduced-motion: reduce) { .savi-skeleton-line { animation: none; } }
+
+.savi-skeleton--user-bubble .savi-skeleton-card {
+  position: relative;
+  border: 0;
+  border-radius: 16px 2px 16px 16px;
+  background: #ece8d6;
+  box-shadow: 0 1px 2px rgba(19, 48, 32, .05);
+}
+.savi-skeleton--user-bubble .savi-skeleton-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -8px;
+  width: 0;
+  height: 0;
+  border-bottom: 10px solid transparent;
+  border-left: 8px solid #ece8d6;
+}

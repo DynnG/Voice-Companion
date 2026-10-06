@@ -1,3 +1,4 @@
+import { LoadingSkeleton } from './LoadingSkeleton';
 import React, { useEffect, useRef, useState } from 'react';
 import { MessageSquare, Download, Send, X, AlertCircle, AudioLines } from 'lucide-react';
 import { Conversation } from '../types/conversation';
@@ -9,6 +10,7 @@ interface LiveConversationPanelProps {
   isOpen: boolean;
   onClose: () => void;
   isThinking?: boolean;
+  isTranscribing?: boolean;
   canDownloadReview?: boolean;
   onDownloadReview?: () => void;
   isDownloadingReview?: boolean;
@@ -21,6 +23,7 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
   isOpen,
   onClose,
   isThinking = false,
+  isTranscribing = false,
   canDownloadReview = false,
   onDownloadReview,
   isDownloadingReview = false,
@@ -63,11 +66,11 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
         container.scrollTop = container.scrollHeight;
       }
     }
-  }, [displayMessages.length, lastMessageText, isOpen, isThinking]);
+  }, [displayMessages.length, lastMessageText, isOpen, isThinking, isTranscribing]);
 
   if (!isOpen) return null;
 
-  const isInputDisabled = isThinking || conversation?.status === 'completed';
+  const isInputDisabled = isThinking || isTranscribing || conversation?.status === 'completed';
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -237,12 +240,17 @@ export const LiveConversationPanel: React.FC<LiveConversationPanelProps> = ({
             })
           )}
 
+          {isTranscribing && (
+            <div className="ml-auto w-3/4 py-2 pr-11">
+              <LoadingSkeleton label="Transcribing your answer" light bubble />
+            </div>
+          )}
           {isThinking && (
             <div className="flex items-center gap-2 text-xs text-[#133020]/70 font-manrope pl-9 py-1">
-              <span className="w-2 h-2 rounded-full bg-[#133020] animate-bounce" />
-              <span className="w-2 h-2 rounded-full bg-[#133020] animate-bounce [animation-delay:0.2s]" />
-              <span className="w-2 h-2 rounded-full bg-[#133020] animate-bounce [animation-delay:0.4s]" />
-              <span className="text-xs text-[#133020]/70 font-medium ml-1">Savi is formulating a question…</span>
+              <span className="w-1 h-1 rounded-full bg-[#133020] animate-bounce" />
+              <span className="w-1 h-1 rounded-full bg-[#133020] animate-bounce [animation-delay:0.2s]" />
+              <span className="w-1 h-1 rounded-full bg-[#133020] animate-bounce [animation-delay:0.4s]" />
+              <span className="text-xs text-[#133020]/70 font-medium ml-1">Savi is thinking…</span>
             </div>
           )}
         </div>

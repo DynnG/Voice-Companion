@@ -256,7 +256,7 @@ export async function generateInterviewReviewPdf(data: InterviewReviewPdfData): 
       }[kind];
       doc.setFont('Manrope', 'normal');
       doc.setFontSize(9);
-      const lines = doc.splitTextToSize(text.replace(/^[•\-\*]\s*/, '').trim(), contentWidth - 28);
+      const lines = doc.splitTextToSize(text.replace(/^[â€¢\-\*]\s*/, '').trim(), contentWidth - 28);
       const height = lines.length * 13 + 30;
       ensureSpace(height + 8);
       doc.setFillColor(colors.background[0], colors.background[1], colors.background[2]);

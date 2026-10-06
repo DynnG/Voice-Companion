@@ -425,7 +425,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
             <span className="setup-tag">Voice interview setup</span>
             <h1 id="setup-heading">Practice the interview<br /><span>before it counts.</span></h1>
             <p>
-              Step into a realistic AI interview with Savi. Practice answering <span className="setup-unbroken-term">role-specific</span> questions and sharpen your responses before the real conversation.
+              Practice questions for your role and get feedback on your answers.
             </p>
           </div>
           <div className="hero-orb" aria-hidden="true">
@@ -577,7 +577,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
             <span className="setup-or">or</span>
             <button type="button" className="setup-bbtn" onClick={() => fileInputRef.current?.click()} aria-describedby="supported-file-formats">Browse files</button>
             <small className="setup-sup" id="supported-file-formats">
-              Supported: PDF, DOC, DOCX, TXT, MD, PPT, PPTX, PNG, JPG · Maximum 10 MB per file
+              Supported: PDF, DOC, DOCX, TXT, MD, PPT, PPTX, PNG, JPG. Maximum 10 MB per file
             </small>
           </div>
 
@@ -600,9 +600,9 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
                   const ext = getFileExtension(file.name);
                   const statusText =
                     file.status === 'uploading'
-                      ? `Uploading… ${file.pct}%`
+                      ? `Uploading... ${file.pct}%`
                       : file.status === 'done'
-                      ? `✓ Ready · ${ext} · ${file.formattedSize}`
+                      ? `Ready - ${ext} - ${file.formattedSize}`
                       : `! ${file.msg || 'Error'}`;
 
                   return (
@@ -646,7 +646,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
                           onClick={() => handleRemove(file.id)}
                           aria-label={`Remove ${file.name}`}
                         >
-                          ✕
+                          X
                         </button>
                       </div>
                     </li>
@@ -660,7 +660,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
       <div className="setup-start-action">
         <p className="setup-bottom-guidance">
           <Lightbulb size={24} aria-hidden="true" />
-          <span><strong>No exact match?</strong> You can type any job title or role above. We'll use it to find the most relevant matches.</span>
+          <span><strong>Don&apos;t see your role?</strong> Enter it above.</span>
         </p>
           <button
             type="button"
@@ -670,7 +670,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
             id="startBtn"
           >
             <Mic size={20} aria-hidden="true" />
-            <span>{isStarting ? 'Starting interview…' : 'Start interview'}</span>
+            <span>Start interview</span>
             <ArrowRight size={20} aria-hidden="true" />
           </button>
       </div>
