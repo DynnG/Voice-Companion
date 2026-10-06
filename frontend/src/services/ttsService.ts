@@ -19,11 +19,24 @@ let activeObjectUrl: string | null = null;
 let speakingTimeout: ReturnType<typeof setTimeout> | null = null;
 let isAudioPlaying = false;
 let lastSpeechBoundary = -Infinity;
+let speechMeterStartedAt = 0;
+let speechMeterRate = 1;
+let speechMeterUpdatedAt = 0;
+let estimatedSpeechMix = 0;
+
+function startSpeechMeter(rate: number): void {
+  speechMeterStartedAt = performance.now();
+  lastSpeechBoundary = speechMeterStartedAt;
+  speechMeterUpdatedAt = speechMeterStartedAt;
+  speechMeterRate = Math.max(0.5, Math.min(2, rate));
+  estimatedSpeechMix = 0;
+}
 let speechSamples: { audio: HTMLAudioElement; buffer: AudioBuffer } | null = null;
 
 // Browser speech has word-boundary events rather than a readable audio stream.
 export function readSpeechLevel(): number {
   if (!isAudioPlaying) return 0;
+  if (activeUtterance && window.speechSynthesis.paused) return 0;
   if (speechSamples && speechSamples.audio === activeAudio) {
     const { audio, buffer } = speechSamples;
     const start = Math.floor(audio.currentTime * buffer.sampleRate);
@@ -36,7 +49,21 @@ export function readSpeechLevel(): number {
     }
     return Math.min(1, Math.sqrt(energy / ((end - start) * buffer.numberOfChannels)) * 4);
   }
-  return 0.025 + 0.8 * Math.exp(-(performance.now() - lastSpeechBoundary) / 120);
+  const now = performance.now();
+  const boundaryAge = Math.max(0, now - lastSpeechBoundary);
+  const elapsed = Math.min(0.1, Math.max(0, (now - speechMeterUpdatedAt) / 1000));
+  speechMeterUpdatedAt = now;
+  // Some browser voices never emit boundaries. Blend in an estimated rhythm
+  // only while playback is active and the real visual signal is unavailable.
+  const targetMix = Math.max(0, Math.min(1, (boundaryAge - 450) / 250));
+  estimatedSpeechMix += (targetMix - estimatedSpeechMix)
+    * (1 - Math.exp(-elapsed / 0.18));
+  const seconds = (now - speechMeterStartedAt) / 1000 * speechMeterRate;
+  const syllable = 0.5 + 0.5 * Math.sin(seconds * Math.PI * 4);
+  const phrase = 0.65 + 0.35 * Math.sin(seconds * Math.PI * 0.7 + 0.6);
+  const estimatedLevel = 0.08 + 0.40 * syllable * syllable * phrase;
+  const boundaryLevel = 0.025 + 0.8 * Math.exp(-boundaryAge / 120);
+  return boundaryLevel * (1 - estimatedSpeechMix) + estimatedLevel * estimatedSpeechMix;
 }
 
 // Decode a separate copy for visual metering without rerouting audible playback.
@@ -280,7 +307,7 @@ function speakWithSpeechSynthesis(
 
     utterance.onboundary = () => { lastSpeechBoundary = performance.now(); };
     utterance.onstart = () => {
-      lastSpeechBoundary = performance.now();
+      startSpeechMeter(utterance.rate);
       isAudioPlaying = true;
       options?.onStart?.();
     };
@@ -390,6 +417,7 @@ async function speakWithKokoroBackend(
     };
 
     audio.onplay = () => {
+      startSpeechMeter(options?.speed || 0.92);
       isAudioPlaying = true;
       options?.onStart?.();
     };
