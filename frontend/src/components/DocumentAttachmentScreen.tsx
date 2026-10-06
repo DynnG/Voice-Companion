@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { AttachedDocument, DocumentCategory } from '../types/conversation';
 import { extractDocumentText, validateJobTitle } from '../services/sttService';
 import { VoiceCreature } from './VoiceCreature';
-import { ArrowRight, FileText, Lightbulb, Mic, UploadCloud, AlertCircle } from 'lucide-react';
+import { ArrowRight, FileText, Lightbulb, Mic, UploadCloud, AlertCircle, LoaderCircle } from 'lucide-react';
 
 interface DocumentAttachmentScreenProps {
   initialJobRole?: string;
@@ -664,12 +664,14 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
         </p>
           <button
             type="button"
-            className="btn-saffron-sm setup-start-button"
+            className={`btn-saffron-sm setup-start-button ${isStarting ? 'setup-start-button--loading' : ''}`}
             onClick={handleStartInterview}
             disabled={isStarting}
+            aria-busy={isStarting}
+            aria-label={isStarting ? 'Starting interview' : 'Start interview'}
             id="startBtn"
           >
-            <Mic size={20} aria-hidden="true" />
+            {isStarting ? <LoaderCircle size={20} className="setup-start-spinner" aria-hidden="true" /> : <Mic size={20} aria-hidden="true" />}
             <span>Start interview</span>
             <ArrowRight size={20} aria-hidden="true" />
           </button>

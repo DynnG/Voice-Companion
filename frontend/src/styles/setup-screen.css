@@ -1035,3 +1035,20 @@
 .setup-jin .setup-job-error-icon { color: #ef4444; }
 
 .setup-unbroken-term { white-space: nowrap; }
+
+.setup-start-action .setup-start-button--loading:disabled {
+  opacity: 1;
+  background: #f7bf64;
+  color: #133020;
+  animation: setup-start-glow 1.8s ease-in-out infinite;
+}
+.setup-start-spinner { animation: setup-start-spin .9s linear infinite; }
+@keyframes setup-start-spin { to { transform: rotate(360deg); } }
+@keyframes setup-start-glow {
+  0%, 100% { box-shadow: 0 0 12px rgba(255, 179, 71, .16); }
+  50% { box-shadow: 0 0 24px rgba(255, 179, 71, .32); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .setup-start-spinner,
+  .setup-start-action .setup-start-button--loading:disabled { animation: none; }
+}
