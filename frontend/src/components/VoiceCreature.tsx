@@ -32,6 +32,7 @@ const DEFAULT_CONFIG: Required<VoiceReactiveConfig> = {
 
 export interface VoiceCreatureProps {
   state: VoiceState;
+  celebration?: number;
   gesture?: 'no' | null;
   onGestureEnd?: () => void;
   onTap?: () => void;
@@ -275,8 +276,13 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
   compact,
   respectReducedMotion = false,
   visualState,
-  ambientLoop = false
+  ambientLoop = false,
+  celebration = 0
 }) => {
+  const burstStartedRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (celebration > 0) burstStartedRef.current = performance.now();
+  }, [celebration]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const currentStateRef = useRef<VoiceState>(state);
@@ -1019,9 +1025,21 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
           handCoords.push({ x: px, y: py });
         }
 
+        const burstAge = burstStartedRef.current === null ? 2 : (performance.now() - burstStartedRef.current) / 1000;
+        const burst = burstAge < 1.4 && !isMotionReduced() && gatherWeight < 0.001;
+        if (burst) {
+          const progress = burstAge / 1.4;
+          const launch = 1 - Math.pow(1 - Math.min(1, progress / .65), 3);
+          const burstAngle = (i / motes.length) * Math.PI * 2;
+          const distance = dynBaseR * (.7 + .75 * launch);
+          px = cx + Math.cos(burstAngle) * distance;
+          py = cy + Math.sin(burstAngle) * distance + dynBaseR * .22 * progress * progress;
+          px = Math.max(8, Math.min(W - 8, px));
+          py = Math.max(8, Math.min(H - 8, py));
+        }
         const twinkle = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * (1.6 + (currentName === 'listening' ? smoothedMicLevel * 1.2 : 0)) + m.phase));
-        const alpha = (0.55 * twinkle) * (1 - gatherWeight * 0.3) + 0.88 * gatherWeight;
-        const pSize = m.size * (1 + gatherWeight * 0.5);
+        const alpha = burst ? Math.max(0, 1 - burstAge / 1.4) : (0.55 * twinkle) * (1 - gatherWeight * 0.3) + 0.88 * gatherWeight;
+        const pSize = m.size * (burst ? 1.6 : 1 + gatherWeight * 0.5);
 
         ctx.beginPath();
         ctx.arc(px, py, pSize, 0, Math.PI * 2);
