@@ -334,6 +334,79 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
     let cx = 0;
     let cy = 0;
     let canvasPadding = { left: 0, right: 0, top: 0, bottom: 0 };
+    let pointer: { x: number; y: number } | null = null;
+    let pointerPressed = false;
+    let grabbedPointer: number | null = null;
+    let grabX = 0;
+    let grabY = 0;
+    let grabFollowX = 0;
+    let grabFollowY = 0;
+    let contactAngle = 0;
+    let contactStrength = 0;
+    let contactVelocity = 0;
+    let followX = 0;
+    let followY = 0;
+    let followVelocityX = 0;
+    let followVelocityY = 0;
+    let hitOutline: { x: number; y: number }[] = [];
+
+    const movePointer = (event: PointerEvent) => {
+      const rect = wrap.getBoundingClientRect();
+      pointer = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      if (isMotionReduced()) draw();
+    };
+    const leavePointer = () => {
+      if (grabbedPointer !== null) return;
+      pointer = null;
+      pointerPressed = false;
+      if (isMotionReduced()) draw();
+    };
+    const pressPointer = (event: PointerEvent) => {
+      pointerPressed = true;
+      movePointer(event);
+      if (ambientLoop && pointer && touchesOrb()) {
+        grabbedPointer = event.pointerId;
+        grabX = pointer.x;
+        grabY = pointer.y;
+        grabFollowX = followX;
+        grabFollowY = followY;
+        wrap.setPointerCapture(event.pointerId);
+      }
+    };
+    const releasePointer = (event: PointerEvent) => {
+      pointerPressed = false;
+      if (grabbedPointer !== null) {
+        const id = grabbedPointer;
+        grabbedPointer = null;
+        if (wrap.hasPointerCapture(id)) wrap.releasePointerCapture(id);
+        const rect = wrap.getBoundingClientRect();
+        if (event.clientX < rect.left || event.clientX > rect.right
+          || event.clientY < rect.top || event.clientY > rect.bottom) pointer = null;
+      }
+      if (event.pointerType === 'touch') pointer = null;
+      if (isMotionReduced()) draw();
+    };
+    const cancelPointer = () => {
+      grabbedPointer = null;
+      leavePointer();
+    };
+    wrap.addEventListener('pointermove', movePointer, { passive: true });
+    wrap.addEventListener('pointerleave', leavePointer);
+    wrap.addEventListener('pointerdown', pressPointer, { passive: true });
+    wrap.addEventListener('pointercancel', cancelPointer);
+    wrap.addEventListener('lostpointercapture', cancelPointer);
+    window.addEventListener('pointerup', releasePointer);
+
+    function touchesOrb(): boolean {
+      if (!pointer) return false;
+      let inside = false;
+      for (let i = 0, j = hitOutline.length - 1; i < hitOutline.length; j = i++) {
+        const a = hitOutline[i], b = hitOutline[j];
+        if ((a.y > pointer.y) !== (b.y > pointer.y)
+          && pointer.x < (b.x - a.x) * (pointer.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+      }
+      return inside;
+    }
 
     function resize() {
       if (!wrap || !canvas || !ctx) return;
@@ -422,8 +495,9 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       return getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#4b5675';
     }
 
-    function blobPoints(baseR: number, amp: number, lobes: number, phase: number, n: number = 72, rotation = rot) {
+    function blobPoints(baseR: number, amp: number, lobes: number, phase: number, n: number = 72, rotation = rot, saveHitOutline = false) {
       const pts = [];
+      const outline: { x: number; y: number }[] = [];
       let listeningMean = 0;
       if (listeningMix > 0) {
         const flowPhase = phase + listeningPhase - phaseAccumulator;
@@ -465,8 +539,23 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
           ? originalSurface * (1 - listeningMix) + (listeningSurface[i] - listeningMean) * listeningMix
           : originalSurface;
         const r = baseR * (1 + amp * surface);
-        pts.push({ x: cx + Math.cos(a + rotation) * r, y: cy + Math.sin(a + rotation) * r });
+        const worldAngle = a + rotation;
+        if (saveHitOutline) outline.push({ x: cx + followX + Math.cos(worldAngle) * r, y: cy + followY + Math.sin(worldAngle) * r });
+        // Local pressure creates a soft dent with small neighboring shoulders.
+        // It overlays the live shape, so speech and state motion stay intact.
+        const distance = Math.atan2(Math.sin(worldAngle - contactAngle), Math.cos(worldAngle - contactAngle));
+        const dent = Math.exp(-distance * distance / 0.18);
+        const shoulders = Math.exp(-Math.pow(Math.abs(distance) - 0.65, 2) / 0.13);
+        const touchOffset = contactStrength * baseR * (-dent + 0.35 * shoulders);
+        // The setup bubble softly stretches along the pointer's pull and glide.
+        const stretch = ambientLoop
+          ? Math.min(0.045, Math.hypot(followX, followY) / baseR * 0.25
+            + Math.hypot(followVelocityX, followVelocityY) / baseR * 0.015)
+          : 0;
+        const followOffset = baseR * stretch * Math.cos(2 * (worldAngle - contactAngle));
+        pts.push({ x: cx + followX + Math.cos(worldAngle) * (r + touchOffset + followOffset), y: cy + followY + Math.sin(worldAngle) * (r + touchOffset + followOffset) });
       }
+      if (saveHitOutline) hitOutline = outline;
       return pts;
     }
 
@@ -493,6 +582,55 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       const now = performance.now();
       const elapsed = Math.min((now - lastFrameTime) / 1000, 0.05);
       lastFrameTime = now;
+      const dragging = ambientLoop && grabbedPointer !== null;
+      const touching = dragging || touchesOrb();
+      const pressure = touching
+        ? ambientLoop ? (pointerPressed ? 0.16 : 0.09) : (pointerPressed ? 0.11 : 0.065)
+        : 0;
+      const followLimit = Math.min(W, H) * 0.28 * (dragging ? 0.32 : 0.12);
+      const pointerDistance = pointer ? Math.hypot(pointer.x - cx, pointer.y - cy) : 0;
+      const followAmount = ambientLoop && touching && pointerDistance > 0
+        ? Math.min(0.16, followLimit / pointerDistance)
+        : 0;
+      let targetFollowX = pointer ? (pointer.x - cx) * followAmount : 0;
+      let targetFollowY = pointer ? (pointer.y - cy) * followAmount : 0;
+      if (dragging && pointer) {
+        targetFollowX = grabFollowX + (pointer.x - grabX) * 0.55;
+        targetFollowY = grabFollowY + (pointer.y - grabY) * 0.55;
+        const pull = Math.hypot(targetFollowX, targetFollowY);
+        if (pull > followLimit) {
+          targetFollowX *= followLimit / pull;
+          targetFollowY *= followLimit / pull;
+        }
+      }
+      if (touching && pointer) {
+        const targetAngle = Math.atan2(pointer.y - cy, pointer.x - cx);
+        const delta = Math.atan2(Math.sin(targetAngle - contactAngle), Math.cos(targetAngle - contactAngle));
+        contactAngle = isMotionReduced()
+          ? targetAngle
+          : contactAngle + delta * (1 - Math.exp(-elapsed / (ambientLoop ? 0.13 : 0.09)));
+      }
+      if (isMotionReduced()) {
+        contactStrength = pressure * 0.5;
+        contactVelocity = 0;
+        followX = targetFollowX * 0.5;
+        followY = targetFollowY * 0.5;
+        followVelocityX = followVelocityY = 0;
+      } else {
+        // Substeps keep the damped spring stable even during a slow frame.
+        const steps = Math.max(1, Math.ceil(elapsed / 0.008));
+        const dt = elapsed / steps;
+        for (let i = 0; i < steps; i++) {
+          contactVelocity += ((pressure - contactStrength) * 110 - contactVelocity * 19) * dt;
+          contactStrength += contactVelocity * dt;
+          const followSpring = ambientLoop ? (dragging ? 80 : 65) : 120;
+          const followDamping = ambientLoop ? (dragging ? 18 : 14) : 20;
+          followVelocityX += ((targetFollowX - followX) * followSpring - followVelocityX * followDamping) * dt;
+          followVelocityY += ((targetFollowY - followY) * followSpring - followVelocityY * followDamping) * dt;
+          followX += followVelocityX * dt;
+          followY += followVelocityY * dt;
+        }
+      }
       t += isMotionReduced() ? 0 : elapsed;
       const currentName = currentStateRef.current;
       const visual = ambientLoop ? 'idle' : visualStateRef.current;
@@ -943,8 +1081,8 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       // Center is completely stationary for listening and speaking (no left/right sway or orbit)
       const floatX = isSpeech ? 0 : visual ? Math.sin(t * 0.35) * dynBaseR * 0.08 : 0;
       const floatY = isSpeech ? 0 : visual ? Math.cos(t * 0.28) * dynBaseR * 0.06 : 0;
-      const centerX = cx + floatX;
-      const centerY = cy + floatY;
+      const centerX = cx + floatX + followX;
+      const centerY = cy + floatY + followY;
 
       // Transparent fluid layers behind the orb (translucent echoes/silhouettes inspired by reference)
       function layer(scaleMult: number, alphaMult: number, phaseOffset: number, lobeOffset: number, tint?: string) {
@@ -965,7 +1103,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
         const sepFactor = isSpeech ? 0.60 + listeningLevel * 0.15 : 0.48;
         const sMult = 1.0 + (scaleMult - 1.0) * sepFactor;
         const layerAmp = isSpeech ? dynAmp * (0.75 + lobeOffset * 0.08) : dynAmp;
-        const pts = blobPoints(dynBaseR * sMult, layerAmp, effLobes, phase, listeningMix > 0 ? 70 : 64, layerRot);
+        const pts = blobPoints(dynBaseR * sMult, layerAmp, effLobes, phase, listeningMix > 0 ? 70 : 64, layerRot, lobeOffset === 2);
         smoothPath(pts);
         if (!ctx) return;
 
@@ -1034,6 +1172,13 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
     return () => {
       cancelAnimationFrame(animId);
       resizeObserver.disconnect();
+      window.removeEventListener('resize', resize);
+      wrap.removeEventListener('pointermove', movePointer);
+      wrap.removeEventListener('pointerleave', leavePointer);
+      wrap.removeEventListener('pointerdown', pressPointer);
+      wrap.removeEventListener('pointercancel', cancelPointer);
+      wrap.removeEventListener('lostpointercapture', cancelPointer);
+      window.removeEventListener('pointerup', releasePointer);
       redrawRef.current = null;
       if (respectReducedMotion) motionQuery.removeEventListener('change', handleMotionChange);
     };

@@ -238,11 +238,15 @@
 }
 
 .hero-orb .canvas-wrap.setup-idle-orb {
+  pointer-events: auto;
+  cursor: grab;
   width: 100%;
   height: 100%;
   min-height: 0;
   margin: 0;
 }
+
+.hero-orb .canvas-wrap.setup-idle-orb:active { cursor: grabbing; }
 
 @media (prefers-reduced-motion: reduce) {
   .hero-orb .canvas-wrap.setup-idle-orb { transition: none; }
@@ -1051,4 +1055,19 @@
 @media (prefers-reduced-motion: reduce) {
   .setup-start-spinner,
   .setup-start-action .setup-start-button--loading:disabled { animation: none; }
+}
+
+/* Mobile setup uses the visible viewport, including browser toolbar changes. */
+@media (max-width: 960px) {
+  .setup-shell {
+    height: 100vh;
+    height: 100svh;
+    height: 100dvh;
+  }
+  .setup-shell .app-workspace { min-height: 0; }
+  .setup-shell .setup-container.setup-container {
+    --setup-safe-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: calc(24px + var(--setup-safe-bottom));
+    scroll-padding-bottom: calc(24px + var(--setup-safe-bottom));
+  }
 }
