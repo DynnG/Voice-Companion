@@ -10,7 +10,7 @@
 
 .savi-skeleton--user-bubble .savi-skeleton-card {
   position: relative;
-  border: 0;
+  border: 1px solid rgba(var(--skeleton-color), .12);
   border-radius: 16px 2px 16px 16px;
   background: #ece8d6;
   box-shadow: 0 1px 2px rgba(19, 48, 32, .05);
