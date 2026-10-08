@@ -32,7 +32,7 @@ export const AppShell: React.FC<AppShellProps> = (props) => {
     isDownloadingReview = false,
   } = props;
   return (
-    <div className={`w-screen h-screen flex flex-col bg-[#030d08] text-[#F5EEDB] overflow-hidden select-none font-manrope relative ${isInterviewActive ? 'interview-shell' : ''}`}>
+    <div className={`w-screen h-screen flex flex-col bg-[#030d08] text-[#F5EEDB] overflow-hidden select-none font-manrope relative ${isInterviewActive ? 'interview-shell' : 'setup-shell'}`}>
       {/* ========================================================================= */}
       {/* 0. ATMOSPHERIC DEEP FOREST BACKGROUND (MATCHING REFERENCE SPECIFICATION) */}
       {/* 80-85% Dark Serpent (#133020) & deep emerald, 15-20% visible Saffron (#FFB347) */}
@@ -307,7 +307,7 @@ export const AppShell: React.FC<AppShellProps> = (props) => {
       )}
 
       {/* Main Layout Workspace */}
-      <div className="flex-1 flex overflow-hidden relative z-10">
+      <div className="app-workspace flex-1 flex overflow-hidden relative z-10">
         {children}
       </div>
     </div>
