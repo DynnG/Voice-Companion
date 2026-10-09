@@ -321,6 +321,8 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
     if (!canvas || !wrap) return;
+    const particleColorHost = ambientLoop ? wrap.closest<HTMLElement>('.setup-shell') : null;
+    let lastParticleColor = '';
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -849,6 +851,11 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       }
 
       const col = `${Math.round(colorMix.r)},${Math.round(colorMix.g)},${Math.round(colorMix.b)}`;
+      // Share the rendered color so background lights follow every blend and interaction.
+      if (particleColorHost && col !== lastParticleColor) {
+        particleColorHost.style.setProperty('--setup-particle-rgb', col);
+        lastParticleColor = col;
+      }
       const sec = hueShift(colorMix, ambientLoop ? 0 : visual ? 10 : 38);
       const secCol = `${sec.r},${sec.g},${sec.b}`;
 
@@ -1171,6 +1178,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
 
     return () => {
       cancelAnimationFrame(animId);
+      particleColorHost?.style.removeProperty('--setup-particle-rgb');
       resizeObserver.disconnect();
       window.removeEventListener('resize', resize);
       wrap.removeEventListener('pointermove', movePointer);

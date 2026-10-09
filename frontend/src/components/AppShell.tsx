@@ -1,5 +1,14 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Plus, MessageSquare, Download, CircleHelp } from 'lucide-react';
+
+// Stable, staggered paths distribute light throughout the page without clumps.
+const setupParticles = Array.from({ length: 52 }, (_, index) => {
+  const point = (step: number) => ({
+    x: 3 + ((index * 61.803 + step * 29) % 94),
+    y: 5 + ((index * 37.719 + step * 23) % 88),
+  });
+  return [point(0), point(1), point(2), point(3)];
+});
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -31,8 +40,76 @@ export const AppShell: React.FC<AppShellProps> = (props) => {
     onDownloadReview,
     isDownloadingReview = false,
   } = props;
+  const shellRef = useRef<HTMLDivElement>(null);
+  const particlesRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isSetupPage) return;
+    const shell = shellRef.current;
+    const particles = particlesRef.current;
+    if (!shell || !particles) return;
+    const cards = Array.from(shell.querySelectorAll<HTMLElement>('.setup-card, .setup-start-action, .setup-footer'));
+    const form = shell.querySelector<HTMLElement>('.setup-container');
+    let frame = 0;
+    const updateMask = () => {
+      frame = 0;
+      const action = shell.querySelector<HTMLElement>('.setup-start-action');
+      if (action) {
+        const rect = action.getBoundingClientRect();
+        shell.style.setProperty('--setup-content-width', `${rect.width}px`);
+        shell.style.setProperty('--setup-content-left', `${rect.left - shell.getBoundingClientRect().left}px`);
+      }
+      const bounds = particles.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return;
+      // Cut the cards out of the particle layer, including the small glow halo.
+      const cutouts = cards.map(card => {
+        const rect = card.getBoundingClientRect();
+        return `<rect x="${rect.left - bounds.left - 6}" y="${rect.top - bounds.top - 6}" width="${rect.width + 12}" height="${rect.height + 12}" rx="28" fill="black"/>`;
+      }).join('');
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${bounds.width}" height="${bounds.height}"><defs><mask id="clear"><rect width="100%" height="100%" fill="white"/>${cutouts}</mask></defs><rect width="100%" height="100%" fill="white" mask="url(#clear)"/></svg>`;
+      const mask = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+      particles.style.maskImage = mask;
+      particles.style.webkitMaskImage = mask;
+      particles.style.visibility = 'visible';
+    };
+    const scheduleMask = () => {
+      if (!frame) frame = window.requestAnimationFrame(updateMask);
+    };
+    const observer = new ResizeObserver(scheduleMask);
+    observer.observe(shell);
+    if (form) observer.observe(form);
+    cards.forEach(card => observer.observe(card));
+    shell.addEventListener('scroll', scheduleMask, true);
+    window.addEventListener('resize', scheduleMask);
+    updateMask();
+    return () => {
+      observer.disconnect();
+      shell.removeEventListener('scroll', scheduleMask, true);
+      window.removeEventListener('resize', scheduleMask);
+      window.cancelAnimationFrame(frame);
+    };
+  }, [isSetupPage]);
+  useEffect(() => {
+    if (isInterviewActive) return;
+    const shell = shellRef.current;
+    const viewport = window.visualViewport;
+    if (!shell || !viewport) return;
+    const updateHeight = () => {
+      // Keep pinch zoom independent; track browser bars and the keyboard at 1x.
+      if (viewport.scale === 1) {
+        shell.style.setProperty('--setup-visible-height', `${viewport.height}px`);
+      }
+    };
+    updateHeight();
+    viewport.addEventListener('resize', updateHeight);
+    window.addEventListener('resize', updateHeight);
+    return () => {
+      viewport.removeEventListener('resize', updateHeight);
+      window.removeEventListener('resize', updateHeight);
+      shell.style.removeProperty('--setup-visible-height');
+    };
+  }, [isInterviewActive]);
   return (
-    <div className={`w-screen h-screen flex flex-col bg-[#030d08] text-[#F5EEDB] overflow-hidden select-none font-manrope relative ${isInterviewActive ? 'interview-shell' : 'setup-shell'}`}>
+    <div ref={shellRef} className={`w-screen h-screen flex flex-col bg-[#030d08] text-[#F5EEDB] overflow-hidden select-none font-manrope relative ${isInterviewActive ? 'interview-shell' : 'setup-shell'}`}>
       {/* ========================================================================= */}
       {/* 0. ATMOSPHERIC DEEP FOREST BACKGROUND (MATCHING REFERENCE SPECIFICATION) */}
       {/* 80-85% Dark Serpent (#133020) & deep emerald, 15-20% visible Saffron (#FFB347) */}
@@ -191,6 +268,30 @@ export const AppShell: React.FC<AppShellProps> = (props) => {
           <circle cx="620" cy="790" r="1.2" fill="#FFB347" opacity="0.45" />
         </svg>
       </div>
+      )}
+
+      {isSetupPage && (
+        <div ref={particlesRef} className="setup-background-particles" aria-hidden="true" style={{ visibility: 'hidden' }}>
+          {setupParticles.map((points, index) => (
+            <span
+              key={index}
+              style={{
+                '--particle-x0': `${points[0].x}vw`,
+                '--particle-y0': `${points[0].y}vh`,
+                '--particle-x1': `${points[1].x}vw`,
+                '--particle-y1': `${points[1].y}vh`,
+                '--particle-x2': `${points[2].x}vw`,
+                '--particle-y2': `${points[2].y}vh`,
+                '--particle-x3': `${points[3].x}vw`,
+                '--particle-y3': `${points[3].y}vh`,
+                '--particle-size': `${[1.5, 2, 2.5, 3, 4][index % 5]}px`,
+                '--particle-duration': `${54 + (index % 5) * 8}s`,
+                '--particle-delay': `${-index * 2.7}s`,
+                '--particle-strength': index % 5 === 4 ? .85 : .65,
+              } as React.CSSProperties}
+            />
+          ))}
+        </div>
       )}
 
       {/* Top Application Shell Navbar - Seamlessly blended into atmospheric background (hidden during active interview) */}
