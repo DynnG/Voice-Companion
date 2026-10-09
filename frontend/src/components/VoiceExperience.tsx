@@ -5,6 +5,7 @@ import { VoiceCreature } from './VoiceCreature';
 import { StateLabel } from './StateLabel';
 
 import { CandidateCamera } from './CandidateCamera';
+import { displayCoachingNotes } from '../services/coachingNoteStyle';
 import { replayPlaybackTiming } from '../services/replayPlayback';
 import { VoiceControls } from './VoiceControls';
 import { updateSpeechEndpoint, SpeechEndpointState } from '../services/speechEndpoint';
@@ -171,6 +172,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
 
 
+  const [celebration, setCelebration] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
@@ -780,6 +782,12 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
       if (saved?.attempt1) replayHistoryRef.current.set(exchangeId, { ...saved, attempt1: { ...saved.attempt1, aiNotes: notesRes.notes || [], aiNotesStatus: notesRes.status === 'success' ? 'success' : 'error', errorMessage: notesRes.error_message } });
       if (notesRes.status === 'success' && notesRes.notes && notesRes.notes.length > 0) {
         onExchangeAiNotesUpdated?.(exchangeId, notesRes.notes);
+        const feedback = displayCoachingNotes(notesRes.notes);
+        if (feedback.some(note => note.kind === 'strength') &&
+            !feedback.some(note => note.kind === 'improvement') &&
+            currentExchangeIdRef.current === exchangeId) {
+          setCelebration(value => value + 1);
+        }
       }
       setReplayState((prev) => {
         if (!prev.attempt1 || prev.attempt1.audioBlob !== audioBlob) return prev;
@@ -1353,6 +1361,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             <div className="w-full flex items-center justify-center overflow-visible">
               <VoiceCreature
                 state={state}
+                celebration={celebration}
                 visualState={state === 'speaking' || state === 'listening' ? 'speaking' : state === 'thinking' && customLabel === 'transcribing answer…' ? 'transcribing' : 'idle'}
                 respectReducedMotion
                 gesture={creatureGesture}
