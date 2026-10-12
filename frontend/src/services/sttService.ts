@@ -32,6 +32,7 @@ export interface AttachedDocumentPayload {
 }
 
 export interface TranscribeContext {
+  language?: string;
   jobRole?: string;
   attachedDocuments?: AttachedDocumentPayload[];
   history?: ConversationHistoryItem[];
@@ -129,6 +130,7 @@ export async function transcribeAudio(
     ext = 'm4a';
   }
 
+  if (context?.language) formData.append('language', context.language.split('-')[0]);
   formData.append('file', audioBlob, `recording.${ext}`);
   if (import.meta.env.DEV) {
     console.info('[Audio diagnostic] Upload', { filename: `recording.${ext}`, contentType: audioBlob.type, bytes: audioBlob.size });
@@ -363,7 +365,8 @@ export async function fetchFollowupInterviewQuestion(
   jobRole?: string,
   conversationHistory?: ConversationHistoryItem[],
   attachedDocuments?: AttachedDocumentPayload[],
-  interviewId?: string
+  interviewId?: string,
+  responseLanguage?: string
 ): Promise<FollowupQuestionResult> {
   const baseUrl = getApiBaseUrl();
   const apiUrl = `${baseUrl}/interview/followup`;
@@ -373,6 +376,7 @@ export async function fetchFollowupInterviewQuestion(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        response_language: responseLanguage || 'en-US',
         user_answer: userAnswer,
         job_role: jobRole || 'Software Developer',
         conversation_history: conversationHistory || [],
@@ -439,6 +443,7 @@ export interface AnswerComparisonResult {
 }
 
 export async function fetchAnswerAiNotes(params: {
+  responseLanguage?: string;
   interviewId?: string;
   question: string;
   userAnswer: string;
@@ -457,6 +462,7 @@ export async function fetchAnswerAiNotes(params: {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         interview_id: params.interviewId,
+        response_language: params.responseLanguage || 'en-US',
         question: params.question,
         user_answer: params.userAnswer,
         job_role: params.jobRole || 'Software Developer',

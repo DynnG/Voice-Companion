@@ -103,6 +103,17 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [reduceMotion, setReduceMotion] = useState(false);
+  const voiceLanguageLabel = (locale: string) => {
+    try {
+      const parsed = new Intl.Locale(locale.replace(/_/g, '-'));
+      const languages = new Intl.DisplayNames(['en'], { type: 'language' });
+      const regions = new Intl.DisplayNames(['en'], { type: 'region' });
+      const name = languages.of(parsed.language) || parsed.language;
+      return parsed.region ? `${name} (${regions.of(parsed.region) || parsed.region})` : name;
+    } catch {
+      return locale;
+    }
+  };
   const [voiceLanguage, setVoiceLanguage] = useState('');
   const [voiceLanguages, setVoiceLanguages] = useState<string[]>([]);
   const voiceLanguageRef = useRef('');
@@ -782,6 +793,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
     // Fire AI notes generation asynchronously (does NOT delay interview turn)
     fetchAnswerAiNotes({
+      responseLanguage: voiceLanguageRef.current || 'en-US',
       interviewId,
       question: questionAnswered,
       userAnswer: userText,
@@ -923,7 +935,8 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
         content: d.content || d.extractedText,
         extracted_text: d.content || d.extractedText
       })),
-      interviewId
+      interviewId,
+      voiceLanguageRef.current || 'en-US'
     );
 
     const aiResponse = followupResult.response;
@@ -1063,6 +1076,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
     try {
       // Step 1: Faster-whisper Speech-to-Text transcription ONLY
       const result = await transcribeAudio(audioBlob, {
+        language: voiceLanguageRef.current || 'en-US',
         jobRole,
         generateAiResponse: false
       });
@@ -1277,10 +1291,10 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
             {settingsOpen && <section id="interview-settings" aria-label="Interview settings" onKeyDown={event => { if (event.key === 'Escape') setSettingsOpen(false); }} className="absolute right-0 top-12 z-50 w-72 rounded-2xl border border-[#8EB69B]/30 bg-[#14271d] p-4 shadow-xl text-[#F5EEDB]">
               <div className="flex items-center justify-between mb-3"><h2 className="text-sm font-semibold">Interview settings</h2><button type="button" aria-label="Close settings" onClick={() => setSettingsOpen(false)} className="p-1"><X size={16}/></button></div>
               <label className="flex items-center justify-between gap-3 py-3 text-sm"><span>Savi voice</span><input type="checkbox" checked={voiceEnabled} onChange={event => { const enabled = event.target.checked; voiceEnabledRef.current = enabled; setVoiceEnabled(enabled); if (!enabled) { stopSpeaking(); setState('idle'); setCustomLabel(undefined); } }} className="accent-[#FFB347] w-4 h-4" /></label>
-              <label className="block py-3 text-sm border-t border-white/10"><span>Voice language</span><select value={voiceLanguage} onChange={event => { voiceLanguageRef.current = event.target.value; setVoiceLanguage(event.target.value); }} className="mt-2 w-full rounded-lg border border-[#8EB69B]/30 bg-[#14271d] p-2 text-[#F5EEDB]" disabled={!voiceEnabled}>
-                <option value="">Automatic English voice</option>
-                {voiceLanguages.map(language => <option key={language} value={language}>{language}</option>)}
-              </select><span className="block mt-1 text-xs text-[#8EB69B]">Available browser voices. Questions stay in English.</span></label>
+              <label className="block py-3 text-sm border-t border-white/10"><span>Interview language</span><select value={voiceLanguage} onChange={event => { voiceLanguageRef.current = event.target.value; setVoiceLanguage(event.target.value); }} className="mt-2 w-full rounded-lg border border-[#8EB69B]/30 bg-[#14271d] p-2 text-[#F5EEDB]" disabled={!voiceEnabled}>
+                <option value="">English (automatic voice)</option>
+                {voiceLanguages.map(language => <option key={language} value={language}>{voiceLanguageLabel(language)}</option>)}
+              </select><span className="block mt-1 text-xs text-[#8EB69B]">Applies to new replies, feedback, and spoken answers.</span></label>
               <label className="flex items-center justify-between gap-3 py-3 text-sm border-t border-white/10"><span>Reduce orb motion</span><input type="checkbox" checked={reduceMotion} onChange={event => setReduceMotion(event.target.checked)} className="accent-[#FFB347] w-4 h-4" /></label>
               <label className="flex items-center justify-between gap-3 py-3 text-sm border-t border-white/10"><span>Camera analysis</span><input type="checkbox" checked={isCameraActive} onChange={() => cameraToggleFnRef.current?.()} className="accent-[#FFB347] w-4 h-4" /></label>
               <p className="text-xs text-[#8EB69B] mt-2">Applies to this interview screen.</p>

@@ -191,6 +191,7 @@ class InitialQuestionRequest(BaseModel):
     attached_documents: Optional[List[Dict[str, Any]]] = None
 
 class FollowupRequest(BaseModel):
+    response_language: str = "en-US"
     interview_id: Optional[str] = None
     user_answer: str
     job_role: Optional[str] = "Software Developer"
@@ -228,6 +229,7 @@ class TTSRequest(BaseModel):
     speed: Optional[float] = DEFAULT_KOKORO_SPEED
 
 class AnswerNotesRequest(BaseModel):
+    response_language: str = "en-US"
     interview_id: Optional[str] = None
     question: str
     user_answer: str
@@ -552,6 +554,7 @@ async def generate_followup(req: FollowupRequest, db: Session = Depends(get_db))
 
     gemini = GeminiInterviewService.get_instance()
     result = await gemini.generate_interview_followup(
+        response_language=req.response_language,
         user_answer=req.user_answer,
         conversation_history=req.conversation_history,
         job_role=role,
@@ -611,6 +614,7 @@ async def get_answer_notes(req: AnswerNotesRequest, db: Session = Depends(get_db
     effective_docs = get_effective_interview_documents(req.interview_id, req.attached_documents, db)
     gemini = GeminiInterviewService.get_instance()
     res = await gemini.generate_answer_ai_notes(
+        response_language=req.response_language,
         question=req.question,
         user_answer=req.user_answer,
         job_role=req.job_role,

@@ -942,7 +942,8 @@ class GeminiInterviewService:
         conversation_history: Optional[List[Dict[str, str]]] = None,
         job_role: Optional[str] = None,
         attached_docs: Optional[List[Dict[str, Any]]] = None,
-        interview_id: Optional[str] = None
+        interview_id: Optional[str] = None,
+        response_language: str = "en-US"
     ) -> Dict[str, Any]:
         """
         Analyze the candidate's answer and generate the next interview question or closing statement.
@@ -1140,7 +1141,7 @@ class GeminiInterviewService:
 
         try:
             logger.info(f"[Whisper->Gemini] Sending turn {user_turn_count} request to Gemini API ({self.get_model_name()})...")
-            raw_response = await self._call_gemini_api(contents=contents, api_key=api_key, enforce_json=True)
+            raw_response = await self._call_gemini_api(contents=contents, api_key=api_key, enforce_json=True, response_language=response_language)
             result = parse_gemini_interview_json(
                 raw_response,
                 clean_answer=clean_answer,
@@ -1201,7 +1202,8 @@ class GeminiInterviewService:
         contents: List[Dict[str, Any]],
         api_key: Optional[str] = None,
         enforce_json: bool = False,
-        system_instruction: Optional[str] = None
+        system_instruction: Optional[str] = None,
+        response_language: str = "en-US"
     ) -> str:
         """
         Execute request to Google Generative Language API.
@@ -1214,6 +1216,10 @@ class GeminiInterviewService:
 
         last_exception = None
         instruction_text = system_instruction or INTERVIEW_SYSTEM_PROMPT
+        import re
+        locale = response_language if re.fullmatch(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*", response_language or "") else "en-US"
+        instruction_text += f"\nLANGUAGE REQUIREMENT: Write all user-facing questions, replies, and coaching notes in the language of locale {locale}. Translate the meaning rather than imitating an accent. Preserve JSON field names and boolean values. This overrides any earlier English-only examples."
+
 
         for model_name in unique_models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
@@ -1388,7 +1394,8 @@ class GeminiInterviewService:
         interview_id: Optional[str] = None,
         duration_seconds: Optional[float] = None,
         hesitation_evidence: Optional[Dict[str, Any]] = None,
-        input_method: Optional[str] = None
+        input_method: Optional[str] = None,
+        response_language: str = "en-US"
     ) -> Dict[str, Any]:
         """
         Use Gemini to analyze the candidate's latest answer and generate SHORT, actionable coaching notes.
@@ -1467,7 +1474,8 @@ class GeminiInterviewService:
                 contents=[{"role": "user", "parts": [{"text": prompt}]}],
                 api_key=api_key,
                 enforce_json=True,
-                system_instruction=REPLAY_NOTES_SYSTEM_PROMPT
+                system_instruction=REPLAY_NOTES_SYSTEM_PROMPT,
+                response_language=response_language
             )
             parsed_notes = self._parse_json_notes(raw_text)
             if not parsed_notes:
