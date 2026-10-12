@@ -138,4 +138,6 @@ Root `.gitignore` applies to both applications. Dependencies, build outputs, Pyt
 
 ## Documentation References
 
+See the [simple Savi user guide](SAVI_GUIDE.md) for setup, interview practice, feedback, and downloading a review.
+
 See [backend documentation](backend/README.md) and the [STT deployment policy](backend/STT_DEPLOYMENT.md).
