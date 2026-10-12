@@ -170,6 +170,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+
   // Upload and text extraction
   const addFiles = useCallback(async (incoming: FileList | File[]) => {
     const fileArray = Array.from(incoming);
@@ -414,6 +415,7 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
   };
 
   return (
+    <div className="setup-page">
     <div
       className="setup-container relative w-full h-full overflow-y-auto flex flex-col justify-start"
     >
@@ -676,6 +678,14 @@ export const DocumentAttachmentScreen: React.FC<DocumentAttachmentScreenProps> =
             <ArrowRight size={20} aria-hidden="true" />
           </button>
       </div>
+    </div>
+      <footer className="setup-footer" aria-label="Savi footer">
+        <div className="setup-footer-brand">
+          <span className="setup-footer-name">Savi</span>
+          <span>Practice with confidence.</span>
+        </div>
+        <small>&copy; {new Date().getFullYear()} Savi</small>
+      </footer>
     </div>
   );
 };

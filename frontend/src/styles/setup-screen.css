@@ -143,7 +143,7 @@
   .setup-grid {
     height: auto;
     flex: none;
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto auto;
     gap: 12px;
   }
@@ -290,7 +290,10 @@
 
 .setup-start-action .setup-start-button {
   align-self: center;
-  min-width: 220px;
+  width: 220px;
+  max-width: 100%;
+  min-width: 0;
+  justify-self: end;
   min-height: 44px;
   margin: 0;
   padding: 10px 20px;
@@ -308,10 +311,15 @@
   box-shadow: none;
 }
 
-@media (max-width: 960px) {
-  .setup-start-action { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .setup-start-action { padding: 14px; }
-  .setup-start-action .setup-start-button { min-width: 0; width: 100%; }
+/* Narrow desktop windows keep a compact action instead of stretching it. */
+@media (max-width: 600px) {
+  .setup-start-action { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px; }
+  .setup-start-action .setup-start-button { min-width: 0; width: 220px; max-width: 100%; justify-self: end; }
+}
+/* Phone rows can stack, but the button retains its compact width. */
+@media (max-width: 960px) and (pointer: coarse) {
+  .setup-start-action { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px; }
+  .setup-start-action .setup-start-button { min-width: 0; width: 220px; max-width: 100%; justify-self: end; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1059,15 +1067,254 @@
 
 /* Mobile setup uses the visible viewport, including browser toolbar changes. */
 @media (max-width: 960px) {
-  .setup-shell {
+  .setup-shell.setup-shell {
     height: 100vh;
     height: 100svh;
     height: 100dvh;
+    height: min(100dvh, var(--setup-visible-height, 100dvh));
   }
   .setup-shell .app-workspace { min-height: 0; }
   .setup-shell .setup-container.setup-container {
     --setup-safe-bottom: env(safe-area-inset-bottom, 0px);
-    padding-bottom: calc(24px + var(--setup-safe-bottom));
-    scroll-padding-bottom: calc(24px + var(--setup-safe-bottom));
+    padding-bottom: calc(32px + var(--setup-safe-bottom));
+    scroll-padding-bottom: calc(32px + var(--setup-safe-bottom));
+  }
+}
+
+/* Narrow windows use the same readable action layout as phones. */
+@media (max-width: 960px) {
+  .setup-shell .setup-start-action {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 12px;
+  }
+  .setup-shell .setup-start-action .setup-bottom-guidance {
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .setup-shell .setup-start-action .setup-bottom-guidance > svg { width: 20px; height: 20px; }
+  .setup-shell .setup-start-action .setup-start-button {
+    width: clamp(158px, 44vw, 220px);
+    padding: 10px 12px;
+    gap: 6px;
+    font-size: clamp(12px, 3.2vw, 14px);
+    justify-self: end;
+  }
+  .setup-shell .setup-start-action .setup-start-button > svg { width: 18px; height: 18px; }
+}
+
+/* Small ambient lights cross the page without intercepting controls. */
+.setup-background-particles {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  overflow: hidden;
+  pointer-events: none;
+}
+.setup-background-particles > span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate3d(var(--particle-x0), var(--particle-y0), 0);
+  width: var(--particle-size);
+  height: var(--particle-size);
+  border-radius: 50%;
+  background: rgb(var(--setup-particle-rgb, 142, 182, 155));
+  box-shadow: 0 0 6px 2px rgba(var(--setup-particle-rgb, 142, 182, 155), .48), 0 0 13px rgba(var(--setup-particle-rgb, 142, 182, 155), .24);
+  opacity: calc(.55 * var(--particle-strength));
+  animation: setup-particle-drift var(--particle-duration) ease-in-out var(--particle-delay) infinite;
+}
+@keyframes setup-particle-drift {
+  0%, 100% { transform: translate3d(var(--particle-x0), var(--particle-y0), 0); opacity: calc(.5 * var(--particle-strength)); }
+  25% { transform: translate3d(var(--particle-x1), var(--particle-y1), 0); opacity: calc(.75 * var(--particle-strength)); }
+  50% { transform: translate3d(var(--particle-x2), var(--particle-y2), 0); opacity: calc(.45 * var(--particle-strength)); }
+  75% { transform: translate3d(var(--particle-x3), var(--particle-y3), 0); opacity: calc(.65 * var(--particle-strength)); }
+}
+@media (max-width: 600px) {
+  .setup-background-particles > span:nth-child(n + 35) { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .setup-background-particles > span { animation: none; opacity: calc(.55 * var(--particle-strength)); }
+}
+
+.setup-footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  gap: 12px;
+  width: 100%;
+  max-width: 1440px;
+  box-sizing: border-box;
+  margin: 16px auto 0;
+  padding: 6px 4px 0;
+  border-top: 1px solid rgba(218, 241, 222, .1);
+  color: rgba(218, 241, 222, .65);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.setup-footer-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.setup-footer-name { font-family: 'Fraunces', serif; font-size: 16px; color: var(--paper); }
+.setup-footer small { font-size: inherit; flex-shrink: 0; }
+@media (max-width: 600px) {
+  .setup-footer { gap: 8px; }
+  .setup-footer-brand { gap: 8px; }
+}
+
+/* Reserve the footer's own space; only the form above it scrolls. */
+.setup-page {
+  --paper: #f5eedb;
+  --saffron: #FFB347;
+  --earth: #FFC370;
+  --serpent: #133020;
+  --pill: 999px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  font-family: 'Manrope', system-ui, sans-serif;
+}
+.setup-shell .setup-page > .setup-container.setup-container {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+  padding-bottom: 16px;
+  scroll-padding-bottom: 16px;
+}
+.setup-page > .setup-footer {
+  width: var(--setup-content-width, calc(100% - 40px));
+  margin: 0 0 0 var(--setup-content-left, 20px);
+}
+
+/* Trim vertical spacing on shorter desktops without scaling or hiding controls. */
+@media (min-width: 961px) and (max-height: 800px) {
+  .setup-shell .setup-page > .setup-container.setup-container { padding-bottom: 8px; }
+  #setup { gap: 8px; }
+  #setup > .setup-hero { padding-block: 2px; }
+  .hero-orb { width: min(100%, clamp(140px, 20vh, 180px)); }
+  .setup-tag { padding: 3px 10px; margin-bottom: 6px; }
+  .setup-hero h1 { font-size: clamp(28px, 2.5vw, 36px); margin-bottom: 8px; }
+  .setup-hero p { font-size: 13px; }
+  .setup-card.setup-job-card, .setup-card.setup-doc-card { padding: 10px 16px; }
+  .setup-job-heading { margin-bottom: 8px; }
+  .setup-job-heading .setup-usub { font-size: 12px; line-height: 1.4; }
+  .setup-job-card .setup-jlbl { margin: 8px 0 6px; }
+  .setup-job-card .setup-chips { gap: 5px; }
+  .setup-job-card .setup-chip { min-height: 30px; padding: 4px 9px; }
+  .setup-doc-card .setup-drop { min-height: 114px; padding: 8px 10px; gap: 2px; }
+  .setup-doc-card .setup-drop > svg { width: 24px; height: 24px; margin-bottom: 0; }
+  .setup-doc-card .setup-drop strong { font-size: 14px; }
+  .setup-doc-card .setup-sup { font-size: 10px; line-height: 1.35; }
+  .setup-doc-card .setup-uf { margin-top: 8px; }
+  .setup-doc-card .setup-fhead { margin-bottom: 4px; }
+  .setup-doc-card .setup-empty { padding-block: 4px; font-size: 12px; gap: 4px; }
+  .setup-doc-card .setup-empty-description { font-size: 11px; line-height: 1.4; }
+  .setup-start-action { margin-top: 8px; padding-block: 8px; }
+}
+
+@media (min-width: 961px) and (max-height: 680px) {
+  .setup-header { height: 48px; }
+  .hero-orb { width: min(100%, 120px); }
+  .setup-tag { padding-block: 2px; margin-bottom: 4px; }
+  .setup-hero h1 { font-size: 28px; margin-bottom: 6px; }
+  .setup-hero p { font-size: 12px; line-height: 1.35; }
+}
+
+/* Desktop rows share the actual space left by the header and compact footer. */
+@media (min-width: 961px) and (hover: hover) and (pointer: fine) {
+  .setup-shell .setup-page > .setup-container.setup-container {
+    container-type: size;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-content: stretch;
+    grid-template-rows: minmax(0, 1fr) auto;
+    row-gap: 10px;
+    overflow: hidden;
+  }
+  .setup-shell #setup {
+    height: 100%;
+    min-height: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 12px;
+    flex: none;
+  }
+  .setup-shell #setup > .setup-hero {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    padding: 4px 20px;
+    gap: 24px;
+  }
+  .setup-shell .hero-orb { width: min(100%, clamp(120px, 28cqh, 320px)); }
+  .setup-shell .setup-start-action { margin-top: 0; }
+  .setup-shell .setup-card { min-height: 0; height: 100%; }
+  @container (max-height: 620px) {
+    .setup-shell #setup { gap: 8px; }
+    .setup-shell .hero-orb { width: min(100%, 120px); }
+    .setup-shell .setup-tag { padding: 2px 10px; margin-bottom: 4px; }
+    .setup-shell .setup-hero h1 { font-size: 28px; margin-bottom: 6px; }
+    .setup-shell .setup-hero p { font-size: 12px; line-height: 1.35; }
+    .setup-shell .setup-card { padding: 10px 16px; }
+  }
+  @container (max-width: 760px) {
+    .setup-shell #setup > .setup-hero { padding-inline: 4px; gap: 12px; }
+    .setup-shell .setup-card { padding: 10px 12px; }
+    .setup-shell .setup-job-card h2, .setup-shell .setup-doc-card h2 { font-size: 17px; }
+    .setup-shell .setup-job-heading { margin-bottom: 8px; }
+    .setup-shell .setup-job-heading .setup-usub { font-size: 11px; line-height: 1.4; }
+    .setup-shell .setup-job-card .setup-chip { min-height: 28px; padding: 4px 7px; font-size: 11px; }
+    .setup-shell .setup-job-card .setup-chips { gap: 4px; }
+    .setup-shell .setup-doc-card .setup-drop { min-height: 114px; padding: 8px; gap: 2px; }
+    .setup-shell .setup-doc-card .setup-drop > svg { width: 24px; height: 24px; margin-bottom: 0; }
+    .setup-shell .setup-doc-card .setup-drop strong { font-size: 12px; }
+    .setup-shell .setup-doc-card .setup-sup { font-size: 10px; line-height: 1.35; }
+    .setup-shell .setup-doc-card .setup-uf { margin-top: 8px; }
+    .setup-shell .setup-doc-card .setup-empty {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr);
+      gap: 4px 8px;
+      padding: 4px 0;
+      text-align: left;
+      font-size: 11px;
+    }
+    .setup-shell .setup-doc-card .setup-empty > svg { grid-row: 1 / 3; width: 24px; height: 24px; }
+    .setup-shell .setup-doc-card .setup-empty-description { grid-column: 2; font-size: 10px; }
+  }
+}
+
+@media (min-width: 961px) and (hover: hover) and (pointer: fine) {
+  @container (max-height: 540px) {
+    .setup-shell .hero-orb { width: min(100%, 90px); }
+    .setup-shell .setup-tag { font-size: 10px; padding-block: 1px; }
+    .setup-shell .setup-hero h1 { font-size: 24px; margin-bottom: 4px; }
+    .setup-shell .setup-hero p { font-size: 11px; }
+    .setup-shell .setup-card { padding-block: 8px; }
+    .setup-shell .setup-job-heading { margin-bottom: 6px; }
+    .setup-shell .setup-job-card .setup-chip { min-height: 26px; padding-block: 2px; }
+    .setup-shell .setup-doc-card .setup-drop { gap: 1px; padding-block: 6px; }
+    .setup-shell .setup-doc-card .setup-uf { margin-top: 4px; }
+  }
+  @container (max-width: 760px) {
+    .setup-shell .setup-card { padding: 8px 10px; }
+    .setup-shell .setup-job-heading { margin-bottom: 6px; }
+    .setup-shell .setup-job-heading .setup-usub { font-size: 10px; line-height: 1.3; }
+    .setup-shell .setup-job-card .setup-jin { min-height: 36px; }
+    .setup-shell .setup-job-card .setup-job-input { min-height: 36px; padding-block: 8px; font-size: 12px; }
+    .setup-shell .setup-job-card .setup-jlbl { font-size: 11px; margin: 6px 0; }
+    .setup-shell .setup-job-card .setup-chip { min-height: 24px; padding: 3px 5px; font-size: 10px; }
+    .setup-shell .setup-doc-card .setup-bbtn { min-height: 36px; padding-block: 6px; font-size: 11px; }
+    .setup-shell .setup-doc-card .setup-drop > svg { width: 20px; height: 20px; }
+    .setup-shell .setup-doc-card .setup-drop strong { line-height: 1.3; }
+    .setup-shell .setup-doc-card .setup-or { font-size: 10px; line-height: 1.2; }
+    .setup-shell .setup-doc-card .setup-fhead { margin-bottom: 4px; }
+    .setup-shell .setup-doc-card .setup-empty-description { line-height: 1.2; }
   }
 }
