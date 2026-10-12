@@ -94,6 +94,7 @@ if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
 }
 
 export interface SpeakOptions {
+  language?: string;
   voice?: string;
   speed?: number;
   engine?: 'auto' | 'speechSynthesis' | 'kokoro';
@@ -279,12 +280,15 @@ function speakWithSpeechSynthesis(
     const utterance = new SpeechSynthesisUtterance(cleanText);
     activeUtterance = utterance;
 
-    const voice = getBestVoice();
+    const available = window.speechSynthesis.getVoices();
+    const voice = options?.language
+      ? available.find(v => v.lang === options.language && /natural|neural|enhanced|premium/i.test(v.name)) || available.find(v => v.lang === options.language) || null
+      : getBestVoice();
     if (voice) {
       utterance.voice = voice;
       utterance.lang = voice.lang;
     } else {
-      utterance.lang = 'en-US';
+      utterance.lang = options?.language || 'en-US';
     }
 
     utterance.pitch = 1.0;

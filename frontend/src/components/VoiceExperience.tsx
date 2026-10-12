@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { VoiceState, AttachedDocument, Message, AnswerAttempt, ReplayState, InterviewExchangeRecord } from '../types/conversation';
-import { MessageSquare, Plus, AlertCircle, X, Lightbulb } from 'lucide-react';
+import { MessageSquare, Plus, AlertCircle, X, Lightbulb, Settings } from 'lucide-react';
 import { VoiceCreature } from './VoiceCreature';
 import { StateLabel } from './StateLabel';
 
@@ -11,7 +11,7 @@ import { VoiceControls } from './VoiceControls';
 import { updateSpeechEndpoint, SpeechEndpointState } from '../services/speechEndpoint';
 import { AnswerReplayCard } from './AnswerReplayCard';
 import { transcribeAudio, fetchFollowupInterviewQuestion, fetchAnswerAiNotes, fetchAnswerComparison, isQuotaExceededText, isInterviewErrorText, isOffTopicRedirect, isClarificationQuery } from '../services/sttService';
-import { speakText, stopSpeaking, unlockAudio } from '../services/ttsService';
+import { speakText as playSpeech, stopSpeaking, unlockAudio, SpeakOptions } from '../services/ttsService';
 
 interface VoiceExperienceProps {
   interviewId?: string;
@@ -100,6 +100,25 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
   }, [startInterviewError, interviewId]);
 
   // Candidate camera state and toggle reference
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const [voiceLanguage, setVoiceLanguage] = useState('');
+  const [voiceLanguages, setVoiceLanguages] = useState<string[]>([]);
+  const voiceLanguageRef = useRef('');
+  useEffect(() => {
+    if (!('speechSynthesis' in window)) return;
+    const update = () => setVoiceLanguages([...new Set(window.speechSynthesis.getVoices().map(voice => voice.lang))].sort());
+    update();
+    window.speechSynthesis.addEventListener('voiceschanged', update);
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', update);
+  }, []);
+  const voiceEnabledRef = useRef(true);
+  const speakText = (text: string, options: SpeakOptions = {}) => {
+    if (voiceEnabledRef.current) return playSpeech(text, { ...options, language: voiceLanguageRef.current || undefined });
+    queueMicrotask(() => options.onEnd?.());
+    return Promise.resolve();
+  };
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const visualPairRef = useRef<HTMLDivElement | null>(null);
   const cameraToggleFnRef = useRef<(() => void) | null>(null);
@@ -1251,6 +1270,23 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
 
         {/* Header Right: In Progress Badge & Transcript Button */}
         <div className="flex items-center gap-2.5 shrink-0">
+          <div className="relative">
+            <button type="button" aria-label="Interview settings" aria-expanded={settingsOpen} aria-controls="interview-settings" onClick={() => setSettingsOpen(value => !value)} className="w-10 h-10 rounded-full border border-[#8EB69B]/30 text-[#F5EEDB] hover:bg-[#8EB69B]/10 inline-flex items-center justify-center">
+              <Settings size={18} aria-hidden="true" />
+            </button>
+            {settingsOpen && <section id="interview-settings" aria-label="Interview settings" onKeyDown={event => { if (event.key === 'Escape') setSettingsOpen(false); }} className="absolute right-0 top-12 z-50 w-72 rounded-2xl border border-[#8EB69B]/30 bg-[#14271d] p-4 shadow-xl text-[#F5EEDB]">
+              <div className="flex items-center justify-between mb-3"><h2 className="text-sm font-semibold">Interview settings</h2><button type="button" aria-label="Close settings" onClick={() => setSettingsOpen(false)} className="p-1"><X size={16}/></button></div>
+              <label className="flex items-center justify-between gap-3 py-3 text-sm"><span>Savi voice</span><input type="checkbox" checked={voiceEnabled} onChange={event => { const enabled = event.target.checked; voiceEnabledRef.current = enabled; setVoiceEnabled(enabled); if (!enabled) { stopSpeaking(); setState('idle'); setCustomLabel(undefined); } }} className="accent-[#FFB347] w-4 h-4" /></label>
+              <label className="block py-3 text-sm border-t border-white/10"><span>Voice language</span><select value={voiceLanguage} onChange={event => { voiceLanguageRef.current = event.target.value; setVoiceLanguage(event.target.value); }} className="mt-2 w-full rounded-lg border border-[#8EB69B]/30 bg-[#14271d] p-2 text-[#F5EEDB]" disabled={!voiceEnabled}>
+                <option value="">Automatic English voice</option>
+                {voiceLanguages.map(language => <option key={language} value={language}>{language}</option>)}
+              </select><span className="block mt-1 text-xs text-[#8EB69B]">Available browser voices. Questions stay in English.</span></label>
+              <label className="flex items-center justify-between gap-3 py-3 text-sm border-t border-white/10"><span>Reduce orb motion</span><input type="checkbox" checked={reduceMotion} onChange={event => setReduceMotion(event.target.checked)} className="accent-[#FFB347] w-4 h-4" /></label>
+              <label className="flex items-center justify-between gap-3 py-3 text-sm border-t border-white/10"><span>Camera analysis</span><input type="checkbox" checked={isCameraActive} onChange={() => cameraToggleFnRef.current?.()} className="accent-[#FFB347] w-4 h-4" /></label>
+              <p className="text-xs text-[#8EB69B] mt-2">Applies to this interview screen.</p>
+            </section>}
+          </div>
+
           {isCompleted && onOpenCompletionReview && (
             <button
               type="button"
@@ -1364,6 +1400,7 @@ export const VoiceExperience: React.FC<VoiceExperienceProps> = ({
                 celebration={celebration}
                 visualState={state === 'speaking' || state === 'listening' ? 'speaking' : state === 'thinking' && customLabel === 'transcribing answer…' ? 'transcribing' : 'idle'}
                 respectReducedMotion
+                reduceMotion={reduceMotion}
                 gesture={creatureGesture}
                 onGestureEnd={() => setCreatureGesture(null)}
                 onTap={!isMicEnabled || isCompleted ? undefined : handleToggleFlow}

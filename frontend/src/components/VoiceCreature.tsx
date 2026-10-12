@@ -42,6 +42,7 @@ export interface VoiceCreatureProps {
   className?: string;
   compact?: boolean;
   respectReducedMotion?: boolean;
+  reduceMotion?: boolean;
   visualState?: SaviOrbState;
   /** Decorative setup-page animation; never represents interview activity. */
   ambientLoop?: boolean;
@@ -275,6 +276,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
   className,
   compact,
   respectReducedMotion = false,
+  reduceMotion = false,
   visualState,
   ambientLoop = false,
   celebration = 0
@@ -335,7 +337,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
 
     let animId = 0;
     const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const isMotionReduced = () => respectReducedMotion && motionQuery.matches;
+    const isMotionReduced = () => reduceMotion || (respectReducedMotion && motionQuery.matches);
     let dpr = Math.min(window.devicePixelRatio || 1, 2);
     let W = 0;
     let H = 0;
@@ -1208,7 +1210,7 @@ export const VoiceCreature: React.FC<VoiceCreatureProps> = ({
       redrawRef.current = null;
       if (respectReducedMotion) motionQuery.removeEventListener('change', handleMotionChange);
     };
-  }, [respectReducedMotion, ambientLoop]);
+  }, [respectReducedMotion, reduceMotion, ambientLoop]);
 
   return (
     <div
